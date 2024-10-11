@@ -195,9 +195,9 @@ RandomRay::RandomRay()
   }
 }
 
-RandomRay::RandomRay(uint64_t ray_id, FlatSourceDomain* domain) : RandomRay()
+RandomRay::RandomRay(uint64_t ray_id, FlatSourceDomain* domain, bool time_dependent) : RandomRay()
 {
-  initialize_ray(ray_id, domain);
+  initialize_ray(ray_id, domain, time_dependent);
 }
 
 // Transports ray until termination criteria are met
@@ -274,16 +274,35 @@ void RandomRay::event_advance_ray()
 
 void RandomRay::attenuate_flux(double distance, bool is_active)
 {
-  switch (source_shape_) {
-  case RandomRaySourceShape::FLAT:
-    attenuate_flux_flat_source(distance, is_active);
-    break;
-  case RandomRaySourceShape::LINEAR:
-  case RandomRaySourceShape::LINEAR_XY:
-    attenuate_flux_linear_source(distance, is_active);
-    break;
-  default:
-    fatal_error("Unknown source shape for random ray transport.");
+  switch (settings::run_mode) {
+  case RunMode::EIGENVALUE:
+  case RunMode::FIXED_SOURCE:
+    switch (source_shape_) {
+    case RandomRaySourceShape::FLAT:
+      attenuate_flux_flat_source(distance, is_active, false);
+      break;
+    case RandomRaySourceShape::LINEAR:
+    case RandomRaySourceShape::LINEAR_XY:
+      attenuate_flux_linear_source(distance, is_active, false);
+      break;
+    default:
+      fatal_error("Unknown source shape for random ray transport.");
+    }
+  case RunMode::TIME_DEPENDENT:
+    // TODO: Add switch for SDP and SXSDP? Or an input param?
+    switch (source_shape_) {
+    case RandomRaySourceShape::FLAT:
+      // IMPLEMENT
+      attenuate_flux_flat_source(distance, is_active, true);
+      break;
+    case RandomRaySourceShape::LINEAR:
+    case RandomRaySourceShape::LINEAR_XY:
+      //attenuate_flux_linear_source_time_dependent(distance, is_active);
+      //break;
+      fatal_error("Time-dependent linear sources not yet implemented.");
+    default:
+      fatal_error("Unknown source shape for random ray transport.");
+    }
   }
 }
 
@@ -300,7 +319,8 @@ void RandomRay::attenuate_flux(double distance, bool is_active)
 // than use of many atomic operations corresponding to each energy group
 // individually (at least on CPU). Several other bookkeeping tasks are also
 // performed when inside the lock.
-void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
+void RandomRay::attenuate_flux_flat_source(double distance, bool is_active,
+        bool time_dependent)
 {
   // The number of geometric intersections is counted for reporting purposes
   n_event()++;
@@ -331,6 +351,23 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     float exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
     float new_delta_psi =
       (angular_flux_[g] - domain_->source_[source_element + g]) * exponential;
+    if (time_dependent) {
+      float vbar_inv = data::mg.macro_xs_[material].get_xs(
+          MgxsType::INVERSE_VELOCITY, g, NULL, NULL, NULL, t, a)
+      //IMPLEMENT
+      // call RandomRay::bdf_order_ inside this function
+      float dQdt = domain_.source_derivative(source_element + g);
+      //IMPLEMENT
+      float dphi2_dt2 = domain_.phi_derivative2(source_element + g); 
+      float T = dQdt - vbar_inv * dphi2_dt2 / (4 * pi);
+      // IMPLEMENT THIS VARIABLE
+      float S = angular_flux_dt_[g] - T / sigma_t; 
+      new_delta_psi += vbar_inv * T / sigma_t**2 * exponential;
+      new_delta_psi += distance * vbar_inv * S * (1 - exponential);
+      float new_delta_psi_dt = S * exponential;
+      delta_psi_dt_[g] = new_delta_psi_dt;
+      angular_flux_dt_[g] -= new_delta_psi_dt;
+    }
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
   }
@@ -511,7 +548,8 @@ void RandomRay::attenuate_flux_linear_source(double distance, bool is_active)
   }
 }
 
-void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
+void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain,
+        bool time_dependent)
 {
   domain_ = domain;
 
@@ -558,7 +596,13 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
 
   for (int g = 0; g < negroups_; g++) {
     angular_flux_[g] = domain_->source_[source_region_idx * negroups_ + g];
+    // Initialize ray's starting angular flux time derivative to starting
+    // location's isotropic source time derivative
+    if (time_dependent) {
+      angular_flux_dt_[g] = domain_.source_derivative(source_region_idx * negroups_ + g);
+    }
   }
 }
+
 
 } // namespace openmc

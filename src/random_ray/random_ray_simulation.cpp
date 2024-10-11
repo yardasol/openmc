@@ -288,7 +288,7 @@ void RandomRaySimulation::simulate()
 #pragma omp parallel for schedule(dynamic)                                     \
   reduction(+ : total_geometric_intersections_)
     for (int i = 0; i < simulation::work_per_rank; i++) {
-      RandomRay ray(i, domain_.get());
+      RandomRay ray(i, domain_.get(), false);
       total_geometric_intersections_ +=
         ray.transport_history_based_single_ray();
     }
