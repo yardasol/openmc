@@ -301,6 +301,13 @@ void get_run_parameters(pugi::xml_node node_base)
       FlatSourceDomain::volume_normalized_flux_tallies_ =
         get_node_value_bool(random_ray_node, "volume_normalized_flux_tallies");
     }
+    if (run_mode == RunMode::TIME_DEPENDENT) {
+      if (check_for_node(random_ray_node, "bdf_order")) {
+        RandomRay::bdf_order_ = std::stod(get_node_value(random_ray_node, "bdf_order"));
+      } else {
+        fatal_error("Specify BDF approximation order in settings XML");
+      }
+    }
   }
 }
 
