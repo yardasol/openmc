@@ -115,13 +115,19 @@ public:
   virtual double evaluate_flux_at_point(Position r, int64_t sr, int g) const;
   double compute_fixed_source_normalization_factor() const;
 
+  // IMPLEMENT
+  virtual void update_neutron_source_time_dependent();
+  // call bdf_order_ inside this function
+  float source_time_derivative(int index);
+  // calculate d2phi/dt2 from phis
+  float flux_time_derivative(int index);
+
+
   //----------------------------------------------------------------------------
   // Static Data members
   static bool volume_normalized_flux_tallies_;
-
-  //----------------------------------------------------------------------------
-  // Static data members
   static RandomRayVolumeEstimator volume_estimator_;
+  static int bdf_order_;                     // Order for BDF approximation
 
   //----------------------------------------------------------------------------
   // Public Data members
@@ -150,7 +156,15 @@ public:
   vector<float> source_;
   vector<float> external_source_;
   vector<bool> external_source_present_;
-
+  // Arrays for time-dependent simulations
+  vector<double> precursors_;
+  vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
+                                      // solutions
+  vector<float> source_bdf_;          // Holds  bdf_order_ previous source
+                                      // region values
+  vector<float> precursors_bdf_;      // Holds  bdf_order_ previous precursor
+                                      // values
+  
 protected:
   //----------------------------------------------------------------------------
   // Methods
@@ -169,6 +183,7 @@ protected:
   //----------------------------------------------------------------------------
   // Private data members
   int negroups_;                  // Number of energy groups in simulation
+  int ndgroups_;                  // Number of delay groups in simulation
   int64_t n_source_elements_ {0}; // Total number of source regions in the model
                                   // times the number of energy groups
 
@@ -203,6 +218,52 @@ protected:
   vector<xt::xtensor<double, 2>> tally_volumes_;
 
 }; // class FlatSourceDomain
+
+//class FlatSourceDomainTimeDependent : public FlatSourceDomain {
+//public:
+  //----------------------------------------------------------------------------
+  // Constructors and Destructors
+ // FlatSourceDomainTimeDependent();
+  //virtual ~FlatSourceDomainTimeDependent() = default;
+
+  //----------------------------------------------------------------------------
+  // Methods
+  // IMPLEMENT
+  //virtual void update_neutron_source_time_dependent();
+  // call bdf_order_ inside this function
+  //float source_time_derivative(int index);
+  // calculate d2phi/dt2 from phis
+  //float flux_time_derivative(int index);
+
+  //----------------------------------------------------------------------------
+  // Static Data members
+  // This is also in random_ray.h right now...
+  //static int bdf_order_;                     // Order for BDF approximation
+
+  //----------------------------------------------------------------------------
+  // Public Data members
+
+    // 2D arrays stored in 1D representing values for all source regions x energy
+  // groups
+  //vector<double> scalar_flux_bdf_;
+  //vector<double> precursors_old_;
+  //vector<double> precursors_new_;
+  //vector<float> source_bdf_;
+
+//protected:
+  //----------------------------------------------------------------------------
+  // Methods
+  // WHICH OF THESE SHOULD BE DELETED? OR MODIFIED?
+  //virtual void set_flux_to_flux_plus_source(
+  //  int64_t idx, double volume, int material, int g);
+  //void set_flux_to_source(int64_t idx);
+  //virtual void set_flux_to_old_flux(int64_t idx);
+
+  //----------------------------------------------------------------------------
+  // Private data members
+  //
+
+//}; // class FlatSourceDomainTimeDependen
 
 //============================================================================
 //! Non-member functions

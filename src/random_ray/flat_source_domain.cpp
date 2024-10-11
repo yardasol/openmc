@@ -28,7 +28,9 @@ RandomRayVolumeEstimator FlatSourceDomain::volume_estimator_ {
   RandomRayVolumeEstimator::HYBRID};
 bool FlatSourceDomain::volume_normalized_flux_tallies_ {false};
 
-FlatSourceDomain::FlatSourceDomain() : negroups_(data::mg.num_energy_groups_)
+FlatSourceDomain::FlatSourceDomain()
+  : negroups_(data::mg.num_energy_groups_),
+    ndgroups_(data::mg.num_delayed_groups_)
 {
   // Count the number of source regions, compute the cell offset
   // indices, and store the material type The reason for the offsets is that
@@ -64,12 +66,27 @@ FlatSourceDomain::FlatSourceDomain() : negroups_(data::mg.num_energy_groups_)
   if (settings::run_mode == RunMode::EIGENVALUE) {
     // If in eigenvalue mode, set starting flux to guess of unity
     scalar_flux_old_.assign(n_source_elements_, 1.0);
-  } else {
+  } else if (settings::run_mode == RunMode:FIXED_SOURCE) {
     // If in fixed source mode, set starting flux to guess of zero
     // and initialize external source arrays
     scalar_flux_old_.assign(n_source_elements_, 0.0);
     external_source_.assign(n_source_elements_, 0.0);
     external_source_present_.assign(n_source_regions_, false);
+  // This might not work because we need slightly differnet logic. For example,
+  // we'll want to use the volume calculations from the steady state as a
+  // starting point? And we'll also need to pass in vectors for the steady state
+  // flux and source... need to write this as a new function most likely :(
+  } else {
+    // If in time-dependent mode, set starting flux to steady state flux,
+    // set starting precursors to steady state precursors, and set starting
+    // source to steady state source.
+    precursors_.assign(n_source_regions_ * ndgroups_, 0.0)
+    scalar_flux_bdf_.assign(n_source_elements_ * bdf_order_, 0.0)
+    source_bdf_.assign(n_source_elements_ * bdf_order_, 0.0)
+    precursors_bdf_.assign(n_source_regions * ndgroups_ * bdf_order_, 0.0)
+    scalar_flux_bdf_ = ...
+    source_bdf_ = ...
+    precursors_bdf_ = ...
   }
 
   // Initialize material array
