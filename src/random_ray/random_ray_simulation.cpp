@@ -18,6 +18,17 @@
 namespace openmc {
 
 //==============================================================================
+// Global variable declarations
+//==============================================================================
+namespace random_ray_td {
+
+vector<double> precursor_init;
+vector<double> scalar_flux_init;
+vector<float> source_init;
+
+} // namespace random_ray_td
+
+//==============================================================================
 // Non-member functions
 //==============================================================================
 
@@ -53,14 +64,15 @@ void openmc_run_random_ray(bool initial_condition)
 
   // Extract flux, source, and precursors as an initial condition
   if (initial_condition) {
-    sim.initial_condition() // TODO: add return?
+      precursor_init = sim.get_precursor_initial_condition()
+      scalar_flux_init = sim.get_scalar_flux_initial_condition()
+      source_init = sim.get_source_initial_condition()
   }
 }
 
 void openmc_run_random_ray_time_dependent()
 {
   openmc_run_random_ray(true)
-  ... 
 }
 
 
@@ -486,34 +498,16 @@ void RandomRaySimulation::print_results_random_ray(
   }
 }
 
-void RandomRaySimulation::inital_condition() {
-  vector<float> scalar_flux_init(domain_.scalar_flux_new.begin(),
-          sim.domain_.scalar_flux_new.begin());
-  vector<float> source_init(sim.domain_.source_.begin(),
-          sim.domain_.source_.end());
-  vector<float> precursor_init.assign(n_source_regions * ndgroups_, 0.0);
-  // Temperature and angle indices, if using multiple temperature               
-  // data sets and/or anisotropic data sets.                                    
-  // TODO: Currently assumes we are only using single temp/single angle data.   
-  const int t = 0;
-  const int a = 0;
-#pragma omp parallel for
-  for (int sr = 0; sr < sim.domain_.n_source_regions_; sr++) {
-    int material = sim.domain_.material_[sr];
-    for (int dg = 0; dg < domain.ndgroups_; dg++){
-      double lambda = data::mg.macro_xs_[material].get_xs(
-              MgxsType::DECAY_RATE, e_in, nullptr, nullptr, nullptr, t, a);
-      float delayed_fission = 0.0;
-      for (int g = 0; g < domain_.negroups_; e_in++) {
-        // fix signature to incorporate delayed group
-        double nu_d_sigma_f = data::mg.macro_xs_[material].get_xs(
-          MgxsType::DELAYED_NU_FISSION, e_in, nullptr, nullptr, nullptr, t, a);
-        delayed_fission += scalar_flux_init[sr * ...] * nu_d_sigma_f
-      }
-      precursor_init_[sr * ndgroups_ + dg] = delayed_fission / lamdba
-    }
-  }
-  return ... ;
+vector<double> RandomRaySimulation::get_precursor_initial_condition() {
+  return domain_.get_precursor_initial_condition();
+}
+
+vector<double> RandomRaySimulation::get_flux_initial_condition() {
+  return domain_.get_flux_initial_condition();
+}
+
+vector<float> RandomRaySimulation::get_source_initial_condition() {
+  return domain_.get_source_initial_condition();
 }
 
 } // namespace openmc

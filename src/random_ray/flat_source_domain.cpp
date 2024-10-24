@@ -9,6 +9,7 @@
 #include "openmc/output.h"
 #include "openmc/plot.h"
 #include "openmc/random_ray/random_ray.h"
+#include "openmc/random_ray/random_ray_simulation.h"
 #include "openmc/simulation.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/tally.h"
@@ -28,7 +29,7 @@ RandomRayVolumeEstimator FlatSourceDomain::volume_estimator_ {
   RandomRayVolumeEstimator::HYBRID};
 bool FlatSourceDomain::volume_normalized_flux_tallies_ {false};
 
-FlatSourceDomain::FlatSourceDomain(vector<float> scalar_flux_init_, vector<float> source_init_)
+FlatSourceDomain::FlatSourceDomain()
   : negroups_(data::mg.num_energy_groups_),
     ndgroups_(data::mg.num_delayed_groups_)
 {
@@ -43,7 +44,7 @@ FlatSourceDomain::FlatSourceDomain(vector<float> scalar_flux_init_, vector<float
       source_region_offsets_.push_back(n_source_regions_);
       n_source_regions_ += c->n_instances_;
       n_source_elements_ += c->n_instances_ * negroups_;
-      n_delay_elements_ += c->n_instances * ndgroups_;
+      n_delay_elements_ += c->n_instances_ * ndgroups_;
     }
   }
 
@@ -73,21 +74,19 @@ FlatSourceDomain::FlatSourceDomain(vector<float> scalar_flux_init_, vector<float
     scalar_flux_old_.assign(n_source_elements_, 0.0);
     external_source_.assign(n_source_elements_, 0.0);
     external_source_present_.assign(n_source_regions_, false);
-  // This might not work because we need slightly differnet logic. For example,
-  // we'll want to use the volume calculations from the steady state as a
-  // starting point? And we'll also need to pass in vectors for the steady state
-  // flux and source... need to write this as a new function most likely :(
   } else {
     // If in time-dependent mode, set starting flux to steady state flux,
     // set starting precursors to steady state precursors, and set starting
     // source to steady state source.
-    precursors_.assign(n_source_regions_ * ndgroups_, 0.0)
+    precursors_.assign(n_delay_elements_, 0.0)
     scalar_flux_bdf_.assign(n_source_elements_ * bdf_order_, 0.0)
     source_bdf_.assign(n_source_elements_ * bdf_order_, 0.0)
-    precursors_bdf_.assign(n_source_regions * ndgroups_ * bdf_order_, 0.0)
-    scalar_flux_bdf_ = ...
-    source_bdf_ = ...
-    precursors_bdf_ = ...
+    precursors_bdf_.assign(n_delay_elements_ * bdf_order_, 0.0)
+    // WE STILL NEED THE VOLUME IC!!!
+    // Need to find a way to put the init vector in the bdf vectors
+    scalar_flux_bdf_ = random_ray_td::scalar_flux_init
+    source_bdf_ = random_ray_td::sourec_init
+    precursors_bdf_ = random_ray_td::precursors_init
   }
 
   // Initialize material array
@@ -1113,6 +1112,37 @@ void FlatSourceDomain::convert_external_sources()
 void FlatSourceDomain::flux_swap()
 {
   scalar_flux_old_.swap(scalar_flux_new_);
+}
+
+vector<double> FlatSourceDomain::get_precursor_initial_condition() {
+  vector<double> precursor_init.assign(n_source_regions * ndgroups_, 0.0);
+  // Temperature and angle indices, if using multiple temperature               
+  // data sets and/or anisotropic data sets.                                    
+  // TODO: Currently assumes we are only using single temp/single angle data.   
+  const int t = 0;
+  const int a = 0;
+#pragma omp parallel for
+  for (int sr = 0; sr < n_source_regions_; sr++) {
+    int material = material_[sr];
+    for (int dg = 0; dg < ndgroups_; dg++){
+      for (int g = 0; g < negroups_; e_in++) {
+        double lambda = data::mg.macro_xs_[material].get_xs(
+              MgxsType::DECAY_RATE, g, nullptr, nullptr, &dg, t, a);
+        double nu_d_sigma_f = data::mg.macro_xs_[material].get_xs(
+          MgxsType::DELAYED_NU_FISSION, g, nullptr, nullptr, &dg, t, a);
+        precursior_init_[sr * ndgroups_ + dg] += domain_.scalar_flux_new_[sr * negroups_ + g] * nu_d_sigma_f / lambda;
+      }
+    }
+  }
+  return precursor_init_;
+}
+
+vector<double> FlatSourceDomain::get_flux_initial_condition() {
+  return scalar_flux_new_;
+}
+
+vector<float> FlatSourceDomain::get_source_initial_condition() {
+  return source_;
 }
 
 } // namespace openmc
