@@ -28,7 +28,7 @@ RandomRayVolumeEstimator FlatSourceDomain::volume_estimator_ {
   RandomRayVolumeEstimator::HYBRID};
 bool FlatSourceDomain::volume_normalized_flux_tallies_ {false};
 
-FlatSourceDomain::FlatSourceDomain()
+FlatSourceDomain::FlatSourceDomain(vector<float> scalar_flux_init_, vector<float> source_init_)
   : negroups_(data::mg.num_energy_groups_),
     ndgroups_(data::mg.num_delayed_groups_)
 {
@@ -43,6 +43,7 @@ FlatSourceDomain::FlatSourceDomain()
       source_region_offsets_.push_back(n_source_regions_);
       n_source_regions_ += c->n_instances_;
       n_source_elements_ += c->n_instances_ * negroups_;
+      n_delay_elements_ += c->n_instances * ndgroups_;
     }
   }
 

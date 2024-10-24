@@ -47,6 +47,7 @@ private:
 
   // Number of energy groups
   int negroups_;
+  int ndgroups_;
 
 }; // class RandomRaySimulation
 
@@ -54,7 +55,8 @@ private:
 //! Non-member functions
 //============================================================================
 
-void openmc_run_random_ray();
+void openmc_run_random_ray(bool initial_condition = false);
+void openmc_run_random_ray_time_dependent();
 void validate_random_ray_inputs();
 
 } // namespace openmc

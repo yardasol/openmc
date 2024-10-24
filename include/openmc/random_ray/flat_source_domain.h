@@ -91,7 +91,7 @@ class FlatSourceDomain {
 public:
   //----------------------------------------------------------------------------
   // Constructors and Destructors
-  FlatSourceDomain();
+  FlatSourceDomain(vector<float> scalar_flux_init_ = NULL, vector<float> source_init_ = NULL);
   virtual ~FlatSourceDomain() = default;
 
   //----------------------------------------------------------------------------
@@ -186,6 +186,8 @@ protected:
   int ndgroups_;                  // Number of delay groups in simulation
   int64_t n_source_elements_ {0}; // Total number of source regions in the model
                                   // times the number of energy groups
+  int64_t n_delay_elements_ {0};  // Total number of source regions in the model
+                                  // times the number of delay groups
 
   double
     simulation_volume_; // Total physical volume of the simulation domain, as

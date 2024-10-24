@@ -21,7 +21,7 @@ namespace openmc {
 // Non-member functions
 //==============================================================================
 
-void openmc_run_random_ray()
+void openmc_run_random_ray(bool initial_condition)
 {
   // Initialize OpenMC general data structures
   openmc_simulation_init();
@@ -31,7 +31,7 @@ void openmc_run_random_ray()
     validate_random_ray_inputs();
 
   // Initialize Random Ray Simulation Object
-  RandomRaySimulation sim;
+  RandomRaySimulation sim();
 
   // Begin main simulation timer
   simulation::time_total.start();
@@ -50,7 +50,19 @@ void openmc_run_random_ray()
 
   // Output all simulation results
   sim.output_simulation_results();
+
+  // Extract flux, source, and precursors as an initial condition
+  if (initial_condition) {
+    sim.initial_condition() // TODO: add return?
+  }
 }
+
+void openmc_run_random_ray_time_dependent()
+{
+  openmc_run_random_ray(true)
+  ... 
+}
+
 
 // Enforces restrictions on inputs in random ray mode.  While there are
 // many features that don't make sense in random ray mode, and are therefore
@@ -233,7 +245,8 @@ void validate_random_ray_inputs()
 //==============================================================================
 
 RandomRaySimulation::RandomRaySimulation()
-  : negroups_(data::mg.num_energy_groups_)
+  : negroups_(data::mg.num_energy_groups_),
+    ndgroups_(data::mg.num_delay_groups_)
 {
   // There are no source sites in random ray mode, so be sure to disable to
   // ensure we don't attempt to write source sites to statepoint
@@ -471,6 +484,36 @@ void RandomRaySimulation::print_results_random_ray(
     fmt::print(" k-effective                       = {:.5f} +/- {:.5f}\n",
       simulation::keff, simulation::keff_std);
   }
+}
+
+void RandomRaySimulation::inital_condition() {
+  vector<float> scalar_flux_init(domain_.scalar_flux_new.begin(),
+          sim.domain_.scalar_flux_new.begin());
+  vector<float> source_init(sim.domain_.source_.begin(),
+          sim.domain_.source_.end());
+  vector<float> precursor_init.assign(n_source_regions * ndgroups_, 0.0);
+  // Temperature and angle indices, if using multiple temperature               
+  // data sets and/or anisotropic data sets.                                    
+  // TODO: Currently assumes we are only using single temp/single angle data.   
+  const int t = 0;
+  const int a = 0;
+#pragma omp parallel for
+  for (int sr = 0; sr < sim.domain_.n_source_regions_; sr++) {
+    int material = sim.domain_.material_[sr];
+    for (int dg = 0; dg < domain.ndgroups_; dg++){
+      double lambda = data::mg.macro_xs_[material].get_xs(
+              MgxsType::DECAY_RATE, e_in, nullptr, nullptr, nullptr, t, a);
+      float delayed_fission = 0.0;
+      for (int g = 0; g < domain_.negroups_; e_in++) {
+        // fix signature to incorporate delayed group
+        double nu_d_sigma_f = data::mg.macro_xs_[material].get_xs(
+          MgxsType::DELAYED_NU_FISSION, e_in, nullptr, nullptr, nullptr, t, a);
+        delayed_fission += scalar_flux_init[sr * ...] * nu_d_sigma_f
+      }
+      precursor_init_[sr * ndgroups_ + dg] = delayed_fission / lamdba
+    }
+  }
+  return ... ;
 }
 
 } // namespace openmc
