@@ -6,6 +6,18 @@
 
 namespace openmc {
 
+//==============================================================================
+// Global variable declarations
+//==============================================================================
+namespace random_ray_td {
+
+//Initial conditions for time-depedent simulations
+vector<double> precursor_init;
+vector<double> scalar_flux_init;
+vector<float> source_init;
+
+} // namespace random_ray_td
+
 /*
  * The RandomRaySimulation class encompasses data and methods for running a
  * random ray simulation.
@@ -29,6 +41,10 @@ public:
     double avg_miss_rate, int negroups, int64_t n_source_regions,
     int64_t n_external_source_regions) const;
 
+  vector<double> get_precursor_initial_condition();
+  vector<double> get_scalar_flux_initial_condition();
+  vector<float> get_source_initial_condition();
+
   //----------------------------------------------------------------------------
   // Data members
 private:
@@ -47,6 +63,7 @@ private:
 
   // Number of energy groups
   int negroups_;
+  int ndgroups_;
 
 }; // class RandomRaySimulation
 
@@ -54,7 +71,8 @@ private:
 //! Non-member functions
 //============================================================================
 
-void openmc_run_random_ray();
+void openmc_run_random_ray(bool initial_condition = false);
+void openmc_run_random_ray_time_dependent();
 void validate_random_ray_inputs();
 
 } // namespace openmc

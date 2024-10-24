@@ -301,6 +301,13 @@ void get_run_parameters(pugi::xml_node node_base)
       FlatSourceDomain::volume_normalized_flux_tallies_ =
         get_node_value_bool(random_ray_node, "volume_normalized_flux_tallies");
     }
+    if (run_mode == RunMode::TIME_DEPENDENT) {
+      if (check_for_node(random_ray_node, "bdf_order")) {
+        FlatSourceDomain::bdf_order_ = std::stod(get_node_value(random_ray_node, "bdf_order"));
+      } else {
+        fatal_error("Specify BDF approximation order in settings XML");
+      }
+    }
   }
 }
 
@@ -428,6 +435,8 @@ void read_settings_xml(pugi::xml_node root)
         run_mode = RunMode::EIGENVALUE;
       } else if (temp_str == "fixed source") {
         run_mode = RunMode::FIXED_SOURCE;
+      } else if (temp_str == "time dependent") {
+        run_mode = RunMode::TIME_DEPENDENT;
       } else if (temp_str == "plot") {
         run_mode = RunMode::PLOTTING;
       } else if (temp_str == "particle restart") {

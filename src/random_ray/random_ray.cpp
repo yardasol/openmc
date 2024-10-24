@@ -184,8 +184,10 @@ double RandomRay::distance_active_;
 unique_ptr<Source> RandomRay::ray_source_;
 RandomRaySourceShape RandomRay::source_shape_ {RandomRaySourceShape::FLAT};
 
+// May want to make a subclass for this
 RandomRay::RandomRay()
   : angular_flux_(data::mg.num_energy_groups_),
+    angular_flux_dt_(data::mg.num_energy_groups_),
     delta_psi_(data::mg.num_energy_groups_),
     negroups_(data::mg.num_energy_groups_)
 {
@@ -331,6 +333,19 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     float exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
     float new_delta_psi =
       (angular_flux_[g] - domain_->source_[source_element + g]) * exponential;
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      float vbar_inv = data::mg.macro_xs_[material].get_xs(
+          MgxsType::INVERSE_VELOCITY, g, NULL, NULL, NULL, t, a)
+      float dQdt = domain_->source_time_derivative(source_element + g);
+      float dphi2_dt2 = domain_->flux_time_derivative(source_element + g); 
+      float T = dQdt - vbar_inv * dphi2_dt2 / (4 * pi);
+      float S = angular_flux_dt_[g] - T / sigma_t; 
+      // Add time-dependent terms to delta psi
+      new_delta_psi += vbar_inv * T / sigma_t**2 * exponential;
+      new_delta_psi += distance * vbar_inv * S * (1 - exponential);
+      // Calculate delta for dpsi/dt
+      angular_flux_dt_[g] -= S * exponential;
+    }
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
   }
@@ -558,7 +573,13 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
 
   for (int g = 0; g < negroups_; g++) {
     angular_flux_[g] = domain_->source_[source_region_idx * negroups_ + g];
+    // Initialize ray's starting angular flux time derivative to starting
+    // location's isotropic source time derivative
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      angular_flux_dt_[g] = domain_->source_time_derivative(source_region_idx * negroups_ + g);
+    }
   }
 }
+
 
 } // namespace openmc

@@ -18,10 +18,21 @@
 namespace openmc {
 
 //==============================================================================
+// Global variable declarations
+//==============================================================================
+namespace random_ray_td {
+
+vector<double> precursor_init;
+vector<double> scalar_flux_init;
+vector<float> source_init;
+
+} // namespace random_ray_td
+
+//==============================================================================
 // Non-member functions
 //==============================================================================
 
-void openmc_run_random_ray()
+void openmc_run_random_ray(bool initial_condition)
 {
   // Initialize OpenMC general data structures
   openmc_simulation_init();
@@ -31,7 +42,7 @@ void openmc_run_random_ray()
     validate_random_ray_inputs();
 
   // Initialize Random Ray Simulation Object
-  RandomRaySimulation sim;
+  RandomRaySimulation sim();
 
   // Begin main simulation timer
   simulation::time_total.start();
@@ -50,7 +61,20 @@ void openmc_run_random_ray()
 
   // Output all simulation results
   sim.output_simulation_results();
+
+  // Extract flux, source, and precursors as an initial condition
+  if (initial_condition) {
+      precursor_init = sim.get_precursor_initial_condition()
+      scalar_flux_init = sim.get_scalar_flux_initial_condition()
+      source_init = sim.get_source_initial_condition()
+  }
 }
+
+void openmc_run_random_ray_time_dependent()
+{
+  openmc_run_random_ray(true)
+}
+
 
 // Enforces restrictions on inputs in random ray mode.  While there are
 // many features that don't make sense in random ray mode, and are therefore
@@ -233,7 +257,8 @@ void validate_random_ray_inputs()
 //==============================================================================
 
 RandomRaySimulation::RandomRaySimulation()
-  : negroups_(data::mg.num_energy_groups_)
+  : negroups_(data::mg.num_energy_groups_),
+    ndgroups_(data::mg.num_delay_groups_)
 {
   // There are no source sites in random ray mode, so be sure to disable to
   // ensure we don't attempt to write source sites to statepoint
@@ -471,6 +496,18 @@ void RandomRaySimulation::print_results_random_ray(
     fmt::print(" k-effective                       = {:.5f} +/- {:.5f}\n",
       simulation::keff, simulation::keff_std);
   }
+}
+
+vector<double> RandomRaySimulation::get_precursor_initial_condition() {
+  return domain_.get_precursor_initial_condition();
+}
+
+vector<double> RandomRaySimulation::get_flux_initial_condition() {
+  return domain_.get_flux_initial_condition();
+}
+
+vector<float> RandomRaySimulation::get_source_initial_condition() {
+  return domain_.get_source_initial_condition();
 }
 
 } // namespace openmc

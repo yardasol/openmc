@@ -115,13 +115,22 @@ public:
   virtual double evaluate_flux_at_point(Position r, int64_t sr, int g) const;
   double compute_fixed_source_normalization_factor() const;
 
+  // IMPLEMENT
+  virtual void update_neutron_source_time_dependent();
+  // call bdf_order_ inside this function
+  float source_time_derivative(int index);
+  // calculate d2phi/dt2 from phis
+  double flux_time_derivative(int index);
+
+  vector<double> get_precursor_initial_condition();
+  vector<double> get_scalar_flux_initial_condition();
+  vector<float> get_source_initial_condition();
+
   //----------------------------------------------------------------------------
   // Static Data members
   static bool volume_normalized_flux_tallies_;
-
-  //----------------------------------------------------------------------------
-  // Static data members
   static RandomRayVolumeEstimator volume_estimator_;
+  static int bdf_order_;                     // Order for BDF approximation
 
   //----------------------------------------------------------------------------
   // Public Data members
@@ -150,7 +159,15 @@ public:
   vector<float> source_;
   vector<float> external_source_;
   vector<bool> external_source_present_;
-
+  // Arrays for time-dependent simulations
+  vector<double> precursors_;
+  vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
+                                      // solutions
+  vector<float> source_bdf_;          // Holds  bdf_order_ previous source
+                                      // region values
+  vector<double> precursors_bdf_;     // Holds  bdf_order_ previous precursor
+                                      // values
+  
 protected:
   //----------------------------------------------------------------------------
   // Methods
@@ -169,8 +186,11 @@ protected:
   //----------------------------------------------------------------------------
   // Private data members
   int negroups_;                  // Number of energy groups in simulation
+  int ndgroups_;                  // Number of delay groups in simulation
   int64_t n_source_elements_ {0}; // Total number of source regions in the model
                                   // times the number of energy groups
+  int64_t n_delay_elements_ {0};  // Total number of source regions in the model
+                                  // times the number of delay groups
 
   double
     simulation_volume_; // Total physical volume of the simulation domain, as
