@@ -81,6 +81,9 @@ struct TallyTask {
   };
 };
 
+//TODO: Add statically held dictionary for BDF coefficients for first and second
+//order derivatives
+
 /*
  * The FlatSourceDomain class encompasses data and methods for storing
  * scalar flux and source region for all flat source regions in a
@@ -122,10 +125,6 @@ public:
   // calculate d2phi/dt2 from phis
   double flux_time_derivative(int index);
 
-  vector<double> get_precursor_initial_condition();
-  vector<double> get_scalar_flux_initial_condition();
-  vector<float> get_source_initial_condition();
-
   //----------------------------------------------------------------------------
   // Static Data members
   static bool volume_normalized_flux_tallies_;
@@ -159,6 +158,17 @@ public:
   vector<float> source_;
   vector<float> external_source_;
   vector<bool> external_source_present_;
+
+  int negroups_;                  // Number of energy groups in simulation
+  int ndgroups_;                  // Number of delay groups in simulation
+  int64_t n_source_elements_ {0}; // Total number of source regions in the model
+                                  // times the number of energy groups
+  int64_t n_delay_elements_ {0};  // Total number of source regions in the model
+                                  // times the number of delay groups
+  // 1D arrays representing values for all source regions
+  vector<int> material_;
+  vector<double> volume_naive_;
+
   // Arrays for time-dependent simulations
   vector<double> precursors_;
   vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
@@ -185,13 +195,6 @@ protected:
 
   //----------------------------------------------------------------------------
   // Private data members
-  int negroups_;                  // Number of energy groups in simulation
-  int ndgroups_;                  // Number of delay groups in simulation
-  int64_t n_source_elements_ {0}; // Total number of source regions in the model
-                                  // times the number of energy groups
-  int64_t n_delay_elements_ {0};  // Total number of source regions in the model
-                                  // times the number of delay groups
-
   double
     simulation_volume_; // Total physical volume of the simulation domain, as
                         // defined by the 3D box of the random ray source
@@ -206,10 +209,7 @@ protected:
   // source region, regardless of how many energy groups are used for tallying.
   vector<std::unordered_set<TallyTask, TallyTask::HashFunctor>> volume_task_;
 
-  // 1D arrays representing values for all source regions
-  vector<int> material_;
-  vector<double> volume_naive_;
-
+  
   // 2D arrays stored in 1D representing values for all source regions x energy
   // groups
   vector<float> scalar_flux_final_;

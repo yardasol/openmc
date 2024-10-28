@@ -79,14 +79,19 @@ FlatSourceDomain::FlatSourceDomain()
     // set starting precursors to steady state precursors, and set starting
     // source to steady state source.
     precursors_.assign(n_delay_elements_, 0.0)
+    // Need to find a way to put the init vector in the bdf vectors
+    // May want to grow the size of the vector as needed...
     scalar_flux_bdf_.assign(n_source_elements_ * bdf_order_, 0.0)
     source_bdf_.assign(n_source_elements_ * bdf_order_, 0.0)
     precursors_bdf_.assign(n_delay_elements_ * bdf_order_, 0.0)
-    // WE STILL NEED THE VOLUME IC!!!
-    // Need to find a way to put the init vector in the bdf vectors
-    scalar_flux_bdf_ = random_ray_td::scalar_flux_init
-    source_bdf_ = random_ray_td::sourec_init
-    precursors_bdf_ = random_ray_td::precursors_init
+    for (int i = 0; i < n_source_elements; i++) {
+      scalar_flux_bdf_[i] = random_ray_td::scalar_flux_init[i]
+      source_bdf_[i] = random_ray_td::sourec_init[i]
+    }
+    for (int i = 0; i < n_delay_elements_; i++) {
+      precursors_bdf_[i] = random_ray_td::precursors_init[i];
+    }
+    //TODO: Add material vector, volumes IC, etc
   }
 
   // Initialize material array
@@ -1114,35 +1119,22 @@ void FlatSourceDomain::flux_swap()
   scalar_flux_old_.swap(scalar_flux_new_);
 }
 
-vector<double> FlatSourceDomain::get_precursor_initial_condition() {
-  vector<double> precursor_init.assign(n_source_regions * ndgroups_, 0.0);
-  // Temperature and angle indices, if using multiple temperature               
-  // data sets and/or anisotropic data sets.                                    
-  // TODO: Currently assumes we are only using single temp/single angle data.   
-  const int t = 0;
-  const int a = 0;
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-    for (int dg = 0; dg < ndgroups_; dg++){
-      for (int g = 0; g < negroups_; e_in++) {
-        double lambda = data::mg.macro_xs_[material].get_xs(
-              MgxsType::DECAY_RATE, g, nullptr, nullptr, &dg, t, a);
-        double nu_d_sigma_f = data::mg.macro_xs_[material].get_xs(
-          MgxsType::DELAYED_NU_FISSION, g, nullptr, nullptr, &dg, t, a);
-        precursior_init_[sr * ndgroups_ + dg] += domain_.scalar_flux_new_[sr * negroups_ + g] * nu_d_sigma_f / lambda;
-      }
-    }
+float FlatSourceDomain::source_time_derivative(int index) {
+  bdf_coeffs = bdf_coefficients_[bdf_order_];
+  float dQdt = 0.0;
+  for (int i = 0; i < bdf_order; i++) {
+    dQdt += bdf_coeffs[i] * source_bdf_[index + i * n_source_elements];
   }
-  return precursor_init_;
+  return dQdt
 }
 
-vector<double> FlatSourceDomain::get_flux_initial_condition() {
-  return scalar_flux_new_;
-}
-
-vector<float> FlatSourceDomain::get_source_initial_condition() {
-  return source_;
+double FlatSourceDomain::flux_time_derivative(int index) {
+  bdf_coeffs2 = bdf_coefficients_2_[bdf_order_];
+  double dphi2_dt2 = 0.0;
+  for (int i = 0; i < bdf_order; i++) {
+    dphi2_dt2 += bdf_coeffs2[i] * scalar_flux_bdf_[index + i * n_source_elements];
+  }
+  return dQdt
 }
 
 } // namespace openmc

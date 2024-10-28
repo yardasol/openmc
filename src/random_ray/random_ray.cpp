@@ -363,7 +363,7 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
       domain_->scalar_flux_new_[source_element + g] += delta_psi_[g];
     }
 
-    // Accomulate volume (ray distance) into this iteration's estimate
+    // Accumulate volume (ray distance) into this iteration's estimate
     // of the source region's volume
     domain_->volume_[source_region] += distance;
 

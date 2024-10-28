@@ -41,16 +41,12 @@ public:
     double avg_miss_rate, int negroups, int64_t n_source_regions,
     int64_t n_external_source_regions) const;
 
-  vector<double> get_precursor_initial_condition();
-  vector<double> get_scalar_flux_initial_condition();
-  vector<float> get_source_initial_condition();
-
   //----------------------------------------------------------------------------
   // Data members
-private:
+  
   // Contains all flat source region data
   unique_ptr<FlatSourceDomain> domain_;
-
+private:
   // Random ray eigenvalue
   double k_eff_ {1.0};
 
