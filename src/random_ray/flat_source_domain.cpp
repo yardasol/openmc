@@ -17,6 +17,7 @@
 #include "openmc/timer.h"
 
 #include <cstdio>
+#include <algorithm>
 
 namespace openmc {
 
@@ -79,19 +80,22 @@ FlatSourceDomain::FlatSourceDomain()
     // set starting precursors to steady state precursors, and set starting
     // source to steady state source.
     precursors_.assign(n_delay_elements_, 0.0)
-    // Need to find a way to put the init vector in the bdf vectors
-    // May want to grow the size of the vector as needed...
-    scalar_flux_bdf_.assign(n_source_elements_ * bdf_order_, 0.0)
+    scalar_flux_bdf_.assign(n_source_elements_ * (bdf_order_ + 1), 0.0)
     source_bdf_.assign(n_source_elements_ * bdf_order_, 0.0)
     precursors_bdf_.assign(n_delay_elements_ * bdf_order_, 0.0)
     for (int i = 0; i < n_source_elements; i++) {
+      // I need to look into if scalar_flux_old_ is the right variable to use
+      // here
+      scalar_flux_old_[i] = random_ray_td::scalar_flux_init[i]
+      source_[i] = random_ray_td::source_init[i]
       scalar_flux_bdf_[i] = random_ray_td::scalar_flux_init[i]
-      source_bdf_[i] = random_ray_td::sourec_init[i]
+      source_bdf_[i] = random_ray_td::source_init[i]
     }
     for (int i = 0; i < n_delay_elements_; i++) {
+      precursors[i] = random_ray_td::precursors_init[i];
       precursors_bdf_[i] = random_ray_td::precursors_init[i];
     }
-    //TODO: Add material vector, volumes IC, etc
+    //TODO: Add material vector, volume, etc, and skip re-initializing.
   }
 
   // Initialize material array
@@ -1119,22 +1123,37 @@ void FlatSourceDomain::flux_swap()
   scalar_flux_old_.swap(scalar_flux_new_);
 }
 
+// TODO: define dt
 float FlatSourceDomain::source_time_derivative(int index) {
-  bdf_coeffs = bdf_coefficients_[bdf_order_];
+  bdf_coeffs = bdf_coefficients_first_order_[bdf_order_];
   float dQdt = 0.0;
-  for (int i = 0; i < bdf_order; i++) {
-    dQdt += bdf_coeffs[i] * source_bdf_[index + i * n_source_elements];
+  for (int i = 0; i < bdf_order_; i++) {
+    dQdt += bdf_coeffs[i] * source_bdf_[index + i * n_source_elements] / dt;
   }
   return dQdt
 }
 
-double FlatSourceDomain::flux_time_derivative(int index) {
-  bdf_coeffs2 = bdf_coefficients_2_[bdf_order_];
-  double dphi2_dt2 = 0.0;
-  for (int i = 0; i < bdf_order; i++) {
-    dphi2_dt2 += bdf_coeffs2[i] * scalar_flux_bdf_[index + i * n_source_elements];
+float FlatSourceDomain::scalar_flux_time_derivative(int index) {
+  bdf_coeffs2 = bdf_coefficients_second_order_[bdf_order_];
+  // This might cause rounding errors as scalar_flux_bdf_ is of type double
+  float dphi2_dt2 = 0.0;
+  for (int i = 0; i < bdf_order_ + 1; i++) {
+    dphi2_dt2 += bdf_coeffs2[i] * scalar_flux_bdf_[index + i * n_source_elements] / dt**2;
   }
-  return dQdt
+  return dphi2_dt2
+}
+
+void FlatSourceDomain::increment_bdf_vector(vector<float>* bdf_vector,
+        vector<float>* new_solution)
+{ 
+  // I don't love the naming scheme being used here...
+  int solution_size = *new_solution.size();
+  // Move the oldest solution to the front of the vector
+  rotate(*bdf_vector.rbegin(), *bdf_vector.rbegin() + solution_size, *bdf_vector.rend());
+  // Replace the oldest solution with the new solution
+  for (int i = 0; i < solution_size; i++) {
+      *bdf_vector[i] = *new_solution[i];
+  }
 }
 
 } // namespace openmc

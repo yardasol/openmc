@@ -1,6 +1,8 @@
 #ifndef OPENMC_RANDOM_RAY_FLAT_SOURCE_DOMAIN_H
 #define OPENMC_RANDOM_RAY_FLAT_SOURCE_DOMAIN_H
 
+#include <map>
+
 #include "openmc/constants.h"
 #include "openmc/openmp_interface.h"
 #include "openmc/position.h"
@@ -81,8 +83,25 @@ struct TallyTask {
   };
 };
 
-//TODO: Add statically held dictionary for BDF coefficients for first and second
-//order derivatives
+//----------------------------------------------------------------------------
+// Helper Variables
+const map<int, vector<float>> bdf_coefficients_first_order = {
+  {1, {1.0, -1.0}},
+  {2, {1.5, -2.0, 0.5}},
+  {3, {11/6, -3.0, 1.5, -1/3}},
+  {4, {25/12, -4.0, 3.0, -4/3, 0.25}},
+  {5, {137/60, -5.0, 5.0, -10/3, 1.25, -0.2}},
+  {6, {2.45, -6.0, 7.5, -20/3, 3.75, -1.2, 1/6}}
+};
+
+const map<int, vector<float>> bdf_coefficients_second_order = {
+  {1, {1.0, -2.0, 1.0}},
+  {2, {1.5, -3.5, 2.5, -0.5}},
+  {3, {11/6, -29/6, 4.5, -11/6, 1/3}},
+  {4, {25/12, -73/12, 7.0, -13/3, 19/12, -0.25}},
+  {5, {137/60, -437/60, 10.0, -25/3, 55/12, -1.45, 0.2}},
+  {6, {2.45, -8.45, 13.5, -170/12, 125/12, -4.95, 41/30, -1/6}}
+};
 
 /*
  * The FlatSourceDomain class encompasses data and methods for storing
@@ -123,7 +142,8 @@ public:
   // call bdf_order_ inside this function
   float source_time_derivative(int index);
   // calculate d2phi/dt2 from phis
-  double flux_time_derivative(int index);
+  float scalar_flux_time_derivative(int index);
+  void increment_bdf_vector(vector<>* bdf_vector, vector<>* new_solution);
 
   //----------------------------------------------------------------------------
   // Static Data members
@@ -171,11 +191,11 @@ public:
 
   // Arrays for time-dependent simulations
   vector<double> precursors_;
-  vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
+  vector<float> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
                                       // solutions
   vector<float> source_bdf_;          // Holds  bdf_order_ previous source
                                       // region values
-  vector<double> precursors_bdf_;     // Holds  bdf_order_ previous precursor
+  vector<float> precursors_bdf_;     // Holds  bdf_order_ previous precursor
                                       // values
   
 protected:

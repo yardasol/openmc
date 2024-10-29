@@ -337,7 +337,7 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
       float vbar_inv = data::mg.macro_xs_[material].get_xs(
           MgxsType::INVERSE_VELOCITY, g, NULL, NULL, NULL, t, a)
       float dQdt = domain_->source_time_derivative(source_element + g);
-      float dphi2_dt2 = domain_->flux_time_derivative(source_element + g); 
+      float dphi2_dt2 = domain_->scalar_flux_time_derivative(source_element + g); 
       float T = dQdt - vbar_inv * dphi2_dt2 / (4 * pi);
       float S = angular_flux_dt_[g] - T / sigma_t; 
       // Add time-dependent terms to delta psi

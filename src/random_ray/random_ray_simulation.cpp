@@ -72,7 +72,16 @@ void openmc_run_random_ray(bool initial_condition)
 
 void openmc_run_random_ray_time_dependent()
 {
-  openmc_run_random_ray(true)
+  // Get Initial condition
+  openmc_run_random_ray(true);
+
+  // TODO: File I/O to preserve IC results
+  // ...
+  
+  // Timestepping loop
+  for (int i = 0; i < settings::n_time_steps; i++) {
+    ...;
+  }
 }
 
 
