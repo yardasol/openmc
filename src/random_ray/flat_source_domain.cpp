@@ -1143,6 +1143,12 @@ float FlatSourceDomain::scalar_flux_time_derivative(int index) {
   return dphi2_dt2
 }
 
+void FlatSourceDomain::increment_bdf_vectors() {
+    increment_bdf_vector(&scalar_flux_bdf_, &scalar_flux_new_);
+    increment_bdf_vector(&source_bdf_, &source_);
+    increment_bdf_vector(&precursors_bdf_, &precursors_);
+}
+
 void FlatSourceDomain::increment_bdf_vector(vector<float>* bdf_vector,
         vector<float>* new_solution)
 { 

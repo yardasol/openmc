@@ -143,6 +143,7 @@ public:
   float source_time_derivative(int index);
   // calculate d2phi/dt2 from phis
   float scalar_flux_time_derivative(int index);
+  void increment_bdf_vectors();
   void increment_bdf_vector(vector<>* bdf_vector, vector<>* new_solution);
 
   //----------------------------------------------------------------------------

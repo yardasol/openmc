@@ -73,13 +73,47 @@ void openmc_run_random_ray(bool initial_condition)
 void openmc_run_random_ray_time_dependent()
 {
   // Get Initial condition
+  settings::run_mode == RunMode::EIGENVALUE
   openmc_run_random_ray(true);
 
   // TODO: File I/O to preserve IC results
   // ...
   
   // Timestepping loop
+  settings::run_mode == RunMode::TIME_DEPENDENT;
+  settings::n_batches = random_ray_td::n_batches;
+  settings::n_inactive = random_ray_td::n_inactive;
+  // Initialize Random Ray Simulation Object
+  RandomRaySimulation sim();
   for (int i = 0; i < settings::n_time_steps; i++) {
+    // Initialize OpenMC general data structures
+    // This might not work as there may be stuff called in 
+    // openmc_simulation_init() that needs to be before we initalize the
+    // simulation object.
+    openmc_simulation_init();
+
+    // Begin main simulation timer
+    simulation::time_total.start();
+
+    // Execute random ray simulation
+    sim.simulate();
+
+    // End main simulation timer
+    openmc::simulation::time_total.stop();
+
+    // Finalize OpenMC
+    openmc_simulation_finalize();
+
+    // Reduce variables across MPI ranks
+    sim.reduce_simulation_statistics();
+
+    // Output all simulation results
+    sim.output_simulation_results();
+
+    // Update BDFk vectors
+    sim.domain_.increment_bdf_vectors();
+
+    // TODO: file I/O to preserve results at each timestep
     ...;
   }
 }
@@ -309,7 +343,11 @@ void RandomRaySimulation::simulate()
     simulation::total_weight = 1.0;
 
     // Update source term (scattering + fission)
-    domain_->update_neutron_source(k_eff_);
+    if (settings::run_mode != RunMode::TIME_DEPENDENT) {
+      domain_->update_neutron_source(k_eff_);
+    } else {
+      domain_->update_neutron_source_time_dependent();
+    }
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
