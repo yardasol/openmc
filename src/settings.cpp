@@ -303,9 +303,28 @@ void get_run_parameters(pugi::xml_node node_base)
     }
     if (run_mode == RunMode::TIME_DEPENDENT) {
       if (check_for_node(random_ray_node, "bdf_order")) {
-        FlatSourceDomain::bdf_order_ = std::stod(get_node_value(random_ray_node, "bdf_order"));
+        FlatSourceDomain::bdf_order_ = 
+            std::stod(get_node_value(random_ray_node, "bdf_order"));
       } else {
         fatal_error("Specify BDF approximation order in settings XML");
+      }
+      if (check_for_node(random_ray_node, "batches")) {
+        RandomRaySimulation::n_batches = 
+            std::stoi(get_node_value(random_ray_node, "batches"));
+      } else {
+        RandomRaySimulation::n_batches = n_batches;
+      }
+      if (check_for_node(random_ray_node, "inactive")) {
+        RandomRaySimulation::n_inactive =
+            std::stoi(get_node_value(random_ray_node, "inactive"));
+      } else {
+        RandomRaySimulation::n_inactive = n_inactive;
+      }
+      // Check number of active batches, inactive batches
+      if (RandomRaySimulation::n_batches <= RandomRaySimulation::n_inactive) {
+        fatal_error("Number of time-dependent active batches must be greater than zero.");
+      } else if (RandomRaySimulation::n_inactive < 0) {
+        fatal_error("Number of time-dependent inactive batches must be non-negative.");
       }
     }
   }

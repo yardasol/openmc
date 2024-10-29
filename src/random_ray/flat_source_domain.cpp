@@ -1123,6 +1123,29 @@ void FlatSourceDomain::flux_swap()
   scalar_flux_old_.swap(scalar_flux_new_);
 }
 
+vector<double> FlatSourceDomain::get_precursor_initial_condition() {
+  vector<double> precursor_init.assign(n_delay_elements_, 0.0);
+  // Temperature and angle indices, if using multiple temperature               
+  // data sets and/or anisotropic data sets.                                    
+  // TODO: Currently assumes we are only using single temp/single angle data.   
+  const int t = 0;
+  const int a = 0;
+#pragma omp parallel for
+  for (int sr = 0; sr < n_source_regions_; sr++) {
+    int material = material_[sr];
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      for (int g = 0; g < negroups_; e_in++) {
+        double lambda = data::mg.macro_xs_[material].get_xs(
+              MgxsType::DECAY_RATE, g, nullptr, nullptr, &dg, t, a);
+        double nu_d_sigma_f = data::mg.macro_xs_[material].get_xs(
+          MgxsType::DELAYED_NU_FISSION, g, nullptr, nullptr, &dg, t, a);
+        precursior_init_[sr * ndgroups_ + dg] += scalar_flux_new_[sr * negroups_ + g] * nu_d_sigma_f / lambda;
+      }
+    }
+  }
+  return precursor_init_;
+}
+
 // TODO: define dt
 float FlatSourceDomain::source_time_derivative(int index) {
   bdf_coeffs = bdf_coefficients_first_order_[bdf_order_];
@@ -1142,6 +1165,27 @@ float FlatSourceDomain::scalar_flux_time_derivative(int index) {
   }
   return dphi2_dt2
 }
+
+//float FlatSourceDomain::bdf_time_derivative(int index, int chunk_size, int derivative_order,
+//        vector<float>* bdf_vector)
+//{
+//  if (derivative_order == 1) {
+//    bdf_coeffs = bdf_coefficients_first_order_[bdf_order_];
+//    int n_bdf_terms = bdf_order_;
+//    double time_factor = dt;
+//  } else if (derivative_order == 2) {
+//    bdf_coeffs = bdf_coefficients_second_order_[bdf_order_];
+//    int n_bdf_terms = bdf_order_ + 1;
+//    double time_factor = dt**2;
+//  }
+//  // Using float here might cause rounding errors with certain bdf vectors that
+//  // are doubles
+//  float bdf_derivative = 0.0;
+//  for (int i = 0; i < n_bdf_terms; i++) {
+//    bdf_derivative += bdf_coeffs[i] * *bdf_vector[index + i * chunk_size] / time_factor;
+//  }
+//  return bdf_derivative
+//}
 
 void FlatSourceDomain::increment_bdf_vectors() {
     increment_bdf_vector(&scalar_flux_bdf_, &scalar_flux_new_);

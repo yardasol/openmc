@@ -139,6 +139,7 @@ public:
 
   // IMPLEMENT
   virtual void update_neutron_source_time_dependent();
+  vector<double> get_precursor_initial_condition();
   // call bdf_order_ inside this function
   float source_time_derivative(int index);
   // calculate d2phi/dt2 from phis
@@ -194,7 +195,7 @@ public:
   vector<double> precursors_;
   vector<float> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
                                       // solutions
-  vector<float> source_bdf_;          // Holds  bdf_order_ previous source
+  vector<float> source_bdf_;         // Holds  bdf_order_ previous source
                                       // region values
   vector<float> precursors_bdf_;     // Holds  bdf_order_ previous precursor
                                       // values
