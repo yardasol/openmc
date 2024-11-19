@@ -137,12 +137,12 @@ public:
   virtual double evaluate_flux_at_point(Position r, int64_t sr, int g) const;
   double compute_fixed_source_normalization_factor() const;
 
-  // IMPLEMENT
-  virtual void update_neutron_source_time_dependent();
   vector<double> get_precursor_initial_condition();
-  // call bdf_order_ inside this function
+  // Call bdf_order_ inside this function
   float source_time_derivative(int index);
-  // calculate d2phi/dt2 from phis
+  // Calculate d2phi/dt2 from phis
+  float scalar_flux_time_derivative2(int index);
+  // Calculate dphi/dt from phis
   float scalar_flux_time_derivative(int index);
   void increment_bdf_vectors();
   void increment_bdf_vector(vector<>* bdf_vector, vector<>* new_solution);

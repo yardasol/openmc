@@ -172,43 +172,42 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
     int material = material_[sr];
 
     for (int g_out = 0; g_out < negroups_; g_out++) {
-      double sigma_t = data::mg.macro_xs_[material].get_xs(
-        MgxsType::TOTAL, g_out, nullptr, nullptr, nullptr, t, a);
-      double scatter_source = 0.0f;
+      double sigma_t = sigma_t[material * negroups_ + g_out];
 
-      for (int g_in = 0; g_in < negroups_; g_in++) {
-        double scalar_flux = scalar_flux_old_[sr * negroups_ + g_in];
-
-        double sigma_s = data::mg.macro_xs_[material].get_xs(
-          MgxsType::NU_SCATTER, g_in, &g_out, nullptr, nullptr, t, a);
-        scatter_source += sigma_s * scalar_flux;
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        double delayed_source = 0.0f
       }
-
-      source_[sr * negroups_ + g_out] = scatter_source / sigma_t;
-    }
-  }
-
-  // Add fission source
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-
-    for (int g_out = 0; g_out < negroups_; g_out++) {
-      double sigma_t = data::mg.macro_xs_[material].get_xs(
-        MgxsType::TOTAL, g_out, nullptr, nullptr, nullptr, t, a);
-      double fission_source = 0.0f;
-
+      double scatter_source = 0.0f
+      double fission_source = 0.0f
+      
       for (int g_in = 0; g_in < negroups_; g_in++) {
+        if (settings::run_mode != RunMode::TIME_DEPENDENT) {
+          double nu_sigma_f = nu_p_sigma_f[material * negroups + g_in];    
+        } else {
+          double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+        }
         double scalar_flux = scalar_flux_old_[sr * negroups_ + g_in];
-        double nu_sigma_f = data::mg.macro_xs_[material].get_xs(
-          MgxsType::NU_FISSION, g_in, nullptr, nullptr, nullptr, t, a);
-        double chi = data::mg.macro_xs_[material].get_xs(
-          MgxsType::CHI_PROMPT, g_in, &g_out, nullptr, nullptr, t, a);
+        double sigma_s =
+            sigma_s_[material * negroups_ * negroups_ + g_out * negroups + g_in];
+        double chi = chi_[material * negroups_ + g_out];
+        
+        // Calculate delayed source
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+          double chi_d = chi_d_[material * negroups_ + g_out];
+          for (int dg = 0; dg < ndgroups_; dg++) {
+            double lambda = lambda_[material * ndgroups_ + dg];
+            double precursors = precursors_[sr * ndgroups_ + dg];
+            delayed_source += precursors * lambda * chi_d;
+          }
+        }
+        scatter_source += sigma_s * scalar_flux;
         fission_source += nu_sigma_f * scalar_flux * chi;
       }
-      source_[sr * negroups_ + g_out] +=
-        fission_source * inverse_k_eff / sigma_t;
-    }
+      source_[sr * negroups_ + g_out] =
+        (scatter_source + fission_source * inverse_k_eff) / sigma_t;
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        source_[sr * negroups_ + g_out] += delayed_source * 4 * PI / sigma_t;
+      }
   }
 
   // Add external source if in fixed source mode
@@ -258,9 +257,14 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
 
   double sigma_t = data::mg.macro_xs_[material].get_xs(
     MgxsType::TOTAL, g, nullptr, nullptr, nullptr, t, a);
-
+  double vbar_inv = data::mg.macro_xs_[material].get_xs(
+          MgxsType::INVERSE_VELOCITY, g, NULL, NULL, NULL, t, a)
   scalar_flux_new_[idx] /= (sigma_t * volume);
   scalar_flux_new_[idx] += source_[idx];
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    dphi_dt = scalar_flux_time_derivative(index)
+    scalar_flux_new_[idx] -= dphi_dt * vbar_inv / sigma_t 
+  }
 }
 
 void FlatSourceDomain::set_flux_to_old_flux(int64_t idx)
@@ -1139,7 +1143,7 @@ vector<double> FlatSourceDomain::get_precursor_initial_condition() {
               MgxsType::DECAY_RATE, g, nullptr, nullptr, &dg, t, a);
         double nu_d_sigma_f = data::mg.macro_xs_[material].get_xs(
           MgxsType::DELAYED_NU_FISSION, g, nullptr, nullptr, &dg, t, a);
-        precursior_init_[sr * ndgroups_ + dg] += scalar_flux_new_[sr * negroups_ + g] * nu_d_sigma_f / lambda;
+        precursor_init_[sr * ndgroups_ + dg] += scalar_flux_new_[sr * negroups_ + g] * nu_d_sigma_f / lambda;
       }
     }
   }
@@ -1156,12 +1160,22 @@ float FlatSourceDomain::source_time_derivative(int index) {
   return dQdt
 }
 
-float FlatSourceDomain::scalar_flux_time_derivative(int index) {
+float FlatSourceDomain::scalar_flux_time_derivative2(int index) {
   bdf_coeffs2 = bdf_coefficients_second_order_[bdf_order_];
   // This might cause rounding errors as scalar_flux_bdf_ is of type double
   float dphi2_dt2 = 0.0;
   for (int i = 0; i < bdf_order_ + 1; i++) {
     dphi2_dt2 += bdf_coeffs2[i] * scalar_flux_bdf_[index + i * n_source_elements] / dt**2;
+  }
+  return dphi2_dt2
+}
+
+float FlatSourceDomain::scalar_flux_time_derivative(int index) {
+  bdf_coeffs = bdf_coefficients_first_order_[bdf_order_];
+  // This might cause rounding errors as scalar_flux_bdf_ is of type double
+  float dphi_dt = 0.0;
+  for (int i = 0; i < bdf_order_; i++) {
+    dphi_dt += bdf_coeffs[i] * scalar_flux_bdf_[index + i * n_source_elements] / dt;
   }
   return dphi2_dt2
 }

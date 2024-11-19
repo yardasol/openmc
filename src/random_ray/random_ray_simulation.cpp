@@ -351,12 +351,8 @@ void RandomRaySimulation::simulate()
     // Reset total starting particle weight used for normalizing tallies
     simulation::total_weight = 1.0;
 
-    // Update source term (scattering + fission)
-    if (settings::run_mode != RunMode::TIME_DEPENDENT) {
-      domain_->update_neutron_source(k_eff_);
-    } else {
-      domain_->update_neutron_source_time_dependent();
-    }
+    // Update source term (scattering + fission (+ delayed if time-dependent))
+    domain_->update_neutron_source(k_eff_);
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
