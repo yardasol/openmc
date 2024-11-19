@@ -1,5 +1,8 @@
 #include "openmc/random_ray/random_ray_simulation.h"
 
+#include <string>
+
+#include "openmc/capi.h"
 #include "openmc/eigenvalue.h"
 #include "openmc/geometry.h"
 #include "openmc/message_passing.h"
@@ -73,11 +76,13 @@ void openmc_run_random_ray(bool initial_condition)
 void openmc_run_random_ray_time_dependent()
 {
   // Get Initial condition
-  settings::run_mode == RunMode::EIGENVALUE
+  settings::run_mode == RunMode::EIGENVALUE;
   openmc_run_random_ray(true);
 
-  // TODO: File I/O to preserve IC results
-  // ...
+  // TODO: Rename file instead of rewriting it
+  std::str filename_ = fmt::format("{0}openmc_td_simulation_n0.h5",
+    settings::path_output);
+  openmc_statepoint_write(filename_, &false);
   
   // Timestepping loop
   settings::run_mode == RunMode::TIME_DEPENDENT;
@@ -85,7 +90,7 @@ void openmc_run_random_ray_time_dependent()
   settings::n_inactive = random_ray_td::n_inactive;
   // Initialize Random Ray Simulation Object
   RandomRaySimulation sim();
-  for (int i = 0; i < settings::n_time_steps; i++) {
+  for (int i = 1; i < settings::n_time_steps + 1; i++) {
     // Initialize OpenMC general data structures
     // This might not work as there may be stuff called in 
     // openmc_simulation_init() that needs to be before we initalize the
@@ -110,11 +115,15 @@ void openmc_run_random_ray_time_dependent()
     // Output all simulation results
     sim.output_simulation_results();
 
+    
+    // TODO: Rename statepoint file instead of rewriting it
+    w = std::to_string(i);
+    filename_ = fmt::format("{0}openmc_td_simulation_n{1}.h5",
+      settings::path_output, w);
+    openmc_statepoint_write(filename_, &false);
+
     // Update BDFk vectors
     sim.domain_.increment_bdf_vectors();
-
-    // TODO: file I/O to preserve results at each timestep
-    ...;
   }
 }
 
