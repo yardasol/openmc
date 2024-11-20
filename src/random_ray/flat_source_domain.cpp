@@ -29,6 +29,7 @@ namespace openmc {
 RandomRayVolumeEstimator FlatSourceDomain::volume_estimator_ {
   RandomRayVolumeEstimator::HYBRID};
 bool FlatSourceDomain::volume_normalized_flux_tallies_ {false};
+bool FlatSourceDomain::adjoint_ {false};
 
 FlatSourceDomain::FlatSourceDomain()
   : negroups_(data::mg.num_energy_groups_),
@@ -80,9 +81,9 @@ FlatSourceDomain::FlatSourceDomain()
     // set starting precursors to steady state precursors, and set starting
     // source to steady state source.
     precursors_.assign(n_delay_elements_, 0.0)
-    scalar_flux_bdf_.assign(n_source_elements_ * (bdf_order_ + 1), 0.0)
-    source_bdf_.assign(n_source_elements_ * bdf_order_, 0.0)
-    precursors_bdf_.assign(n_delay_elements_ * bdf_order_, 0.0)
+    scalar_flux_bdf_.assign(n_source_elements_ * (bdf_order_max_ + 1), 0.0)
+    source_bdf_.assign(n_source_elements_ * bdf_order_max_, 0.0)
+    precursors_bdf_.assign(n_delay_elements_ * bdf_order_max_, 0.0)
     for (int i = 0; i < n_source_elements; i++) {
       // I need to look into if scalar_flux_old_ is the right variable to use
       // here
@@ -160,13 +161,6 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
 
   double inverse_k_eff = 1.0 / k_eff;
 
-  // Temperature and angle indices, if using multiple temperature
-  // data sets and/or anisotropic data sets.
-  // TODO: Currently assumes we are only using single temp/single angle data.
-  const int t = 0;
-  const int a = 0;
-
-  // Add scattering source
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int material = material_[sr];
@@ -175,45 +169,45 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
       double sigma_t = sigma_t[material * negroups_ + g_out];
 
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        //Calculate delayed source
         double delayed_source = 0.0f
+        double chi_d = chi_d_[material * negroups_ + g_out];
+        for (int dg = 0; dg < ndgroups_; dg++) {
+          double lambda = lambda_[material * ndgroups_ + dg];
+          double precursors = precursors_[sr * ndgroups_ + dg];
+          delayed_source += precursors * lambda;
+        }
       }
       double scatter_source = 0.0f
       double fission_source = 0.0f
       
       for (int g_in = 0; g_in < negroups_; g_in++) {
-        if (settings::run_mode != RunMode::TIME_DEPENDENT) {
-          double nu_sigma_f = nu_p_sigma_f[material * negroups + g_in];    
-        } else {
-          double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
-        }
         double scalar_flux = scalar_flux_old_[sr * negroups_ + g_in];
+
+        if (settings::run_mode != RunMode::TIME_DEPENDENT) {
+          double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+        } else {
+          double nu_sigma_f = nu_p_sigma_f_[material * negroups_ + g_in];
+        }
+
         double sigma_s =
             sigma_s_[material * negroups_ * negroups_ + g_out * negroups + g_in];
         double chi = chi_[material * negroups_ + g_out];
         
-        // Calculate delayed source
-        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-          double chi_d = chi_d_[material * negroups_ + g_out];
-          for (int dg = 0; dg < ndgroups_; dg++) {
-            double lambda = lambda_[material * ndgroups_ + dg];
-            double precursors = precursors_[sr * ndgroups_ + dg];
-            delayed_source += precursors * lambda * chi_d;
-          }
-        }
         scatter_source += sigma_s * scalar_flux;
         fission_source += nu_sigma_f * scalar_flux * chi;
       }
       source_[sr * negroups_ + g_out] =
         (scatter_source + fission_source * inverse_k_eff) / sigma_t;
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-        source_[sr * negroups_ + g_out] += delayed_source * 4 * PI / sigma_t;
+        source_[sr * negroups_ + g_out] += delayed_source * chi_d * 4 * PI / sigma_t;
       }
   }
 
   // Add external source if in fixed source mode
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
 #pragma omp parallel for
-    for (int se = 0; se < n_source_elements_; se++) {
+    for (int64_t se = 0; se < n_source_elements_; se++) {
       source_[se] += external_source_[se];
     }
   }
@@ -231,8 +225,8 @@ void FlatSourceDomain::normalize_scalar_flux_and_volumes(
 
 // Normalize scalar flux to total distance travelled by all rays this iteration
 #pragma omp parallel for
-  for (int64_t i = 0; i < scalar_flux_new_.size(); i++) {
-    scalar_flux_new_[i] *= normalization_factor;
+  for (int64_t se = 0; se < scalar_flux_new_.size(); se++) {
+    scalar_flux_new_[se] *= normalization_factor;
   }
 
 // Accumulate cell-wise ray length tallies collected this iteration, then
@@ -248,22 +242,13 @@ void FlatSourceDomain::normalize_scalar_flux_and_volumes(
 void FlatSourceDomain::set_flux_to_flux_plus_source(
   int64_t idx, double volume, int material, int g)
 {
-  // Temperature and angle indices, if using multiple temperature
-  // data sets and/or anisotropic data sets.
-  // TODO: Currently assumes we are only using single temp/single
-  // angle data.
-  const int t = 0;
-  const int a = 0;
-
-  double sigma_t = data::mg.macro_xs_[material].get_xs(
-    MgxsType::TOTAL, g, nullptr, nullptr, nullptr, t, a);
-  double vbar_inv = data::mg.macro_xs_[material].get_xs(
-          MgxsType::INVERSE_VELOCITY, g, NULL, NULL, NULL, t, a)
+  double sigma_t = sigma_t_[material * negroups_ + g];
   scalar_flux_new_[idx] /= (sigma_t * volume);
   scalar_flux_new_[idx] += source_[idx];
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    dphi_dt = scalar_flux_time_derivative(index)
-    scalar_flux_new_[idx] -= dphi_dt * vbar_inv / sigma_t 
+    double inverse_vbar = inverse_vbar_[material * negroups_ + g];
+    dphi_dt = scalar_flux_time_derivative(idx)
+    scalar_flux_new_[idx] -= dphi_dt * inverse_vbar / sigma_t 
   }
 }
 
@@ -367,13 +352,6 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
   double fission_rate_old = 0;
   double fission_rate_new = 0;
 
-  // Temperature and angle indices, if using multiple temperature
-  // data sets and/or anisotropic data sets.
-  // TODO: Currently assumes we are only using single temp/single
-  // angle data.
-  const int t = 0;
-  const int a = 0;
-
   // Vector for gathering fission source terms for Shannon entropy calculation
   vector<float> p(n_source_regions_, 0.0f);
 
@@ -393,8 +371,7 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
 
     for (int g = 0; g < negroups_; g++) {
       int64_t idx = (sr * negroups_) + g;
-      double nu_sigma_f = data::mg.macro_xs_[material].get_xs(
-        MgxsType::NU_FISSION, g, nullptr, nullptr, nullptr, t, a);
+      double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
       sr_fission_source_old += nu_sigma_f * scalar_flux_old_[idx];
       sr_fission_source_new += nu_sigma_f * scalar_flux_new_[idx];
     }
@@ -578,7 +555,7 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
 {
   // If we are not in fixed source mode, then there are no external sources
   // so no normalization is needed.
-  if (settings::run_mode != RunMode::FIXED_SOURCE) {
+  if (settings::run_mode != RunMode::FIXED_SOURCE || adjoint_) {
     return 1.0;
   }
 
@@ -590,14 +567,7 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
     int material = material_[sr];
     double volume = volume_[sr] * simulation_volume_;
     for (int g = 0; g < negroups_; g++) {
-      // Temperature and angle indices, if using multiple temperature
-      // data sets and/or anisotropic data sets.
-      // TODO: Currently assumes we are only using single temp/single
-      // angle data.
-      const int t = 0;
-      const int a = 0;
-      double sigma_t = data::mg.macro_xs_[material].get_xs(
-        MgxsType::TOTAL, g, nullptr, nullptr, nullptr, t, a);
+      double sigma_t = sigma_t_[material * negroups_ + g];
       simulation_external_source_strength +=
         external_source_[sr * negroups_ + g] * sigma_t * volume;
     }
@@ -633,13 +603,6 @@ void FlatSourceDomain::random_ray_tally()
   // Reset our tally volumes to zero
   reset_tally_volumes();
 
-  // Temperature and angle indices, if using multiple temperature
-  // data sets and/or anisotropic data sets.
-  // TODO: Currently assumes we are only using single temp/single
-  // angle data.
-  const int t = 0;
-  const int a = 0;
-
   double source_normalization_factor =
     compute_fixed_source_normalization_factor();
 
@@ -674,21 +637,15 @@ void FlatSourceDomain::random_ray_tally()
           break;
 
         case SCORE_TOTAL:
-          score = flux * volume *
-                  data::mg.macro_xs_[material].get_xs(
-                    MgxsType::TOTAL, g, NULL, NULL, NULL, t, a);
+          score = flux * volume * sigma_t_[material * negroups_ + g];
           break;
 
         case SCORE_FISSION:
-          score = flux * volume *
-                  data::mg.macro_xs_[material].get_xs(
-                    MgxsType::FISSION, g, NULL, NULL, NULL, t, a);
+          score = flux * volume * sigma_f_[material * negroups_ + g];
           break;
 
         case SCORE_NU_FISSION:
-          score = flux * volume *
-                  data::mg.macro_xs_[material].get_xs(
-                    MgxsType::NU_FISSION, g, NULL, NULL, NULL, t, a);
+          score = flux * volume * nu_sigma_f_[material * negroups_ + g];
           break;
 
         case SCORE_EVENTS:
@@ -987,9 +944,8 @@ void FlatSourceDomain::output_to_vtk() const
       for (int g = 0; g < negroups_; g++) {
         int64_t source_element = fsr * negroups_ + g;
         float flux = evaluate_flux_at_point(voxel_positions[i], fsr, g);
-        float Sigma_f = data::mg.macro_xs_[mat].get_xs(
-          MgxsType::FISSION, g, nullptr, nullptr, nullptr, 0, 0);
-        total_fission += Sigma_f * flux;
+        double sigma_f = sigma_f_[mat * negroups_ + g];
+        total_fission += sigma_f * flux;
       }
       total_fission = convert_to_big_endian<float>(total_fission);
       std::fwrite(&total_fission, sizeof(float), 1, plot);
@@ -1007,10 +963,10 @@ void FlatSourceDomain::apply_external_source_to_source_region(
   const auto& discrete_energies = discrete->x();
   const auto& discrete_probs = discrete->prob();
 
-  for (int e = 0; e < discrete_energies.size(); e++) {
-    int g = data::mg.get_group_index(discrete_energies[e]);
+  for (int i = 0; i < discrete_energies.size(); i++) {
+    int g = data::mg.get_group_index(discrete_energies[i]);
     external_source_[source_region * negroups_ + g] +=
-      discrete_probs[e] * strength_factor;
+      discrete_probs[i] * strength_factor;
   }
 }
 
@@ -1104,50 +1060,184 @@ void FlatSourceDomain::convert_external_sources()
     }
   } // End loop over external sources
 
-  // Temperature and angle indices, if using multiple temperature
-  // data sets and/or anisotropic data sets.
-  // TODO: Currently assumes we are only using single temp/single angle data.
-  const int t = 0;
-  const int a = 0;
-
 // Divide the fixed source term by sigma t (to save time when applying each
 // iteration)
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int material = material_[sr];
     for (int g = 0; g < negroups_; g++) {
-      double sigma_t = data::mg.macro_xs_[material].get_xs(
-        MgxsType::TOTAL, g, nullptr, nullptr, nullptr, t, a);
+      double sigma_t = sigma_t_[material * negroups_ + g];
       external_source_[sr * negroups_ + g] /= sigma_t;
     }
   }
 }
+
 void FlatSourceDomain::flux_swap()
 {
   scalar_flux_old_.swap(scalar_flux_new_);
 }
 
-vector<double> FlatSourceDomain::get_precursor_initial_condition() {
-  vector<double> precursor_init.assign(n_delay_elements_, 0.0);
-  // Temperature and angle indices, if using multiple temperature               
-  // data sets and/or anisotropic data sets.                                    
-  // TODO: Currently assumes we are only using single temp/single angle data.   
+void FlatSourceDomain::flatten_xs()
+{
+  // Temperature and angle indices, if using multiple temperature
+  // data sets and/or anisotropic data sets.
+  // TODO: Currently assumes we are only using single temp/single angle data.
   const int t = 0;
   const int a = 0;
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-    for (int dg = 0; dg < ndgroups_; dg++) {
-      for (int g = 0; g < negroups_; e_in++) {
-        double lambda = data::mg.macro_xs_[material].get_xs(
-              MgxsType::DECAY_RATE, g, nullptr, nullptr, &dg, t, a);
-        double nu_d_sigma_f = data::mg.macro_xs_[material].get_xs(
-          MgxsType::DELAYED_NU_FISSION, g, nullptr, nullptr, &dg, t, a);
-        precursor_init_[sr * ndgroups_ + dg] += scalar_flux_new_[sr * negroups_ + g] * nu_d_sigma_f / lambda;
+
+  n_materials_ = data::mg.macro_xs_.size();
+  for (auto& m : data::mg.macro_xs_) {
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        double lambda =
+          m.get_xs(MgxsType::DECAY_RATE, 0, NULL, NULL, &dg, t, a);
+        lambda_.push_back(lambda);
+      }
+    }
+    for (int g_out = 0; g_out < negroups_; g_out++) {
+      if (m.exists_in_model) {
+        if (settings.run_mode == RunMode::TIME_DEPENDENT) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+             double nu_d_Sigma_f =
+               m.get_xs(MgxsType::DELAYED_NU_FISSION, g_out, NULL, NULL, &dg, t, a);
+             nu_d_sigma_f_.push_back(nu_d_Sigma_f);
+          }
+
+          double inverse_vbar =
+            m.get_xs(MgxsType::INVERSE_VELOCITY, g_out, NULL, NULL, NULL, t, a);
+          inverse_vbar_.push_back(inverse_vbar);
+
+          double chi_d =
+            m.get_xs(MgxsType::CHI_DELAYED, g_out, &g_out, NULL, NULL, t, a);
+          chi_d_.push_back(chi_d);
+
+          double nu_p_Sigma_f =
+            m.get_xs(MgxsType::PROMPT_NU_FISSION, g_out, NULL, NULL, NULL, t, a);
+          nu_p_sigma_f_.push_back(nu_p_Sigma_f);
+        } 
+        
+        double sigma_t =
+          m.get_xs(MgxsType::TOTAL, g_out, NULL, NULL, NULL, t, a);
+        sigma_t_.push_back(sigma_t);
+        
+        double nu_Sigma_f =
+            m.get_xs(MgxsType::NU_FISSION, g_out, NULL, NULL, NULL, t, a);
+        nu_sigma_f_.push_back(nu_Sigma_f);
+
+        double sigma_f =
+          m.get_xs(MgxsType::FISSION, g_out, NULL, NULL, NULL, t, a);
+        sigma_f_.push_back(sigma_f);
+
+        double chi =
+          m.get_xs(MgxsType::CHI_PROMPT, g_out, &g_out, NULL, NULL, t, a);
+        chi_.push_back(chi);
+
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          double sigma_s =
+            m.get_xs(MgxsType::NU_SCATTER, g_in, &g_out, NULL, NULL, t, a);
+          sigma_s_.push_back(sigma_s);
+        }
+      } else {
+        if (settings.run_mode == RunMode::TIME_DEPENDENT) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+             nu_d_sigma_f_.push_back(0);
+             inverse_vbar_.push_back(0);
+             chi_d_.push_back(0);
+          }
+        sigma_t_.push_back(0);
+        nu_sigma_f_.push_back(0);
+        sigma_f_.push_back(0);
+        chi_.push_back(0);
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          sigma_s_.push_back(0);
+        }
       }
     }
   }
-  return precursor_init_;
+}
+
+void FlatSourceDomain::set_adjoint_sources(const vector<double>& forward_flux)
+{
+  // Set the external source to 1/forward_flux
+  // The forward flux is given in terms of total for the forward simulation
+  // so we must convert it to a "per batch" quantity
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    external_source_[se] = 1.0 / forward_flux[se];
+  }
+
+  // Divide the fixed source term by sigma t (to save time when applying each
+  // iteration)
+#pragma omp parallel for
+  for (int sr = 0; sr < n_source_regions_; sr++) {
+    int material = material_[sr];
+    for (int g = 0; g < negroups_; g++) {
+      double sigma_t = sigma_t_[material * negroups_ + g];
+      external_source_[sr * negroups_ + g] /= sigma_t;
+    }
+  }
+}
+
+void FlatSourceDomain::transpose_scattering_matrix()
+{
+  // Transpose the inner two dimensions for each material
+  for (int m = 0; m < n_materials_; ++m) {
+    int material_offset = m * negroups_ * negroups_;
+    for (int i = 0; i < negroups_; ++i) {
+      for (int j = i + 1; j < negroups_; ++j) {
+        // Calculate indices of the elements to swap
+        int idx1 = material_offset + i * negroups_ + j;
+        int idx2 = material_offset + j * negroups_ + i;
+
+        // Swap the elements to transpose the matrix
+        std::swap(sigma_s_[idx1], sigma_s_[idx2]);
+      }
+    }
+  }
+}
+
+vector<double> FlatSourceDomain::get_precursors_initial_condition() {
+  vector<double> precursors.assign(n_delay_elements_, 0.0);
+#pragma omp parallel for
+  for (int sr = 0; sr < n_source_regions_; sr++) {
+    int mat = material_[sr];
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      double lambda = lambda_[mat * ndgroups_ + dg];
+      for (int g_in = 0; g_in < negroups_; g_in++) {
+        double nu_d_sigma_f =
+          nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
+        //TODO: verify that this works with scalar_flux_new_
+        precursors_init_[sr * ndgroups_ + dg] += scalar_flux_new_[sr * negroups_ + g_in] * nu_d_sigma_f / lambda;
+      }
+    }
+  }
+  return precursors_init_;
+}
+
+vector<double> FlatSourceDomain::calculate_precursors() {
+  vector<double> precursors.assign(n_delay_elements_, 0.0);
+#pragma omp parallel for
+  for (int sr = 0; sr < n_source_regions_; sr++) {
+    int mat = material_[sr];
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      double lambda = lambda_[mat * ndgroups_ + dg];
+      double sum_term = 0.0
+      for (int g_in = 0; g_in < negroups_; g_in++) {
+        double nu_d_sigma_f =
+          nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
+        sum_term += scalar_flux_new_[sr * negroups_ + g_in] * nu_d_sigma_f;
+      }
+      if (bdf_order_ == 1) {
+        A1 = 0;
+      } else {
+        A1 = bdf_coefficients_first_order_[bdf_order_][0];
+      }
+      //TODO: Implement precursor_lhs_bdf()
+      precursors[sr * ndgroups_ + dg] = sum_term - precursor_lhs_bdf(dg);
+      precursors[sr * ndgroups_ + dg] /= A1 + lambda;
+    }
+  }
+  return precursors;
 }
 
 // TODO: define dt

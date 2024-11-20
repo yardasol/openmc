@@ -171,6 +171,9 @@ class Settings:
             cm/cm^3. When disabled, flux tallies will be reported in units
             of cm (i.e., total distance traveled by neutrons in the spatial
             tally region).
+        :adjoint:
+            Whether to run the random ray solver in adjoint mode (bool). The
+            default is 'False'.
 
         Additional options are available when using `time dependent` run mode:
 
@@ -1139,7 +1142,9 @@ class Settings:
                                ('flat', 'linear', 'linear_xy'))
             elif key == 'volume_normalized_flux_tallies':
                 cv.check_type('volume normalized flux tallies', value, bool)
-            elif self._run_mode.value == 'time dependent':
+            elif key == 'adjoint':
+                cv.check_type('adjoint', random_ray[key], bool)
+            elif self.run_mode == 'time dependent':
                 if key == 'bdf_order':
                     cv.check_type('BDF order', value, Integer)
                     cv.check_greater_than('BDF order', value, 0)
@@ -1987,6 +1992,10 @@ class Settings:
                     self.random_ray['source_shape'] = child.text
                 elif child.tag == 'volume_normalized_flux_tallies':
                     self.random_ray['volume_normalized_flux_tallies'] = (
+                        child.text in ('true', '1')
+                    )
+                elif child.tag == 'adjoint':
+                    self.random_ray['adjoint'] = (
                         child.text in ('true', '1')
                     )
                 elif child.tag == 'bdf_order':

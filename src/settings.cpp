@@ -335,13 +335,17 @@ void get_run_parameters(pugi::xml_node node_base)
       FlatSourceDomain::volume_normalized_flux_tallies_ =
         get_node_value_bool(random_ray_node, "volume_normalized_flux_tallies");
     }
+    if (check_for_node(random_ray_node, "adjoint")) {
+      FlatSourceDomain::adjoint_ =
+        get_node_value_bool(random_ray_node, "adjoint");
+    }
     if (run_mode == RunMode::TIME_DEPENDENT) {
       if (check_for_node(random_ray_node, "bdf_order")) {
         int n =  std::stod(get_node_value(random_ray_node, "bdf_order"));
         if (n < 1 || n > 6){ 
           fatal_error("Specified BDF order of " + std::to_string(n) + ". BDF order must be between 1 and 6");
         } else{
-          FlatSourceDomain::bdf_order_ = n;
+          FlatSourceDomain::bdf_order_max_ = n;
         }        
       } else {
         fatal_error("Specify BDF approximation order in settings XML");

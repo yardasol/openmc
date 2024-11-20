@@ -133,11 +133,14 @@ public:
   virtual void all_reduce_replicated_source_regions();
   void convert_external_sources();
   void count_external_source_regions();
+  void set_adjoint_sources(const vector<double>& forward_flux);
   virtual void flux_swap();
   virtual double evaluate_flux_at_point(Position r, int64_t sr, int g) const;
   double compute_fixed_source_normalization_factor() const;
+  void flatten_xs();
+  void transpose_scattering_matrix();
 
-  vector<double> get_precursor_initial_condition();
+  vector<double> get_precursors_initial_condition();
   // Call bdf_order_ inside this function
   float source_time_derivative(int index);
   // Calculate d2phi/dt2 from phis
@@ -150,8 +153,11 @@ public:
   //----------------------------------------------------------------------------
   // Static Data members
   static bool volume_normalized_flux_tallies_;
+  static bool adjoint_; // If the user wants outputs based on the adjoint flux
   static RandomRayVolumeEstimator volume_estimator_;
-  static int bdf_order_;                     // Order for BDF approximation
+  static int bdf_order_max_;                 // Max order for BDF approximation
+                                             // We boostrap up from lower BDF
+                                             // orders.
 
   //----------------------------------------------------------------------------
   // Public Data members
@@ -161,6 +167,8 @@ public:
   int64_t n_source_regions_ {0}; // Total number of source regions in the model
   int64_t n_external_source_regions_ {0}; // Total number of source regions with
                                           // non-zero external source terms
+  int bdf_order_;                     // Order for BDF approximation
+                                      
 
   // 1D array representing source region starting offset for each OpenMC Cell
   // in model::cells
@@ -180,6 +188,30 @@ public:
   vector<float> source_;
   vector<float> external_source_;
   vector<bool> external_source_present_;
+  vector<double> scalar_flux_final_;
+
+  // 2D arrays stored in 1D representing values for all materials x energy
+  // groups
+  int n_materials_;
+  vector<double> sigma_t_;
+  vector<double> nu_sigma_f_;
+  vector<double> nu_p_sigma_f_;
+  vector<double> sigma_f_;
+  vector<double> chi_;
+  vector<double> chi_d_;
+  vector<double> inverse_vbar_;
+
+  // 2D arrays stored in 1D representing values for all materials x
+  // delay_groups
+  vector<double> lambda_;
+
+  // 3D arrays stored in 1D representing values for all materials x energy
+  // groups x energy groups
+  vector<double> sigma_s_;
+
+  // 3D arrays stored in 1D representing values for all materials x energy
+  // groups x delay groups
+  vector<double> nu_d_sigma_f_;
 
   int negroups_;                  // Number of energy groups in simulation
   int ndgroups_;                  // Number of delay groups in simulation
@@ -231,10 +263,9 @@ protected:
   // source region, regardless of how many energy groups are used for tallying.
   vector<std::unordered_set<TallyTask, TallyTask::HashFunctor>> volume_task_;
 
-  
-  // 2D arrays stored in 1D representing values for all source regions x energy
-  // groups
-  vector<float> scalar_flux_final_;
+  // 1D arrays representing values for all source regions
+  vector<int> material_;
+  vector<double> volume_naive_;
 
   // Volumes for each tally and bin/score combination. This intermediate data
   // structure is used when tallying quantities that must be normalized by

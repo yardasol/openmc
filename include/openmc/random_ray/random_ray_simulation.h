@@ -32,6 +32,8 @@ public:
   //----------------------------------------------------------------------------
   // Methods
   void compute_segment_correction_factors();
+  void prepare_fixed_sources();
+  void prepare_fixed_sources_adjoint(vector<double>& forward_flux);
   void simulate();
   void reduce_simulation_statistics();
   void output_simulation_results() const;
@@ -42,8 +44,18 @@ public:
     int64_t n_external_source_regions) const;
 
   //----------------------------------------------------------------------------
+<<<<<<< HEAD
   // Data members
   
+=======
+  // Accessors
+  FlatSourceDomain* domain() const { return domain_.get(); }
+
+private:
+  //----------------------------------------------------------------------------
+  // Data members
+
+>>>>>>> develop
   // Contains all flat source region data
   unique_ptr<FlatSourceDomain> domain_;
 private:
