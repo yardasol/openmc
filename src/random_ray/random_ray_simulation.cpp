@@ -84,12 +84,14 @@ void openmc_run_random_ray_time_dependent()
     settings::path_output);
   openmc_statepoint_write(filename_, &false);
   
+    // Initialize Random Ray Simulation Object
+  RandomRaySimulation sim();
+
   // Timestepping loop
   settings::run_mode == RunMode::TIME_DEPENDENT;
-  settings::n_batches = random_ray_td::n_batches;
-  settings::n_inactive = random_ray_td::n_inactive;
-  // Initialize Random Ray Simulation Object
-  RandomRaySimulation sim();
+  settings::n_batches = settings::n_timestep_batches;
+  settings::n_inactive = settings::n_timestep_inactive;
+
   for (int i = 1; i < settings::n_time_steps + 1; i++) {
     // Initialize OpenMC general data structures
     // This might not work as there may be stuff called in 

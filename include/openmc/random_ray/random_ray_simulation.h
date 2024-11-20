@@ -42,11 +42,6 @@ public:
     int64_t n_external_source_regions) const;
 
   //----------------------------------------------------------------------------
-  // Static Data members
-  static int n_batches;     //Batches for time-dependent simulations
-  static int n_inactive;  //Inatcive batches for time-dependent simulations
-
-  //----------------------------------------------------------------------------
   // Data members
   
   // Contains all flat source region data
