@@ -44,10 +44,7 @@ public:
     int64_t n_external_source_regions) const;
 
   //----------------------------------------------------------------------------
-<<<<<<< HEAD
-  // Data members
   
-=======
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
 
@@ -55,7 +52,6 @@ private:
   //----------------------------------------------------------------------------
   // Data members
 
->>>>>>> develop
   // Contains all flat source region data
   unique_ptr<FlatSourceDomain> domain_;
 private:
