@@ -176,12 +176,15 @@ void openmc_run_random_ray_time_dependent()
   settings::n_batches = settings::n_timestep_batches;
   settings::n_inactive = settings::n_timestep_inactive;
 
-  for (int i = 1; i < settings::n_time_steps + 1; i++) {
+  for (int i = 1; i < settings::timesteps.size() + 1; i++) {
     // Initialize OpenMC general data structures
     // This might not work as there may be stuff called in 
     // openmc_simulation_init() that needs to be before we initalize the
     // simulation object.
     openmc_simulation_init();
+
+    // Set timestep size
+    sim.domain().dt_ = settings::timesteps[i]
 
     // Begin main simulation timer
     simulation::time_total.start();

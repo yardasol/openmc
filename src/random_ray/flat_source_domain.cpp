@@ -1227,14 +1227,14 @@ vector<double> FlatSourceDomain::calculate_precursors() {
           nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
         sum_term += scalar_flux_new_[sr * negroups_ + g_in] * nu_d_sigma_f;
       }
-      if (bdf_order_ == 1) {
-        A1 = 0;
-      } else {
-        A1 = bdf_coefficients_first_order_[bdf_order_][0];
+      A0 = bdf_coefficients_first_order_[bdf_order_][0] / dt_;
+
+      double precursor_lhs_bdf = 0.0;
+      for (int i = 1; i < bdf_order_; i++) {
+        precursor_lhs_bdf += bdf_coeffs[i] * scalar_flux_bdf_[sr + i * n_source_elements] / dt_;
       }
-      //TODO: Implement precursor_lhs_bdf()
-      precursors[sr * ndgroups_ + dg] = sum_term - precursor_lhs_bdf(dg);
-      precursors[sr * ndgroups_ + dg] /= A1 + lambda;
+      precursors[sr * ndgroups_ + dg] = sum_term - precursor_lhs_bdf;
+      precursors[sr * ndgroups_ + dg] /= A0 + lambda;
     }
   }
   return precursors;
@@ -1245,7 +1245,7 @@ float FlatSourceDomain::source_time_derivative(int index) {
   bdf_coeffs = bdf_coefficients_first_order_[bdf_order_];
   float dQdt = 0.0;
   for (int i = 0; i < bdf_order_; i++) {
-    dQdt += bdf_coeffs[i] * source_bdf_[index + i * n_source_elements] / dt;
+    dQdt += bdf_coeffs[i] * source_bdf_[index + i * n_source_elements] / dt_;
   }
   return dQdt
 }
@@ -1255,7 +1255,7 @@ float FlatSourceDomain::scalar_flux_time_derivative2(int index) {
   // This might cause rounding errors as scalar_flux_bdf_ is of type double
   float dphi2_dt2 = 0.0;
   for (int i = 0; i < bdf_order_ + 1; i++) {
-    dphi2_dt2 += bdf_coeffs2[i] * scalar_flux_bdf_[index + i * n_source_elements] / dt**2;
+    dphi2_dt2 += bdf_coeffs2[i] * scalar_flux_bdf_[index + i * n_source_elements] / dt_**2;
   }
   return dphi2_dt2
 }
@@ -1265,7 +1265,7 @@ float FlatSourceDomain::scalar_flux_time_derivative(int index) {
   // This might cause rounding errors as scalar_flux_bdf_ is of type double
   float dphi_dt = 0.0;
   for (int i = 0; i < bdf_order_; i++) {
-    dphi_dt += bdf_coeffs[i] * scalar_flux_bdf_[index + i * n_source_elements] / dt;
+    dphi_dt += bdf_coeffs[i] * scalar_flux_bdf_[index + i * n_source_elements] / dt_;
   }
   return dphi2_dt2
 }
@@ -1306,7 +1306,7 @@ void FlatSourceDomain::increment_bdf_vector(vector<float>* bdf_vector,
   rotate(*bdf_vector.rbegin(), *bdf_vector.rbegin() + solution_size, *bdf_vector.rend());
   // Replace the oldest solution with the new solution
   for (int i = 0; i < solution_size; i++) {
-      *bdf_vector[i] = *new_solution[i];
+    *bdf_vector[i] = *new_solution[i];
   }
 }
 

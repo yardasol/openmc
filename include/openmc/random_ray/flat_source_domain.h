@@ -141,6 +141,7 @@ public:
   void transpose_scattering_matrix();
 
   vector<double> get_precursors_initial_condition();
+  vector<double> calculate_precursors();
   // Call bdf_order_ inside this function
   float source_time_derivative(int index);
   // Calculate d2phi/dt2 from phis
@@ -168,6 +169,7 @@ public:
   int64_t n_external_source_regions_ {0}; // Total number of source regions with
                                           // non-zero external source terms
   int bdf_order_;                     // Order for BDF approximation
+  double dt_; // Timestep size in seconds
                                       
 
   // 1D array representing source region starting offset for each OpenMC Cell
