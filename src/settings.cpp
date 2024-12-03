@@ -126,6 +126,12 @@ TemperatureMethod temperature_method {TemperatureMethod::NEAREST};
 double temperature_tolerance {10.0};
 double temperature_default {293.6};
 array<double, 2> temperature_range {0.0, 0.0};
+
+// Time-dependent variables
+int n_timestep_batches; //!< number of (inactive+active) batches for timesteps
+int n_timestep_inactive;//!< number of inactive batches batches for timesteps
+vector<double> timesteps;//!< list of timesteps in seconds
+
 int trace_batch;
 int trace_gen;
 int64_t trace_particle;
@@ -248,29 +254,37 @@ void get_run_parameters(pugi::xml_node node_base)
     if (check_for_node(td_node, "timestep_batches")) {
       n_timestep_batches = 
           std::stoi(get_node_value(td_node, "timestep_batches"));
+    } else {
+      fatal_error("Specify active batches for timesteps in settings XML");
     }
     if (check_for_node(td_node, "timestep_inactive")) {
       n_timestep_inactive =
           std::stoi(get_node_value(td_node, "timestep_inactive"));
+    } else {
+      fatal_error("Specify inactive batches for timesteps in settings XML");
     }
     if (check_for_node(td_node, "timestep_units")) {
       std::string units = get_node_value(td_node, "timestep_units");
-    }
-    if (check_for_node(td_node, "timesteps")) {
-      timesteps = get_node_array<double>(td_node, "timesteps");
-      double factor_to_seconds;
-      if (units == "ms") {
-        factor_to_seconds = 1e-3;
-      } else if (units == "s") {
-        factor_to_seconds = 1.0;
-      } else if (units == "min") {
-        factor_to_seconds = 1 / 60;
+      if (check_for_node(td_node, "timesteps")) {
+        timesteps = get_node_array<double>(td_node, "timesteps");
+        double factor_to_seconds;
+        if (units == "ms") {
+          factor_to_seconds = 1e-3;
+        } else if (units == "s") {
+          factor_to_seconds = 1.0;
+        } else if (units == "min") {
+          factor_to_seconds = 1 / 60;
+        } else {
+          fatal_error("Invalid timestep unit, " + units);
+        }
+        for (int i = 0; i < timesteps.size(); i++) {
+          timesteps[i] *= factor_to_seconds;
+        }
       } else {
-        fatal_error("Invalid timestep unit, " + units);
+        fatal_error("Specify timesteps in settings XML");
       }
-      for (int i = 0; i < timesteps.size(); i++) {
-        timesteps[i] *= factor_to_seconds;
-      }
+    } else {
+      fatal_error("Specify timestep units in settings XML");
     }
   }
 
@@ -341,10 +355,10 @@ void get_run_parameters(pugi::xml_node node_base)
     }
     if (run_mode == RunMode::TIME_DEPENDENT) {
       if (check_for_node(random_ray_node, "bdf_order")) {
-        int n =  std::stod(get_node_value(random_ray_node, "bdf_order"));
-        if (n < 1 || n > 6){ 
+        static int n = std::stod(get_node_value(random_ray_node, "bdf_order"));
+        if (n < 1 || n > 6) { 
           fatal_error("Specified BDF order of " + std::to_string(n) + ". BDF order must be between 1 and 6");
-        } else{
+        } else {
           FlatSourceDomain::bdf_order_max_ = n;
         }        
       } else {
@@ -543,6 +557,7 @@ void read_settings_xml(pugi::xml_node root)
         fatal_error("Number of timestep active batches must be greater than zero.");
       } else if (n_timestep_inactive < 0) {
         fatal_error("Number of timestep inactive batches must be non-negative.");
+      }
     }
   }
 

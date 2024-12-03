@@ -25,9 +25,9 @@ namespace openmc {
 //==============================================================================
 namespace random_ray_td {
 
-vector<double> precursors_init;
-vector<double> scalar_flux_init;
-vector<float> source_init;
+vector<double> precursors_init_;
+vector<double> scalar_flux_init_;
+vector<float> source_init_;
 
 } // namespace random_ray_td
 
@@ -99,13 +99,13 @@ void openmc_run_random_ray(bool initial_condition)
 
     // Output all simulation results
     sim.output_simulation_results();
-  }
 
-  // Extract flux, source, and precursors as an initial condition
-  if (initial_condition) {
-    random_ray_td::precursors_init = sim.domain().get_precursors_initial_condition()
-    random_ray_td::scalar_flux_init = forward_flux;
-    random_ray_td::source_init = sim.domain().source_;
+    // Extract flux, source, and precursors as an initial condition
+    if (initial_condition) {
+      random_ray_td::scalar_flux_init_ = forward_flux;
+      random_ray_td::precursors_init_ = sim.domain()->get_precursors_initial_condition();
+      random_ray_td::source_init_ = sim.domain()->source_;
+    }
   }
   //TODO: Time-dependent adjoint initial condition
 
@@ -163,10 +163,13 @@ void openmc_run_random_ray_time_dependent()
   settings::run_mode == RunMode::EIGENVALUE;
   openmc_run_random_ray(true);
 
-  // TODO: Rename file instead of rewriting it
-  std::str filename_ = fmt::format("{0}openmc_td_simulation_n0.h5",
-    settings::path_output);
-  openmc_statepoint_write(filename_, &false);
+  // Rename file instead of rewriting it
+  const char* filename_ = fmt::format("{0}openmc_td_simulation_n0.h5",
+    settings::path_output).c_str();
+
+  // TODO: Couldn't find the way to do this properly, fix later
+  bool f = false;
+  openmc_statepoint_write(filename_, &f);
   
   // Initialize Random Ray Simulation Object
   RandomRaySimulation sim;
@@ -184,7 +187,7 @@ void openmc_run_random_ray_time_dependent()
     openmc_simulation_init();
 
     // Set timestep size
-    sim.domain().dt_ = settings::timesteps[i]
+    sim.domain()->dt_ = settings::timesteps[i];
 
     // Begin main simulation timer
     simulation::time_total.start();
@@ -207,18 +210,18 @@ void openmc_run_random_ray_time_dependent()
     // Output all simulation results
     sim.output_simulation_results();
 
-    // TODO: Rename statepoint file instead of rewriting it
-    w = std::to_string(i);
-    filename_ = fmt::format("{0}openmc_td_simulation_n{1}.h5",
-      settings::path_output, w);
-    openmc_statepoint_write(filename_, &false);
+    // Rename statepoint file instead of rewriting it
+    const char* filename_ = fmt::format("{0}openmc_td_simulation_n{1}.h5",
+      settings::path_output, i).c_str();
+
+    openmc_statepoint_write(filename_, &f);
 
     // Update BDFk vectors
-    sim.domain().increment_bdf_vectors();
+    sim.domain()->increment_bdf_vectors();
 
     // Increment BDF order up to the maximum allowed by the user
-    if (i < bdf_order_max_) {
-      bdf_order_++;
+    if (i < sim.domain()->bdf_order_max_) {
+      sim.domain()->bdf_order_++;
     }
   }
 }
@@ -406,7 +409,7 @@ void validate_random_ray_inputs()
 
 RandomRaySimulation::RandomRaySimulation()
   : negroups_(data::mg.num_energy_groups_),
-    ndgroups_(data::mg.num_delay_groups_)
+    ndgroups_(data::mg.num_delayed_groups_)
 {
   // There are no source sites in random ray mode, so be sure to disable to
   // ensure we don't attempt to write source sites to statepoint
@@ -427,9 +430,6 @@ RandomRaySimulation::RandomRaySimulation()
   default:
     fatal_error("Unknown random ray source shape");
   }
-
-  // Always start at the lowest BDF order
-  bdf_order_ = 1;
 
   // Convert OpenMC native MGXS into a more efficient format
   // internal to the random ray solver

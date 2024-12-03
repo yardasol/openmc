@@ -42,7 +42,7 @@ public:
   //----------------------------------------------------------------------------
   // Public data members
   vector<float> angular_flux_;
-  vector<float> angular_flux_dt;
+  vector<float> angular_flux_dt_;
 
   bool ray_trace_only_ {false}; // If true, only perform geometry operations
 

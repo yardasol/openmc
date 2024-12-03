@@ -326,15 +326,14 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     float new_delta_psi =
       (angular_flux_[g] - domain_->source_[source_element + g]) * exponential;
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      // TODO: MAKE FLATTENED ARRAY FOR vbar_inv_
       float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
       float dQdt = domain_->source_time_derivative(source_element + g);
       float dphi2_dt2 = domain_->scalar_flux_time_derivative2(source_element + g); 
       float T = dQdt - inverse_vbar * dphi2_dt2 / (4 * PI);
       float S = angular_flux_dt_[g] - T / sigma_t; 
       // Add time-dependent terms to delta psi
-      new_delta_psi += vbar_inv * T / sigma_t**2 * exponential;
-      new_delta_psi += distance * vbar_inv * S * (1 - exponential);
+      new_delta_psi += inverse_vbar * T / sigma_t * sigma_t * exponential;
+      new_delta_psi += distance * inverse_vbar * S * (1 - exponential);
       // Calculate delta for dpsi/dt
       angular_flux_dt_[g] -= S * exponential;
     }

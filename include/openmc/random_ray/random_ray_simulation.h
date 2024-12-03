@@ -11,12 +11,13 @@ namespace openmc {
 //==============================================================================
 namespace random_ray_td {
 
-//Initial conditions for time-depedent simulations
-vector<double> precursor_init;
-vector<double> scalar_flux_init;
-vector<float> source_init;
+extern vector<double> precursors_init_;
+extern vector<double> scalar_flux_init_;
+extern vector<float> source_init_;
 
 } // namespace random_ray_td
+
+
 
 /*
  * The RandomRaySimulation class encompasses data and methods for running a

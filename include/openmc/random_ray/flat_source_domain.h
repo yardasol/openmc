@@ -85,7 +85,7 @@ struct TallyTask {
 
 //----------------------------------------------------------------------------
 // Helper Variables
-const map<int, vector<float>> bdf_coefficients_first_order = {
+const std::map<int, const vector<float>> bdf_coefficients_first_order_ = {
   {1, {1.0, -1.0}},
   {2, {1.5, -2.0, 0.5}},
   {3, {11/6, -3.0, 1.5, -1/3}},
@@ -94,7 +94,7 @@ const map<int, vector<float>> bdf_coefficients_first_order = {
   {6, {2.45, -6.0, 7.5, -20/3, 3.75, -1.2, 1/6}}
 };
 
-const map<int, vector<float>> bdf_coefficients_second_order = {
+const std::map<int, const vector<float>> bdf_coefficients_second_order_ = {
   {1, {1.0, -2.0, 1.0}},
   {2, {1.5, -3.5, 2.5, -0.5}},
   {3, {11/6, -29/6, 4.5, -11/6, 1/3}},
@@ -141,7 +141,7 @@ public:
   void transpose_scattering_matrix();
 
   vector<double> get_precursors_initial_condition();
-  vector<double> calculate_precursors();
+  void calculate_precursors();
   // Call bdf_order_ inside this function
   float source_time_derivative(int index);
   // Calculate d2phi/dt2 from phis
@@ -149,7 +149,8 @@ public:
   // Calculate dphi/dt from phis
   float scalar_flux_time_derivative(int index);
   void increment_bdf_vectors();
-  void increment_bdf_vector(vector<>* bdf_vector, vector<>* new_solution);
+  void increment_bdf_vector(vector<float>* bdf_vector, vector<float>* new_solution);
+  void increment_bdf_vector(vector<double>* bdf_vector, vector<double>* new_solution);
 
   //----------------------------------------------------------------------------
   // Static Data members
@@ -168,7 +169,7 @@ public:
   int64_t n_source_regions_ {0}; // Total number of source regions in the model
   int64_t n_external_source_regions_ {0}; // Total number of source regions with
                                           // non-zero external source terms
-  int bdf_order_;                     // Order for BDF approximation
+  int bdf_order_ {1};                     // Order for BDF approximation.
   double dt_; // Timestep size in seconds
                                       
 
@@ -221,17 +222,14 @@ public:
                                   // times the number of energy groups
   int64_t n_delay_elements_ {0};  // Total number of source regions in the model
                                   // times the number of delay groups
-  // 1D arrays representing values for all source regions
-  vector<int> material_;
-  vector<double> volume_naive_;
-
+                                  //
   // Arrays for time-dependent simulations
   vector<double> precursors_;
-  vector<float> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
+  vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
                                       // solutions
   vector<float> source_bdf_;         // Holds  bdf_order_ previous source
                                       // region values
-  vector<float> precursors_bdf_;     // Holds  bdf_order_ previous precursor
+  vector<double> precursors_bdf_;     // Holds  bdf_order_ previous precursor
                                       // values
   
 protected:
