@@ -6,6 +6,7 @@
 #include "openmc/eigenvalue.h"
 #include "openmc/geometry.h"
 #include "openmc/message_passing.h"
+#include "openmc/material.h"
 #include "openmc/mgxs_interface.h"
 #include "openmc/output.h"
 #include "openmc/plot.h"
@@ -185,6 +186,20 @@ void openmc_run_random_ray_time_dependent()
     // openmc_simulation_init() that needs to be before we initalize the
     // simulation object.
     openmc_simulation_init();
+
+    // Update material density
+    bool density_changed = false;
+    for (int i = 0; i < model::materials.size(); ++i) {
+      auto& mat {model::materials[i]};
+      if (mat->density_timeseries_.size() != 0) {
+        mat->density_ = mat->density_timeseries_[i] / mat->density_;  
+        density_changed = true;
+      }
+    }
+    // TODO: update the MGXS only for the materials whose densities changed.
+    if (density_changed) {
+      data::mg.create_macro_xs();
+    } 
 
     // Set timestep size
     sim.domain()->dt_ = settings::timesteps[i];

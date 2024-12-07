@@ -65,6 +65,11 @@ class Material(IDManagerMixin):
         Temperature of the material in Kelvin.
     density : float
         Density of the material (units defined separately)
+    density_timeseries : list of float
+        Density timeseries of the material for time-dependent simulations (units
+        defined separately)
+
+        .. versionadded:: 0.16.0
     density_units : str
         Units used for `density`. Can be one of 'g/cm3', 'g/cc', 'kg/m3',
         'atom/b-cm', 'atom/cm3', 'sum', or 'macro'.  The 'macro' unit only
@@ -113,6 +118,7 @@ class Material(IDManagerMixin):
         self.name = name
         self.temperature = temperature
         self._density = None
+        self._density_timeseries = None
         self._density_units = 'sum'
         self._depletable = False
         self._paths = None
@@ -190,6 +196,13 @@ class Material(IDManagerMixin):
     @property
     def density(self) -> float | None:
         return self._density
+
+    @property
+    def density_timeseries(self) -> list[str] | None:
+        if self._density_units == "sum":
+            raise ValueError('Density timeseries cannot be used when using '
+                             '"sum" density units.')
+        return self._density_timeseries
 
     @property
     def density_units(self) -> str:
@@ -480,7 +493,8 @@ class Material(IDManagerMixin):
         else:
             raise ValueError(f'No volume information found for material ID={self.id}.')
 
-    def set_density(self, units: str, density: float | None = None):
+    def set_density(self, units: str, density: float | None = None,
+                    density_timeseries: list[float] | None = None):
         """Set the density of the material
 
         Parameters
@@ -490,6 +504,11 @@ class Material(IDManagerMixin):
         density : float, optional
             Value of the density. Must be specified unless units is given as
             'sum'.
+        density_timeseries : float, optional
+            Timeseries of density. Can only be specified if units are not given
+            as 'sum'.
+
+            .. versionadded:: 0.16.0
 
         """
 
@@ -501,6 +520,10 @@ class Material(IDManagerMixin):
                 msg = 'Density "{}" for Material ID="{}" is ignored ' \
                       'because the unit is "sum"'.format(density, self.id)
                 warnings.warn(msg)
+            if density_timeseries is not None:
+                msg = 'Density timeseries cannot be used when ' \
+                      'using "sum" density units.'
+                raise ValueError(msg)
         else:
             if density is None:
                 msg = 'Unable to set the density for Material ID="{}" ' \
@@ -511,6 +534,11 @@ class Material(IDManagerMixin):
             cv.check_type(f'the density for Material ID="{self.id}"',
                           density, Real)
             self._density = density
+            if density_timeseries is not None:
+                cv.check_type(f'the density timeseries for Material ID="{self.id}"',
+                          density, List, Real)
+                self._density_timeseries = density_timeseries
+
 
     def add_nuclide(self, nuclide: str, percent: float, percent_type: str = 'ao'):
         """Add a nuclide to the material

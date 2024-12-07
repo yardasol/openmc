@@ -176,6 +176,7 @@ public:
   NCrystalMat ncrystal_mat_;            //!< NCrystal material object
   xt::xtensor<double, 1> atom_density_; //!< Nuclide atom density in [atom/b-cm]
   double density_;                      //!< Total atom density in [atom/b-cm]
+  vector<double> density_timeseries_;   //!< Total atom density timeseries in [atom/b-cm]
   double density_gpcc_;                 //!< Total atom density in [g/cm^3]
   double volume_ {-1.0};                //!< Volume in [cm^3]
   vector<bool> p0_; //!< Indicate which nuclides are to be treated with
@@ -204,6 +205,7 @@ private:
 
   //! Normalize density
   void normalize_density();
+  void scale_density_timeseries(double scale_factor);
 
   void calculate_neutron_xs(Particle& p) const;
   void calculate_photon_xs(Particle& p) const;

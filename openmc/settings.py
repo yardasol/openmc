@@ -1175,7 +1175,7 @@ class Settings:
             elif key == 'timestep_batches':
                 cv.check_type('timestep batches', value, Integral)
                 cv.check_greater_than('timestep batches', value, 0)
-            elif key == 'timestep_inactive'
+            elif key == 'timestep_inactive':
                 cv.check_type('timestep inactive batches', value, Integral)
                 cv.check_greater_than('timestep inactive batches', value, 0, True)
             else:
