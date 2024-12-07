@@ -187,19 +187,27 @@ void openmc_run_random_ray_time_dependent()
     // simulation object.
     openmc_simulation_init();
 
-    // Update material density
-    bool density_changed = false;
+    // Update material density and cross sections
     for (int i = 0; i < model::materials.size(); ++i) {
       auto& mat {model::materials[i]};
       if (mat->density_timeseries_.size() != 0) {
-        mat->density_ = mat->density_timeseries_[i] / mat->density_;  
-        density_changed = true;
+        double density_factor = mat->density_timeseries_[i] / mat->density_; 
+        mat->density_ = density_factor;
+        int material = mat->id_;
+        for (int g_out = 0; g_out < negroups_; g_out++) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+            nu_d_Sigma_f_[material * negroups_ * ndgroups_ + g_out * ndgroups_ + dg] *= density_factor;
+          }
+          nu_p_sigma_f_[material * negroups_ + g_out] *= density_factor;
+          sigma_t_[material * negroups_ + g_out] *= density_factor;
+          nu_sigma_f_[material * negroups_ + g_out] *= density_factor;
+          sigma_f_[material * negroups_ + g_out] *= density_factor;
+          for (int g_in = 0; g_in < negroups_; g_in++) {
+            sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in] *= density_factor;
+          }
+        }
       }
     }
-    // TODO: update the MGXS only for the materials whose densities changed.
-    if (density_changed) {
-      data::mg.create_macro_xs();
-    } 
 
     // Set timestep size
     sim.domain()->dt_ = settings::timesteps[i];
