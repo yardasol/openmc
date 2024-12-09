@@ -66,8 +66,9 @@ class Material(IDManagerMixin):
     density : float
         Density of the material (units defined separately)
     density_timeseries : list of float
-        Density timeseries of the material for time-dependent simulations (units
-        defined separately)
+        Density timeseries of the material for time-dependent simulations. Units
+        assumed to be the same as `density_units`. Must be the same length as
+        :attr:`openmc.Setttings.timesteps`.
 
         .. versionadded:: 0.16.0
     density_units : str
@@ -1457,6 +1458,9 @@ class Material(IDManagerMixin):
             subelement.set("units", self._density_units)
         else:
             raise ValueError(f'Density has not been set for material {self.id}!')
+        if self._density_timeseries is not None:
+            subelement = ET.SubElement(element, "density_timeseries")
+            subelement.text = " ".join(str(x) for x in self._density_timeseries)
 
         if self._macroscopic is None:
             # Create nuclide XML subelements
