@@ -15,7 +15,7 @@ import h5py
 import openmc
 import openmc.data
 import openmc.checkvalue as cv
-from ._xml import clean_indentation, reorder_attributes
+from ._xml import clean_indentation, get_text, reorder_attributes
 from .mixin import IDManagerMixin
 from .utility_funcs import input_path
 from openmc.checkvalue import PathLike
@@ -204,9 +204,6 @@ class Material(IDManagerMixin):
 
     @property
     def density_timeseries(self) -> list[str] | None:
-        if self._density_units == "sum":
-            raise ValueError('Density timeseries cannot be used when using '
-                             '"sum" density units.')
         return self._density_timeseries
 
     @property
@@ -1461,11 +1458,11 @@ class Material(IDManagerMixin):
             if self._density_units != 'sum':
                 subelement.set("value", str(self._density))
             subelement.set("units", self._density_units)
+            if self._density_timeseries is not None:
+                timeseries_text = " ".join(str(x) for x in self._density_timeseries)
+                subelement.set("timeseries", timeseries_text)
         else:
             raise ValueError(f'Density has not been set for material {self.id}!')
-        if self._density_timeseries is not None:
-            subelement = ET.SubElement(element, "density_timeseries")
-            subelement.text = " ".join(str(x) for x in self._density_timeseries)
 
         if self._macroscopic is None:
             # Create nuclide XML subelements
@@ -1641,7 +1638,12 @@ class Material(IDManagerMixin):
             mat.set_density(units)
         else:
             value = float(density.get('value'))
-            mat.set_density(units, value)
+            text = get_text(density, 'timeseries')
+            if text is not None:
+                density_timeseries = [float(x) for x in text.split()]
+            else:
+                density_timeseries = None
+            mat.set_density(units, value, density_timeseries)
 
         # Check for isotropic scattering nuclides
         isotropic = elem.find('isotropic')

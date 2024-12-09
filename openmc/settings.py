@@ -1164,7 +1164,7 @@ class Settings:
         if not isinstance(time_dependent, Mapping):
             raise ValueError(f'Unable to set time_dependent from "{time_dependent}" '
                              'which is not a dict.')
-        for key in time_dependent:
+        for key, value in time_dependent.items():
             if key == 'timesteps':
                 cv.check_type('timesteps', value, Iterable, Real)
                 for step in value:
@@ -2009,7 +2009,7 @@ class Settings:
                 if child.tag in ('timestep_batches', 'timestep_inactive'):
                     self.time_dependent[child.tag] = int(child.text)
                 elif child.tag == 'timestep_units':
-                    self.time_dependent['ray_source'] = child.text
+                    self.time_dependent['timestep_units'] = child.text
                 elif child.tag == 'timesteps':
                     text = get_text(elem, 'timesteps')
                     if text is not None:
