@@ -49,6 +49,12 @@ public:
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
 
+
+  // Data members
+  // Number of energy groups
+  int negroups_;
+  int ndgroups_;
+
 private:
   //----------------------------------------------------------------------------
   // Data members
@@ -66,11 +72,7 @@ private:
   // reporting
   uint64_t total_geometric_intersections_ {0};
 
-  // Number of energy groups
-  int negroups_;
-  int ndgroups_;
-
-}; // class RandomRaySimulation
+  }; // class RandomRaySimulation
 
 //============================================================================
 //! Non-member functions

@@ -216,8 +216,8 @@ public:
   // groups x delay groups
   vector<double> nu_d_sigma_f_;
 
-  int negroups_;                  // Number of energy groups in simulation
-  int ndgroups_;                  // Number of delay groups in simulation
+  int negroups_;           // Number of energy groups in simulation
+  int ndgroups_;           // Number of delay groups in simulation
   int64_t n_source_elements_ {0}; // Total number of source regions in the model
                                   // times the number of energy groups
   int64_t n_delay_elements_ {0};  // Total number of source regions in the model

@@ -148,6 +148,10 @@ class Material(IDManagerMixin):
         string += '{: <16}=\t{}'.format('\tDensity', self._density)
         string += f' [{self._density_units}]\n'
 
+        if self._density_timeseries:
+            string += '{: <16}\n'.format('\tDensity Timeseries')
+            string += '{: <16}\n'.format(self._density_timeseries)
+
         string += '{: <16}=\t{} [cm^3]\n'.format('\tVolume', self._volume)
         string += '{: <16}=\t{}\n'.format('\tDepletable', self._depletable)
 
@@ -494,7 +498,8 @@ class Material(IDManagerMixin):
         else:
             raise ValueError(f'No volume information found for material ID={self.id}.')
 
-    def set_density(self, units: str, density: float | None = None,
+    def set_density(self, units: str,
+                    density: float | None = None,
                     density_timeseries: list[float] | None = None):
         """Set the density of the material
 
@@ -537,7 +542,7 @@ class Material(IDManagerMixin):
             self._density = density
             if density_timeseries is not None:
                 cv.check_type(f'the density timeseries for Material ID="{self.id}"',
-                          density, List, Real)
+                          density_timeseries, Iterable, Real)
                 self._density_timeseries = density_timeseries
 
 
