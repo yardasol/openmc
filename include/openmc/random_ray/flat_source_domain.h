@@ -200,7 +200,7 @@ public:
   vector<double> nu_sigma_f_;
   vector<double> nu_p_sigma_f_;
   vector<double> sigma_f_;
-  vector<double> chi_;
+  vector<double> chi_p_;
   vector<double> chi_d_;
   vector<double> inverse_vbar_;
 

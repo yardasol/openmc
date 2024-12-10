@@ -183,10 +183,10 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
 
         double sigma_s =
             sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
-        double chi = chi_[material * negroups_ + g_out];
+        double chi_p = chi_p_[material * negroups_ + g_out];
         
         scatter_source += sigma_s * scalar_flux;
-        fission_source += nu_sigma_f * scalar_flux * chi;
+        fission_source += nu_sigma_f * scalar_flux * chi_p;
       }
       source_[sr * negroups_ + g_out] =
         (scatter_source + fission_source * inverse_k_eff) / sigma_t;
@@ -1128,9 +1128,9 @@ void FlatSourceDomain::flatten_xs()
           m.get_xs(MgxsType::FISSION, g_out, NULL, NULL, NULL, t, a);
         sigma_f_.push_back(sigma_f);
 
-        double chi =
+        double chi_p =
           m.get_xs(MgxsType::CHI_PROMPT, g_out, &g_out, NULL, NULL, t, a);
-        chi_.push_back(chi);
+        chi_p_.push_back(chi_p);
 
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double sigma_s =
@@ -1149,7 +1149,7 @@ void FlatSourceDomain::flatten_xs()
         sigma_t_.push_back(0);
         nu_sigma_f_.push_back(0);
         sigma_f_.push_back(0);
-        chi_.push_back(0);
+        chi_p_.push_back(0);
         for (int g_in = 0; g_in < negroups_; g_in++) {
           sigma_s_.push_back(0);
         }
