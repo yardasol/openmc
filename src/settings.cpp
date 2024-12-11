@@ -509,8 +509,7 @@ void read_settings_xml(pugi::xml_node root)
     } else {
       warning("<run_mode> should be specified.");
 
-      // Do I need to add a check for time-dependent mode here?
-      // Make sure that either eigenvalue or fixed source was specified
+      // Make sure that either eigenvalue, fixed source, or time dependent was specified
       node_mode = root.child("eigenvalue");
       if (node_mode) {
         run_mode = RunMode::EIGENVALUE;
@@ -519,7 +518,12 @@ void read_settings_xml(pugi::xml_node root)
         if (node_mode) {
           run_mode = RunMode::FIXED_SOURCE;
         } else {
-          fatal_error("<eigenvalue> or <fixed_source> not specified.");
+          node_mode = root.child("time_dependent");
+          if (node_mode) {
+            run_mode = RunMode::TIME_DEPENDENT;
+          } else {
+            fatal_error("<eigenvalue>,  <fixed_source>, or <time_dependent> not specified.");
+          }
         }
       }
     }

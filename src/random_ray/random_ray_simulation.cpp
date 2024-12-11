@@ -136,7 +136,7 @@ void openmc_run_random_ray(bool initial_condition)
     adjoint_sim.domain()->transpose_scattering_matrix();
 
     // Swap nu_sigma_f and chi
-    adjoint_sim.domain()->nu_sigma_f_.swap(adjoint_sim.domain()->chi_);
+    adjoint_sim.domain()->nu_sigma_f_.swap(adjoint_sim.domain()->chi_p_);
 
     // Begin main simulation timer
     simulation::time_total.start();
