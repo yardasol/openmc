@@ -148,9 +148,10 @@ class Material(IDManagerMixin):
         string += '{: <16}=\t{}'.format('\tDensity', self._density)
         string += f' [{self._density_units}]\n'
 
-        if self._density_timeseries:
+        if self._density_timeseries is not None:
             string += '{: <16}\n'.format('\tDensity Timeseries')
-            string += '{: <16}\n'.format(self._density_timeseries)
+            dens_ts_string = " ".join(str(x) for x in self._density_timeseries)
+            string += '{: <16}\n'.format(dens_ts_string)
 
         string += '{: <16}=\t{} [cm^3]\n'.format('\tVolume', self._volume)
         string += '{: <16}=\t{}\n'.format('\tDepletable', self._depletable)
