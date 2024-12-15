@@ -328,6 +328,7 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
       float dQdt = domain_->source_time_derivative(source_element + g);
+      // TODO: need to approximate with first order at initial timestep
       float dphi2_dt2 = domain_->scalar_flux_time_derivative2(source_element + g); 
       float T = dQdt - inverse_vbar * dphi2_dt2 / (4 * PI);
       float S = angular_flux_dt_[g] - T / sigma_t; 

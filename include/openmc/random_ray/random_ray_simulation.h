@@ -11,10 +11,15 @@ namespace openmc {
 //==============================================================================
 namespace random_ray_td {
 
-extern vector<double> precursors_init_;
+//extern vector<double> precursors_init_;
 extern vector<double> scalar_flux_init_;
 extern vector<float> source_init_;
-
+extern vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
+                                           // solutions
+extern vector<float> source_bdf_;          // Holds  bdf_order_ previous source
+                                           // region values
+extern vector<double> precursors_bdf_;     // Holds  bdf_order_ previous precursor
+                                           // values
 } // namespace random_ray_td
 
 
@@ -38,6 +43,8 @@ public:
   void simulate();
   void reduce_simulation_statistics();
   void output_simulation_results() const;
+  void point_to_bdf_vectors();
+
   void instability_check(
     int64_t n_hits, double k_eff, double& avg_miss_rate) const;
   void print_results_random_ray(uint64_t total_geometric_intersections,
@@ -80,6 +87,8 @@ private:
 
 void openmc_run_random_ray(bool initial_condition = false);
 void openmc_run_random_ray_time_dependent();
+void initialize_bdf_vectors(int n_source_regions);
+void rename_statepoint_file(int i);
 void validate_random_ray_inputs();
 
 } // namespace openmc

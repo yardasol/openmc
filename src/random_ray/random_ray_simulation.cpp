@@ -1,6 +1,8 @@
 #include "openmc/random_ray/random_ray_simulation.h"
 
 #include <string>
+#include <cstdio>
+#include <fmt/core.h>
 
 #include "openmc/capi.h"
 #include "openmc/eigenvalue.h"
@@ -26,10 +28,15 @@ namespace openmc {
 //==============================================================================
 namespace random_ray_td {
 
-vector<double> precursors_init_;
+//vector<double> precursors_init_;
 vector<double> scalar_flux_init_;
 vector<float> source_init_;
-
+vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
+                                    // solutions
+vector<float> source_bdf_;          // Holds  bdf_order_ previous source
+                                    // region values
+vector<double> precursors_bdf_;     // Holds  bdf_order_ previous precursor
+                                    // values
 } // namespace random_ray_td
 
 //==============================================================================
@@ -103,8 +110,8 @@ void openmc_run_random_ray(bool initial_condition)
 
     // Extract flux, source, and precursors as an initial condition
     if (initial_condition) {
+      // May need to normlalize forward flux by batches?
       random_ray_td::scalar_flux_init_ = forward_flux;
-      random_ray_td::precursors_init_ = sim.domain()->get_precursors_initial_condition();
       random_ray_td::source_init_ = sim.domain()->source_;
     }
   }
@@ -136,8 +143,7 @@ void openmc_run_random_ray(bool initial_condition)
     adjoint_sim.domain()->transpose_scattering_matrix();
 
     // Swap nu_sigma_f and chi
-    adjoint_sim.domain()->nu_sigma_f_.swap(adjoint_sim.domain()->chi_p_);
-
+    adjoint_sim.domain()->nu_sigma_f_.swap(adjoint_sim.domain()->chi_);
     // Begin main simulation timer
     simulation::time_total.start();
 
@@ -161,96 +167,106 @@ void openmc_run_random_ray(bool initial_condition)
 void openmc_run_random_ray_time_dependent()
 {
   // Get Initial condition
-  settings::run_mode == RunMode::EIGENVALUE;
+  settings::run_mode = RunMode::EIGENVALUE;
   openmc_run_random_ray(true);
 
-  // Rename file instead of rewriting it
-  const char* filename_ = fmt::format("{0}openmc_td_simulation_n0.h5",
-    settings::path_output).c_str();
-
-  // TODO: Couldn't find the way to do this properly, fix later
-  bool f = false;
-  openmc_statepoint_write(filename_, &f);
+  rename_statepoint_file(0);
   
-  // Initialize Random Ray Simulation Object
-  RandomRaySimulation sim;
-
   // Timestepping loop
-  settings::run_mode == RunMode::TIME_DEPENDENT;
+  settings::run_mode = RunMode::TIME_DEPENDENT;
   settings::n_batches = settings::n_timestep_batches;
   settings::n_inactive = settings::n_timestep_inactive;
 
+  initialize_bdf_vectors(random_ray_td::scalar_flux_init_.size());
+
   for (int i = 1; i < settings::timesteps.size() + 1; i++) {
+    if (mpi::master) {
+      std::string message = fmt::format("TIME DEPENDENT SOLVE {0}", i);
+      const char* msg = message.c_str();
+      header(msg, 3);
+    }
+
+    reset_timers();
+
     // Initialize OpenMC general data structures
     // This might not work as there may be stuff called in 
     // openmc_simulation_init() that needs to be before we initalize the
     // simulation object.
     openmc_simulation_init();
 
-    // Update material density and cross sections
-    for (int i = 0; i < model::materials.size(); ++i) {
-      auto& mat {model::materials[i]};
-      if (mat->density_timeseries_.size() != 0) {
-        double density_factor = mat->density_timeseries_[i] / mat->density_; 
-        mat->density_ = density_factor;
-        int material = mat->id_;
-        int negroups = sim.domain()->negroups_;
-        int ndgroups = sim.domain()->ndgroups_;
-        for (int g_out = 0; g_out < negroups; g_out++) {
-          for (int dg = 0; dg < ndgroups; dg++) {
-            sim.domain()->nu_d_sigma_f_[material * negroups * ndgroups + g_out * ndgroups + dg] *= density_factor;
-          }
-          sim.domain()->nu_p_sigma_f_[material * negroups + g_out] *= density_factor;
-          sim.domain()->sigma_t_[material * negroups + g_out] *= density_factor;
-          sim.domain()->nu_sigma_f_[material * negroups + g_out] *= density_factor;
-          sim.domain()->sigma_f_[material * negroups + g_out] *= density_factor;
-          for (int g_in = 0; g_in < negroups; g_in++) {
-            sim.domain()->sigma_s_[material * negroups * negroups + g_out * negroups + g_in] *= density_factor;
-          }
-        }
-      }
+    RandomRaySimulation sim_td;
+
+    sim_td.point_to_bdf_vectors();
+
+    sim_td.domain()->initialize_source_and_flux_from_bdf();
+    if (i == 1) {
+      sim_td.domain()->calculate_steady_state_precursors();
     }
+    sim_td.domain()->initialize_precursors_from_bdf();
+
+    // Update time dependent cross section based on the density
+    sim_td.domain()->update_time_dependent_cross_sections(i); 
 
     // Set timestep size
-    sim.domain()->dt_ = settings::timesteps[i];
+    sim_td.domain()->dt_ = settings::timesteps[i];
 
     // Begin main simulation timer
     simulation::time_total.start();
 
-    // Execute random ray simulation
-    sim.simulate();
+    // Increment BDFk vectors with estimate of current values
+    sim_td.domain()->increment_bdf_vectors();
 
-    // Calculate precursors for this timestep
-    sim.domain()->calculate_precursors();
+    // Execute random ray sim_tdulation
+    sim_td.simulate();
 
     // End main simulation timer
-    openmc::simulation::time_total.stop();
+    simulation::time_total.stop();
 
     // Finalize OpenMC
     openmc_simulation_finalize();
 
     // Reduce variables across MPI ranks
-    sim.reduce_simulation_statistics();
+    sim_td.reduce_simulation_statistics();
 
     // Output all simulation results
-    sim.output_simulation_results();
+    sim_td.output_simulation_results();
 
-    // Rename statepoint file instead of rewriting it
-    const char* filename_ = fmt::format("{0}openmc_td_simulation_n{1}.h5",
-      settings::path_output, i).c_str();
+    // Rename statepoint file
+    rename_statepoint_file(i);
 
-    openmc_statepoint_write(filename_, &f);
-
-    // Update BDFk vectors
-    sim.domain()->increment_bdf_vectors();
+    // Update BDFk vectors with final values
+    sim_td.domain()->finalize_bdf_vectors();
 
     // Increment BDF order up to the maximum allowed by the user
-    if (i < sim.domain()->bdf_order_max_) {
-      sim.domain()->bdf_order_++;
+    if (i < FlatSourceDomain::bdf_order_max_) {
+      sim_td.domain()->bdf_order_++;
     }
   }
 }
 
+void initialize_bdf_vectors(int n_source_elements) {
+  random_ray_td::scalar_flux_bdf_.assign(n_source_elements * (FlatSourceDomain::bdf_order_max_ + 2), 0.0);
+  random_ray_td::source_bdf_.assign(n_source_elements * (FlatSourceDomain::bdf_order_max_ + 1), 0.0);
+  for (int i = 0; i < n_source_elements; i++) {
+      random_ray_td::scalar_flux_bdf_[i] = random_ray_td::scalar_flux_init_[i];
+      random_ray_td::source_bdf_[i] = random_ray_td::source_init_[i];
+  }
+  int ndgroups = data::mg.num_delayed_groups_;
+  random_ray_td::precursors_bdf_.assign(n_source_elements * ndgroups * (FlatSourceDomain::bdf_order_max_ + 1), 0.0);
+}
+
+void rename_statepoint_file(int i)
+{
+  // Rename statepoint file
+  std::string old_filename_ = fmt::format("{0}statepoint.{1}.h5",
+          settings::path_output, settings::n_max_batches);
+  std::string new_filename_ = fmt::format("{0}openmc_td_simulation_{2}.{1}.h5",
+              settings::path_output, settings::n_max_batches, i);
+
+  const char* old_fname = old_filename_.c_str();
+  const char* new_fname = new_filename_.c_str();
+  std::rename(old_fname, new_fname);
+}
 
 // Enforces restrictions on inputs in random ray mode.  While there are
 // many features that don't make sense in random ray mode, and are therefore
@@ -492,6 +508,9 @@ void RandomRaySimulation::simulate()
 
     // Update source term (scattering + fission (+ delayed if time-dependent))
     domain_->update_neutron_source(k_eff_);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      domain_->update_bdf_source();
+    }
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
@@ -516,10 +535,13 @@ void RandomRaySimulation::simulate()
 
     // Normalize scalar flux and update volumes
     domain_->normalize_scalar_flux_and_volumes(
-      settings::n_particles * RandomRay::distance_active_);
+      settings::n_particles * RandomRay::distance_active_); 
 
     // Add source to scalar flux, compute number of FSR hits
     int64_t n_hits = domain_->add_source_to_scalar_flux();
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      domain_->update_bdf_flux();
+    }
 
     if (settings::run_mode == RunMode::EIGENVALUE) {
       // Compute random ray k-eff
@@ -527,13 +549,21 @@ void RandomRaySimulation::simulate()
 
       // Store random ray k-eff into OpenMC's native k-eff variable
       global_tally_tracklength = k_eff_;
+    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      // Update time-dependent precursor concentrations
+      domain_->update_precursors();
+      domain_->update_bdf_precursors();
     }
+
 
     // Execute all tallying tasks, if this is an active batch
     if (simulation::current_batch > settings::n_inactive) {
 
       // Add this iteration's scalar flux estimate to final accumulated estimate
       domain_->accumulate_iteration_flux();
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        domain_->accumulate_iteration_precursors();
+      }
 
       if (mpi::master) {
         // Generate mapping between source regions and tallies
@@ -548,6 +578,10 @@ void RandomRaySimulation::simulate()
 
     // Set phi_old = phi_new
     domain_->flux_swap();
+
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      domain_->precursors_swap();
+    }
 
     // Check for any obvious insabilities/nans/infs
     instability_check(n_hits, k_eff_, avg_miss_rate_);
@@ -583,6 +617,12 @@ void RandomRaySimulation::output_simulation_results() const
       domain_->output_to_vtk();
     }
   }
+}
+
+void RandomRaySimulation::point_to_bdf_vectors() {
+  domain_->scalar_flux_bdf_ = &random_ray_td::scalar_flux_bdf_;
+  domain_->source_bdf_ = &random_ray_td::source_bdf_;
+  domain_->precursors_bdf_ = &random_ray_td::precursors_bdf_; 
 }
 
 // Apply a few sanity checks to catch obvious cases of numerical instability.

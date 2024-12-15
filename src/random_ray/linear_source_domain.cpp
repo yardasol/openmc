@@ -79,13 +79,13 @@ void LinearSourceDomain::update_neutron_source(double k_eff)
         double sigma_s =
           sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
         double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
-        double chi_p = chi_p_[material * negroups_ + g_out];
+        double chi = chi_[material * negroups_ + g_out];
 
         // Compute source terms for flat and linear components of the flux
         scatter_flat += sigma_s * flux_flat;
-        fission_flat += nu_sigma_f * flux_flat * chi_p;
+        fission_flat += nu_sigma_f * flux_flat * chi;
         scatter_linear += sigma_s * flux_linear;
-        fission_linear += nu_sigma_f * flux_linear * chi_p;
+        fission_linear += nu_sigma_f * flux_linear * chi;
       }
 
       // Compute the flat source term

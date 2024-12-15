@@ -94,6 +94,15 @@ const std::map<int, const vector<float>> bdf_coefficients_first_order_ = {
   {6, {2.45, -6.0, 7.5, -20/3, 3.75, -1.2, 1/6}}
 };
 
+const std::map<int, const vector<int>> bdf_timestep_coefficients_first_order_ = {
+  {1, {1}},
+  {2, {3, -1}},
+  {3, {11, -7, 2}},
+  {4, {25, -23, 13, -3}},
+  {5, {137, -163, 137, -63, 12}},
+  {6, {147, -213, 237, -163, 62, -10}}
+};
+
 const std::map<int, const vector<float>> bdf_coefficients_second_order_ = {
   {1, {1.0, -2.0, 1.0}},
   {2, {1.5, -3.5, 2.5, -0.5}},
@@ -101,6 +110,15 @@ const std::map<int, const vector<float>> bdf_coefficients_second_order_ = {
   {4, {25/12, -73/12, 7.0, -13/3, 19/12, -0.25}},
   {5, {137/60, -437/60, 10.0, -25/3, 55/12, -1.45, 0.2}},
   {6, {2.45, -8.45, 13.5, -170/12, 125/12, -4.95, 41/30, -1/6}}
+};
+
+const std::map<int, const vector<int>> bdf_timestep_coefficients_first_order_ = {
+  {1, {1, }},
+  {2, {3, -1}},
+  {3, {11, -7, 2}},
+  {4, {25, -23, 13, -3}},
+  {5, {137, -163, 137, -63, 12}},
+  {6, {147, -213, 237, -163, 62, -10}}
 };
 
 /*
@@ -129,28 +147,37 @@ public:
   void reset_tally_volumes();
   void random_ray_tally();
   virtual void accumulate_iteration_flux();
+  virtual void accumulate_iteration_precursors();
   void output_to_vtk() const;
   virtual void all_reduce_replicated_source_regions();
   void convert_external_sources();
   void count_external_source_regions();
   void set_adjoint_sources(const vector<double>& forward_flux);
   virtual void flux_swap();
+  virtual void precursors_swap();
   virtual double evaluate_flux_at_point(Position r, int64_t sr, int g) const;
   double compute_fixed_source_normalization_factor() const;
   void flatten_xs();
   void transpose_scattering_matrix();
 
-  vector<double> get_precursors_initial_condition();
-  void calculate_precursors();
+  void update_time_dependent_cross_sections(int i);
+  void initialize_source_and_flux_from_bdf();
+  void calculate_steady_state_precursors();
+  void initialize_precursors_from_bdf();
+  void update_precursors();
   // Call bdf_order_ inside this function
   float source_time_derivative(int index);
   // Calculate d2phi/dt2 from phis
   float scalar_flux_time_derivative2(int index);
   // Calculate dphi/dt from phis
   float scalar_flux_time_derivative(int index);
+  void update_bdf_vector(vector<float>* bdf_vector, vector<float>* new_solution, bool increment);
+  void update_bdf_vector(vector<double>* bdf_vector, vector<double>* new_solution, bool increment);
+  void update_bdf_source();
+  void update_bdf_flux();
+  void update_bdf_precursors();
   void increment_bdf_vectors();
-  void increment_bdf_vector(vector<float>* bdf_vector, vector<float>* new_solution);
-  void increment_bdf_vector(vector<double>* bdf_vector, vector<double>* new_solution);
+  void finalize_bdf_vectors();
 
   //----------------------------------------------------------------------------
   // Static Data members
@@ -200,7 +227,7 @@ public:
   vector<double> nu_sigma_f_;
   vector<double> nu_p_sigma_f_;
   vector<double> sigma_f_;
-  vector<double> chi_p_;
+  vector<double> chi_;
   vector<double> chi_d_;
   vector<double> inverse_vbar_;
 
@@ -224,12 +251,14 @@ public:
                                   // times the number of delay groups
                                   //
   // Arrays for time-dependent simulations
-  vector<double> precursors_;
-  vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
+  vector<double> precursors_new_;
+  vector<double> precursors_old_;
+  vector<double> precursors_final_;
+  vector<double>* scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
                                       // solutions
-  vector<float> source_bdf_;         // Holds  bdf_order_ previous source
+  vector<float>* source_bdf_;         // Holds  bdf_order_ previous source
                                       // region values
-  vector<double> precursors_bdf_;     // Holds  bdf_order_ previous precursor
+  vector<double>* precursors_bdf_;     // Holds  bdf_order_ previous precursor
                                       // values
   
 protected:
