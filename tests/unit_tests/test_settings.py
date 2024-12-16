@@ -71,6 +71,7 @@ def test_export_to_xml(run_in_tmpdir):
     s.time_dependent = {
         'timesteps': [1, 1, 1],
         'timestep_units': 's',
+        'timestep_particles': 50,
         'timestep_batches': 300,
         'timestep_inactive': 100
     }
@@ -152,5 +153,6 @@ def test_export_to_xml(run_in_tmpdir):
     assert s.random_ray['ray_source'].space.upper_right == [1., 1., 1.]
     assert np.all(s.time_dependent['timesteps'] == [1, 1, 1])
     assert s.time_dependent['timestep_units'] == 's'
+    assert s.time_dependent['timestep_particles'] == 50
     assert s.time_dependent['timestep_batches'] == 300
     assert s.time_dependent['timestep_inactive'] == 100

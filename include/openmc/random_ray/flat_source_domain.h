@@ -85,6 +85,10 @@ struct TallyTask {
 
 //----------------------------------------------------------------------------
 // Helper Variables
+// Coefficients come from Table 3 in Fornberg (1988)
+// DOI: 10.1090/S0025-5718-1988-0935077-0
+// Note that the signs are flipped compared to the citation, as the author was
+// formulating weights for a forward difference
 const std::map<int, const vector<float>> bdf_coefficients_first_order_ = {
   {1, {1.0, -1.0}},
   {2, {1.5, -2.0, 0.5}},
@@ -103,22 +107,15 @@ const std::map<int, const vector<int>> bdf_timestep_coefficients_first_order_ = 
   {6, {147, -213, 237, -163, 62, -10}}
 };
 
+// Coefficients come from Table 3 in Fornberg (1988)
+// DOI: 10.1090/S0025-5718-1988-0935077-0
 const std::map<int, const vector<float>> bdf_coefficients_second_order_ = {
   {1, {1.0, -2.0, 1.0}},
-  {2, {1.5, -3.5, 2.5, -0.5}},
-  {3, {11/6, -29/6, 4.5, -11/6, 1/3}},
-  {4, {25/12, -73/12, 7.0, -13/3, 19/12, -0.25}},
-  {5, {137/60, -437/60, 10.0, -25/3, 55/12, -1.45, 0.2}},
-  {6, {2.45, -8.45, 13.5, -170/12, 125/12, -4.95, 41/30, -1/6}}
-};
-
-const std::map<int, const vector<int>> bdf_timestep_coefficients_first_order_ = {
-  {1, {1, }},
-  {2, {3, -1}},
-  {3, {11, -7, 2}},
-  {4, {25, -23, 13, -3}},
-  {5, {137, -163, 137, -63, 12}},
-  {6, {147, -213, 237, -163, 62, -10}}
+  {2, {2.0, -5.0, 4, -1}},
+  {3, {35/12, -26/3, 9.5, -14/3, 11/12}},
+  {4, {3.75, -77/6, 107/6, -13.0, 61/12, -5/6}},
+  {5, {203/45, -17.4, 29.25, -254/9, 16.5, -5.4, 137/180}},
+  {6, {469/90, -22.3, 43.95, -949/18, 41.0, -20.1, 1019/180, -0.7}}
 };
 
 /*

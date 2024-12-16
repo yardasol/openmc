@@ -266,14 +266,15 @@ class Settings:
         :timestep_units:
             `ms`,`s`, `min`. Units for timesteps. `ms` means miliseconds, `s`
             means seconds, `min` means minutes.
+        :timestep_particles:
+            Number of particles to simulate in timesteps for the `time dependent` run
+            mode.
         :timestep_batches:
             Number of batches to simulate in timesteps for the `time dependent` run
-            mode. Defaults to the number of batches for the steady-state initial
-            condition calculation.
+            mode.
         :timestep_inactive:
             Number of inactive batches in timesteps for the `time dependent` run
-            mode. Defaults to the number of inactive batches for the steady-state
-            initial condition calculation.
+            mode.
 
         .. versionadded:: 0.16
     trace : tuple or list
@@ -1172,6 +1173,9 @@ class Settings:
             elif key == 'timestep_units':
                 cv.check_value(
                     'timestep units', value, ('ms', 's', 'min'))
+            elif key == 'timestep_particles':
+                cv.check_type('timestep particles', value, Integral)
+                cv.check_greater_than('timestep particles', value, 0)
             elif key == 'timestep_batches':
                 cv.check_type('timestep batches', value, Integral)
                 cv.check_greater_than('timestep batches', value, 0)
@@ -2006,7 +2010,7 @@ class Settings:
         if elem is not None:
             self.time_dependent = {}
             for child in elem:
-                if child.tag in ('timestep_batches', 'timestep_inactive'):
+                if child.tag in ('timestep_particles','timestep_batches', 'timestep_inactive'):
                     self.time_dependent[child.tag] = int(child.text)
                 elif child.tag == 'timestep_units':
                     self.time_dependent['timestep_units'] = child.text

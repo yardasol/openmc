@@ -128,9 +128,11 @@ double temperature_default {293.6};
 array<double, 2> temperature_range {0.0, 0.0};
 
 // Time-dependent variables
+int n_timestep_particles; //!< number of particles to use for timesteps
 int n_timestep_batches; //!< number of (inactive+active) batches for timesteps
 int n_timestep_inactive;//!< number of inactive batches batches for timesteps
 vector<double> timesteps;//!< list of timesteps in seconds
+int current_timestep;    //
 
 int trace_batch;
 int trace_gen;
@@ -251,6 +253,12 @@ void get_run_parameters(pugi::xml_node node_base)
   // Get parameters for time-dependent simulations
   if (run_mode == RunMode::TIME_DEPENDENT) {
     xml_node td_node = node_base.child("time_dependent");
+    if (check_for_node(td_node, "timestep_particles")) {
+      n_timestep_particles = 
+          std::stoi(get_node_value(td_node, "timestep_particles"));
+    } else {
+      n_timestep_particles = n_particles;
+    }
     if (check_for_node(td_node, "timestep_batches")) {
       n_timestep_batches = 
           std::stoi(get_node_value(td_node, "timestep_batches"));
