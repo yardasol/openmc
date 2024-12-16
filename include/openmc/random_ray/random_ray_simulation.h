@@ -61,16 +61,15 @@ public:
   // Number of energy groups
   int negroups_;
   int ndgroups_;
+  // Random ray eigenvalue
+  double k_eff_ {1.0};
 
 private:
   //----------------------------------------------------------------------------
   // Data members
 
   // Contains all flat source region data
-  unique_ptr<FlatSourceDomain> domain_;
-
-  // Random ray eigenvalue
-  double k_eff_ {1.0};
+  unique_ptr<FlatSourceDomain> domain_; 
 
   // Tracks the average FSR miss rate for analysis and reporting
   double avg_miss_rate_ {0.0};

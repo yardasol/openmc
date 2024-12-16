@@ -171,6 +171,7 @@ void openmc_run_random_ray_time_dependent()
   openmc_run_random_ray(true);
 
   rename_statepoint_file(0);
+  double steady_state_keff = simulation::keff;
   
   // Timestepping loop
   settings::run_mode = RunMode::TIME_DEPENDENT;
@@ -180,6 +181,7 @@ void openmc_run_random_ray_time_dependent()
   initialize_bdf_vectors(random_ray_td::scalar_flux_init_.size());
 
   for (int i = 1; i < settings::timesteps.size() + 1; i++) {
+    settings::current_timestep = i;
     if (mpi::master) {
       std::string message = fmt::format("TIME DEPENDENT SOLVE {0}", i);
       const char* msg = message.c_str();
@@ -195,6 +197,7 @@ void openmc_run_random_ray_time_dependent()
     openmc_simulation_init();
 
     RandomRaySimulation sim_td;
+    sim_td.k_eff_ = steady_state_keff;
 
     sim_td.point_to_bdf_vectors();
 
@@ -260,8 +263,8 @@ void rename_statepoint_file(int i)
   // Rename statepoint file
   std::string old_filename_ = fmt::format("{0}statepoint.{1}.h5",
           settings::path_output, settings::n_max_batches);
-  std::string new_filename_ = fmt::format("{0}openmc_td_simulation_{2}.{1}.h5",
-              settings::path_output, settings::n_max_batches, i);
+  std::string new_filename_ = fmt::format("{0}openmc_td_simulation_{1}.h5",
+              settings::path_output, i);
 
   const char* old_fname = old_filename_.c_str();
   const char* new_fname = new_filename_.c_str();
@@ -553,6 +556,7 @@ void RandomRaySimulation::simulate()
       // Update time-dependent precursor concentrations
       domain_->update_precursors();
       domain_->update_bdf_precursors();
+      // TODO: add keff updates a la the new rufus paper
     }
 
 

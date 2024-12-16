@@ -10,7 +10,6 @@
 #include "openmc/output.h"
 #include "openmc/plot.h"
 #include "openmc/random_ray/random_ray.h"
-#include "openmc/random_ray/random_ray_simulation.h"
 #include "openmc/simulation.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/tally.h"
@@ -189,6 +188,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         double delayed_source = 0.0f;
         double chi_d = chi_d_[material * negroups_ + g_out];
+        //TODO: Maybe add flow control here to check if chi_d is zero?
         for (int dg = 0; dg < ndgroups_; dg++) {
           double lambda = lambda_[material * ndgroups_ + dg];
           double precursors = precursors_old_[sr * ndgroups_ + dg];
@@ -1247,11 +1247,14 @@ void FlatSourceDomain::calculate_steady_state_precursors() {
     int mat = material_[sr];
     for (int dg = 0; dg < ndgroups_; dg++) {
       double lambda = lambda_[mat * ndgroups_ + dg];
-      for (int g_in = 0; g_in < negroups_; g_in++) {
-        double nu_d_sigma_f =
-          nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
-        //TODO: verify that this works with scalar_flux_new_
-        precursors_old_[sr * ndgroups_ + dg] += scalar_flux_old_[sr * negroups_ + g_in] * nu_d_sigma_f / lambda;
+      if (lambda == 0.0) {
+        precursors_old_[sr * ndgroups_ + dg] = 0.0;
+      } else {
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          double nu_d_sigma_f =
+            nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
+          precursors_old_[sr * ndgroups_ + dg] += scalar_flux_old_[sr * negroups_ + g_in] * nu_d_sigma_f / lambda;
+        }
       }
     (*precursors_bdf_)[sr * ndgroups_ + dg] = precursors_old_[sr * ndgroups_ + dg];
     }
@@ -1271,50 +1274,56 @@ void FlatSourceDomain::update_precursors() {
     int mat = material_[sr];
     for (int dg = 0; dg < ndgroups_; dg++) {
       double lambda = lambda_[mat * ndgroups_ + dg];
-      double sum_term = 0.0;
-      for (int g_in = 0; g_in < negroups_; g_in++) {
-        double nu_d_sigma_f =
-          nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
-        sum_term += scalar_flux_new_[sr * negroups_ + g_in] * nu_d_sigma_f;
-      }
+      if (lambda == 0.0) {
+        precursors_new_[sr * ndgroups_ + dg] = 0.0;
+      } else {
+        double sum_term = 0.0;
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          double nu_d_sigma_f =
+            nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
+          sum_term += scalar_flux_new_[sr * negroups_ + g_in] * nu_d_sigma_f;
+        }
       
-      const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
-      float A0 = bdf_coeffs[0] / dt_;
+        const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+        float A0 = bdf_coeffs[0] / dt_;
 
-      double precursor_lhs_bdf = 0.0;
-      for (int j = 1; j < bdf_order_; j++) {
-        precursor_lhs_bdf += bdf_coeffs[j] * (*precursors_bdf_)[sr * ndgroups_ + dg  + j * n_source_elements_] / dt_;
-      }
-      precursors_new_[sr * ndgroups_ + dg] = sum_term - precursor_lhs_bdf;
-      precursors_new_[sr * ndgroups_ + dg] /= A0 + lambda;
+        double precursor_lhs_bdf = 0.0;
+        for (int j = 1; j < bdf_order_; j++) {
+          precursor_lhs_bdf += bdf_coeffs[j] * (*precursors_bdf_)[sr * ndgroups_ + dg  + j * n_source_elements_] / dt_;
+        }
+        precursors_new_[sr * ndgroups_ + dg] = sum_term - precursor_lhs_bdf;
+        precursors_new_[sr * ndgroups_ + dg] /= A0 + lambda;
+      }      
     }
   }
 }
 
 float FlatSourceDomain::source_time_derivative(int index) {
-  const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+  vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
   float dQdt = 0.0;
-  for (int i = 0; i < bdf_order_; i++) {
-    dQdt += bdf_coeffs[i] * (*source_bdf_)[index + i * n_source_elements_] / dt_;
+  for (int i = 0; i <= bdf_order_; i++) {
+    float coeff = bdf_coeffs[i];
+    float source = (*source_bdf_)[index + i * n_source_elements_];
+    dQdt += coeff * source / dt_;
   }
   return dQdt;
 }
 
 float FlatSourceDomain::scalar_flux_time_derivative2(int index) {
-  const vector<float> bdf_coeffs2 = bdf_coefficients_second_order_.at(bdf_order_);
+  vector<float> bdf_coeffs2 = bdf_coefficients_second_order_.at(bdf_order_);
   // This might cause rounding errors as scalar_flux_bdf_ is of type double
   double dphi2_dt2 = 0.0;
-  for (int i = 0; i < bdf_order_ + 1; i++) {
+  for (int i = 0; i <= bdf_order_ + 1; i++) {
     dphi2_dt2 += bdf_coeffs2[i] * (*scalar_flux_bdf_)[index + i * n_source_elements_] / (dt_ * dt_);
   }
   return dphi2_dt2;
 }
 
 float FlatSourceDomain::scalar_flux_time_derivative(int index) {
-  const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+  vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
   // This might cause rounding errors as scalar_flux_bdf_ is of type double
   double dphi_dt = 0.0;
-  for (int i = 0; i < bdf_order_; i++) {
+  for (int i = 0; i <= bdf_order_; i++) {
     dphi_dt += bdf_coeffs[i] * (*scalar_flux_bdf_)[index + i * n_source_elements_] / dt_;
   }
   return dphi_dt;

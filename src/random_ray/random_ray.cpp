@@ -323,17 +323,30 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     float sigma_t = domain_->sigma_t_[material * negroups_ + g];
     float tau = sigma_t * distance;
     float exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
-    float new_delta_psi =
-      (angular_flux_[g] - domain_->source_[source_element + g]) * exponential;
+    float angular_flux = angular_flux_[g];       // DEBUGGING
+    float Q = domain_->source_[source_element + g]; // DEBUGGING
+    float new_delta_psi = 
+        (angular_flux_[g] - domain_->source_[source_element + g]) * exponential;
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
       float dQdt = domain_->source_time_derivative(source_element + g);
-      // TODO: need to approximate with first order at initial timestep
-      float dphi2_dt2 = domain_->scalar_flux_time_derivative2(source_element + g); 
-      float T = dQdt - inverse_vbar * dphi2_dt2 / (4 * PI);
+      float T;
+      // Truncate dphi2_dt2 when we can't calculate it
+      // TODO: make a dphi2_dt2 approximation
+      if (settings::current_timestep < 3 || simulation::current_batch <= 1) {
+        T = dQdt;
+      } else {
+        float dphi2_dt2 = domain_->scalar_flux_time_derivative2(source_element + g); 
+        T = dQdt - inverse_vbar * dphi2_dt2 / (4 * PI);
+      }
+      float angular_flux_dt = angular_flux_dt_[g]; //DEBUGGING
       float S = angular_flux_dt_[g] - T / sigma_t; 
       // Add time-dependent terms to delta psi
-      new_delta_psi += inverse_vbar * T / sigma_t * sigma_t * exponential;
+      bool whatiwant;
+      if (source_element + g == 0) { //debugging
+        whatiwant = true; //debugging
+      }
+      new_delta_psi += inverse_vbar *  T / (sigma_t * sigma_t) * exponential;
       new_delta_psi += distance * inverse_vbar * S * (1 - exponential);
       // Calculate delta for dpsi/dt
       angular_flux_dt_[g] -= S * exponential;
