@@ -181,10 +181,7 @@ public:
   static bool volume_normalized_flux_tallies_;
   static bool adjoint_; // If the user wants outputs based on the adjoint flux
   static RandomRayVolumeEstimator volume_estimator_;
-  static int bdf_order_max_;                 // Max order for BDF approximation
-                                             // We boostrap up from lower BDF
-                                             // orders.
-
+  
   //----------------------------------------------------------------------------
   // Public Data members
 
@@ -193,7 +190,7 @@ public:
   int64_t n_source_regions_ {0}; // Total number of source regions in the model
   int64_t n_external_source_regions_ {0}; // Total number of source regions with
                                           // non-zero external source terms
-  int bdf_order_ {1};                     // Order for BDF approximation.
+  int bdf_order_;                     // Order for BDF approximation.
   double dt_; // Timestep size in seconds
                                       
 
@@ -270,7 +267,7 @@ protected:
     Discrete* discrete, double strength_factor, int32_t target_material_id);
   virtual void set_flux_to_flux_plus_source(
     int64_t idx, double volume, int material, int g);
-  void set_flux_to_source(int64_t idx);
+  void set_flux_to_source(int64_t idx, int material, int g);
   virtual void set_flux_to_old_flux(int64_t idx);
 
   //----------------------------------------------------------------------------

@@ -27,8 +27,7 @@ namespace openmc {
 // Global variable declarations
 //==============================================================================
 namespace random_ray_td {
-
-//vector<double> precursors_init_;
+int bdf_order_ {1};
 vector<double> scalar_flux_init_;
 vector<float> source_init_;
 vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
@@ -173,17 +172,20 @@ void openmc_run_random_ray_time_dependent()
   rename_statepoint_file(0);
   double steady_state_keff = simulation::keff;
   
-  // Timestepping loop
+  // Settinsg for timestepping loop
   settings::run_mode = RunMode::TIME_DEPENDENT;
+  settings::statepoint_batch.erase(settings::n_batches);
   settings::n_batches = settings::n_timestep_batches;
   settings::n_inactive = settings::n_timestep_inactive;
-
+  settings::statepoint_batch.insert(settings::n_batches);
+  
   initialize_bdf_vectors(random_ray_td::scalar_flux_init_.size());
 
-  for (int i = 1; i < settings::timesteps.size() + 1; i++) {
+  for (int i = 0; i < settings::timesteps.size(); i++) {
     settings::current_timestep = i;
     if (mpi::master) {
-      std::string message = fmt::format("TIME DEPENDENT SOLVE {0}", i);
+      // Offset to resolve steady state
+      std::string message = fmt::format("TIME DEPENDENT SOLVE {0}", i + 1);
       const char* msg = message.c_str();
       header(msg, 3);
     }
@@ -198,11 +200,12 @@ void openmc_run_random_ray_time_dependent()
 
     RandomRaySimulation sim_td;
     sim_td.k_eff_ = steady_state_keff;
+    sim_td.domain()->bdf_order_ = random_ray_td::bdf_order_;
 
     sim_td.point_to_bdf_vectors();
 
     sim_td.domain()->initialize_source_and_flux_from_bdf();
-    if (i == 1) {
+    if (i == 0) {
       sim_td.domain()->calculate_steady_state_precursors();
     }
     sim_td.domain()->initialize_precursors_from_bdf();
@@ -235,34 +238,34 @@ void openmc_run_random_ray_time_dependent()
     sim_td.output_simulation_results();
 
     // Rename statepoint file
-    rename_statepoint_file(i);
+    rename_statepoint_file(i + 1);
 
     // Update BDFk vectors with final values
     sim_td.domain()->finalize_bdf_vectors();
 
     // Increment BDF order up to the maximum allowed by the user
-    if (i < FlatSourceDomain::bdf_order_max_) {
-      sim_td.domain()->bdf_order_++;
+    if (i < RandomRaySimulation::bdf_order_max_) {
+        random_ray_td::bdf_order_++;
     }
   }
 }
 
 void initialize_bdf_vectors(int n_source_elements) {
-  random_ray_td::scalar_flux_bdf_.assign(n_source_elements * (FlatSourceDomain::bdf_order_max_ + 2), 0.0);
-  random_ray_td::source_bdf_.assign(n_source_elements * (FlatSourceDomain::bdf_order_max_ + 1), 0.0);
+  random_ray_td::scalar_flux_bdf_.assign(n_source_elements * (RandomRaySimulation::bdf_order_max_ + 2), 0.0);
+  random_ray_td::source_bdf_.assign(n_source_elements * (RandomRaySimulation::bdf_order_max_ + 1), 0.0);
   for (int i = 0; i < n_source_elements; i++) {
       random_ray_td::scalar_flux_bdf_[i] = random_ray_td::scalar_flux_init_[i];
       random_ray_td::source_bdf_[i] = random_ray_td::source_init_[i];
   }
   int ndgroups = data::mg.num_delayed_groups_;
-  random_ray_td::precursors_bdf_.assign(n_source_elements * ndgroups * (FlatSourceDomain::bdf_order_max_ + 1), 0.0);
+  random_ray_td::precursors_bdf_.assign(n_source_elements * ndgroups * (RandomRaySimulation::bdf_order_max_ + 1), 0.0);
 }
 
 void rename_statepoint_file(int i)
 {
   // Rename statepoint file
   std::string old_filename_ = fmt::format("{0}statepoint.{1}.h5",
-          settings::path_output, settings::n_max_batches);
+          settings::path_output, settings::n_batches);
   std::string new_filename_ = fmt::format("{0}openmc_td_simulation_{1}.h5",
               settings::path_output, i);
 
@@ -450,6 +453,9 @@ void validate_random_ray_inputs()
 //==============================================================================
 // RandomRaySimulation implementation
 //==============================================================================
+
+// Static variable declaration
+int RandomRaySimulation::bdf_order_max_ {1};
 
 RandomRaySimulation::RandomRaySimulation()
   : negroups_(data::mg.num_energy_groups_),

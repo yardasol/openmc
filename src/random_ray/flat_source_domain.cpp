@@ -30,7 +30,6 @@ RandomRayVolumeEstimator FlatSourceDomain::volume_estimator_ {
   RandomRayVolumeEstimator::HYBRID};
 bool FlatSourceDomain::volume_normalized_flux_tallies_ {false};
 bool FlatSourceDomain::adjoint_ {false};
-int FlatSourceDomain::bdf_order_max_ {1};
 
 FlatSourceDomain::FlatSourceDomain()
   : negroups_(data::mg.num_energy_groups_),
@@ -83,6 +82,7 @@ FlatSourceDomain::FlatSourceDomain()
     // source to steady state source.
     precursors_old_.assign(n_delay_elements_, 0.0);
     precursors_new_.assign(n_delay_elements_, 0.0);
+    precursors_final_.assign(n_delay_elements_, 0.0);
     scalar_flux_old_.assign(n_source_elements_, 0.0);
     source_.assign(n_source_elements_, 0.0);
   }
@@ -183,8 +183,9 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         scatter_source += sigma_s * scalar_flux;
         fission_source += nu_sigma_f * scalar_flux * chi;
       }
+      float s = (scatter_source + fission_source * inverse_k_eff) / (4 * PI); //DEBUG
       source_[sr * negroups_ + g_out] =
-        (scatter_source + fission_source * inverse_k_eff) / sigma_t;
+        (scatter_source + fission_source * inverse_k_eff) / (4 * PI);
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         double delayed_source = 0.0f;
         double chi_d = chi_d_[material * negroups_ + g_out];
@@ -194,7 +195,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
           double precursors = precursors_old_[sr * ndgroups_ + dg];
           delayed_source += precursors * lambda;
         }
-        source_[sr * negroups_ + g_out] += delayed_source * chi_d * 4 * PI / sigma_t;
+        source_[sr * negroups_ + g_out] += delayed_source * chi_d;
       }
     }
   }
@@ -239,7 +240,8 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
 {
   double sigma_t = sigma_t_[material * negroups_ + g];
   scalar_flux_new_[idx] /= (sigma_t * volume);
-  scalar_flux_new_[idx] += source_[idx];
+  scalar_flux_new_[idx] *= 4 * PI;
+  scalar_flux_new_[idx] += 4 * PI * source_[idx] / sigma_t;
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     // Equation E.6
     const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
@@ -247,8 +249,9 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
 
     double flux_rhs_bdf = 0.0;
     for (int j = 1; j < bdf_order_; j++) {
-      flux_rhs_bdf += bdf_coeffs[j] * (*scalar_flux_bdf_)[idx + j * n_source_elements_] / dt_;
+      flux_rhs_bdf += bdf_coeffs[j] * (*scalar_flux_bdf_)[idx + j * n_source_elements_];
     }
+    flux_rhs_bdf /= dt_;
     double inverse_vbar = inverse_vbar_[material * negroups_ + g];
     scalar_flux_new_[idx] -= flux_rhs_bdf * inverse_vbar / sigma_t;
     scalar_flux_new_[idx] /= 1 + A0 * inverse_vbar / sigma_t;
@@ -260,9 +263,10 @@ void FlatSourceDomain::set_flux_to_old_flux(int64_t idx)
   scalar_flux_new_[idx] = scalar_flux_old_[idx];
 }
 
-void FlatSourceDomain::set_flux_to_source(int64_t idx)
+void FlatSourceDomain::set_flux_to_source(int64_t idx, int material, int g)
 {
-  scalar_flux_new_[idx] = source_[idx];
+  double sigma_t = sigma_t_[material * negroups_ + g];
+  scalar_flux_new_[idx] = source_[idx] / sigma_t;
 }
 
 // Combine transport flux contributions and flat source contributions from the
@@ -334,7 +338,7 @@ int64_t FlatSourceDomain::add_source_to_scalar_flux()
         if (external_source_present) {
           set_flux_to_old_flux(idx);
         } else {
-          set_flux_to_source(idx);
+          set_flux_to_source(idx, material, g);
         }
       }
       // If the FSR was not hit this iteration, and it has never been hit in
@@ -572,7 +576,7 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
     for (int g = 0; g < negroups_; g++) {
       double sigma_t = sigma_t_[material * negroups_ + g];
       simulation_external_source_strength +=
-        external_source_[sr * negroups_ + g] * sigma_t * volume;
+        external_source_[sr * negroups_ + g] * volume;
     }
   }
 
@@ -1065,14 +1069,14 @@ void FlatSourceDomain::convert_external_sources()
 
 // Divide the fixed source term by sigma t (to save time when applying each
 // iteration)
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-    for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[material * negroups_ + g];
-      external_source_[sr * negroups_ + g] /= sigma_t;
-    }
-  }
+//#pragma omp parallel for
+//  for (int sr = 0; sr < n_source_regions_; sr++) {
+//    int material = material_[sr];
+//    for (int g = 0; g < negroups_; g++) {
+//      double sigma_t = sigma_t_[material * negroups_ + g];
+//      external_source_[sr * negroups_ + g] /= sigma_t;
+//    }
+//  }
 }
 
 void FlatSourceDomain::flux_swap()
@@ -1180,14 +1184,14 @@ void FlatSourceDomain::set_adjoint_sources(const vector<double>& forward_flux)
 
   // Divide the fixed source term by sigma t (to save time when applying each
   // iteration)
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-    for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[material * negroups_ + g];
-      external_source_[sr * negroups_ + g] /= sigma_t;
-    }
-  }
+//#pragma omp parallel for
+//  for (int sr = 0; sr < n_source_regions_; sr++) {
+//    int material = material_[sr];
+//    for (int g = 0; g < negroups_; g++) {
+//      double sigma_t = sigma_t_[material * negroups_ + g];
+//      external_source_[sr * negroups_ + g] /= sigma_t;
+//    }
+//  }
 }
 
 void FlatSourceDomain::transpose_scattering_matrix()
@@ -1214,6 +1218,7 @@ void FlatSourceDomain::update_time_dependent_cross_sections(int i) {
   for (int j = 0; j < model::materials.size(); j++) {
     auto& mat {model::materials[j]};
     if (mat->density_timeseries_.size() != 0) {
+      double timeseries_d = mat->density_timeseries_[i]; // DEBUG
       double density_factor = mat->density_timeseries_[i] / mat->density_; 
       mat->density_ = density_factor;
       int material = mat->id_;
@@ -1253,6 +1258,7 @@ void FlatSourceDomain::calculate_steady_state_precursors() {
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
+          float p = scalar_flux_old_[sr * negroups_ + g_in] * nu_d_sigma_f / lambda; //DEBUGGING
           precursors_old_[sr * ndgroups_ + dg] += scalar_flux_old_[sr * negroups_ + g_in] * nu_d_sigma_f / lambda;
         }
       }
@@ -1289,8 +1295,9 @@ void FlatSourceDomain::update_precursors() {
 
         double precursor_lhs_bdf = 0.0;
         for (int j = 1; j < bdf_order_; j++) {
-          precursor_lhs_bdf += bdf_coeffs[j] * (*precursors_bdf_)[sr * ndgroups_ + dg  + j * n_source_elements_] / dt_;
+          precursor_lhs_bdf += bdf_coeffs[j] * (*precursors_bdf_)[sr * ndgroups_ + dg  + j * n_source_elements_];
         }
+        precursor_lhs_bdf /= dt_;
         precursors_new_[sr * ndgroups_ + dg] = sum_term - precursor_lhs_bdf;
         precursors_new_[sr * ndgroups_ + dg] /= A0 + lambda;
       }      

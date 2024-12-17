@@ -12,6 +12,7 @@ namespace openmc {
 namespace random_ray_td {
 
 //extern vector<double> precursors_init_;
+extern int bdf_order;
 extern vector<double> scalar_flux_init_;
 extern vector<float> source_init_;
 extern vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
@@ -64,6 +65,9 @@ public:
   // Random ray eigenvalue
   double k_eff_ {1.0};
 
+  static int bdf_order_max_;                 // Max order for BDF approximation
+                                             // We boostrap up from lower BDF
+                                             // orders.
 private:
   //----------------------------------------------------------------------------
   // Data members
