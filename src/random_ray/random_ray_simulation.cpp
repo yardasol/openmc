@@ -180,7 +180,7 @@ void openmc_run_random_ray_time_dependent()
   settings::statepoint_batch.insert(settings::n_batches);
   
   initialize_bdf_vectors(random_ray_td::scalar_flux_init_.size());
-
+  
   for (int i = 0; i < settings::timesteps.size(); i++) {
     settings::current_timestep = i;
     if (mpi::master) {
@@ -193,9 +193,6 @@ void openmc_run_random_ray_time_dependent()
     reset_timers();
 
     // Initialize OpenMC general data structures
-    // This might not work as there may be stuff called in 
-    // openmc_simulation_init() that needs to be before we initalize the
-    // simulation object.
     openmc_simulation_init();
 
     RandomRaySimulation sim_td;
@@ -239,6 +236,21 @@ void openmc_run_random_ray_time_dependent()
 
     // Rename statepoint file
     rename_statepoint_file(i + 1);
+
+    // Normalize final values
+    double normalization_factor = 1.0 / (settings::n_batches -
+            settings::n_inactive);
+
+    vector<double> &final_flux = sim_td.domain()->scalar_flux_final_;
+    vector<double> &final_precursors = sim_td.domain()->precursors_final_;
+#pragma omp parallel for
+    for (uint64_t i = 0; i < final_flux.size(); i++) {
+      final_flux[i] *= normalization_factor;
+    }
+#pragma omp parallel for
+    for (uint64_t i = 0; i < final_precursors.size(); i++) {
+      final_precursors[i] *= normalization_factor;
+    }
 
     // Update BDFk vectors with final values
     sim_td.domain()->finalize_bdf_vectors();
@@ -567,6 +579,7 @@ void RandomRaySimulation::simulate()
 
 
     // Execute all tallying tasks, if this is an active batch
+    int cb = simulation::current_batch; // DEBUG
     if (simulation::current_batch > settings::n_inactive) {
 
       // Add this iteration's scalar flux estimate to final accumulated estimate

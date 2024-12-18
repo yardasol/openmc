@@ -1221,17 +1221,16 @@ void FlatSourceDomain::update_time_dependent_cross_sections(int i) {
       double timeseries_d = mat->density_timeseries_[i]; // DEBUG
       double density_factor = mat->density_timeseries_[i] / mat->density_; 
       mat->density_ = density_factor;
-      int material = mat->id_;
       for (int g_out = 0; g_out < negroups_; g_out++) {
         for (int dg = 0; dg < ndgroups_; dg++) {
-          nu_d_sigma_f_[material * negroups_ * ndgroups_ + g_out * ndgroups_ + dg] *= density_factor;
+          nu_d_sigma_f_[j * negroups_ * ndgroups_ + g_out * ndgroups_ + dg] *= density_factor;
         }
-        nu_p_sigma_f_[material * negroups_ + g_out] *= density_factor;
-        sigma_t_[material * negroups_ + g_out] *= density_factor;
-        nu_sigma_f_[material * negroups_ + g_out] *= density_factor;
-        sigma_f_[material * negroups_ + g_out] *= density_factor;
+        nu_p_sigma_f_[j * negroups_ + g_out] *= density_factor;
+        sigma_t_[j * negroups_ + g_out] *= density_factor;
+        nu_sigma_f_[j * negroups_ + g_out] *= density_factor;
+        sigma_f_[j * negroups_ + g_out] *= density_factor;
         for (int g_in = 0; g_in < negroups_; g_in++) {
-          sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in] *= density_factor;
+          sigma_s_[j * negroups_ * negroups_ + g_out * negroups_ + g_in] *= density_factor;
         }
       }
     }
