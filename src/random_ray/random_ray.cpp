@@ -329,7 +329,7 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
         (angular_flux_[g] - (domain_->source_[source_element + g] / sigma_t)) * exponential;
     if (settings::run_mode == RunMode::TIME_DEPENDENT) { // Maybe add "is active" here?
       float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
-      float dQdt = domain_->source_time_derivative(source_element + g);
+      float dQdt = domain_->bdf_time_derivative(source_element + g, domain_->source_bdf_);
       float T;
       // Truncate dphi2_dt2 when we can't calculate it
       // TODO: make a dphi2_dt2 approxi2ation
@@ -337,7 +337,8 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
       // Let's just Truncate dphi2_dt2 for now...
       T = dQdt;
       //} else {
-      //  float dphi2_dt2 = domain_->scalar_flux_time_derivative2(source_element + g); 
+      //  float dphi2_dt2 = domain_->bdf_time_derivative(source_element + g,
+      //  domain_->scalar_flux_bdf_, 2); 
       //  T = dQdt - inverse_vbar * dphi2_dt2 / (4 * PI);
       //}
       float angular_flux_dt = angular_flux_dt_[g]; //DEBUGGING
@@ -572,7 +573,7 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
     // location's isotropic source time derivative. Like the angular flux, it
     // the approximation for this should improve over the active ray length
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      angular_flux_dt_[g] = domain_->source_time_derivative(source_region_idx * negroups_ + g);
+      angular_flux_dt_[g] = domain_->bdf_time_derivative(source_region_idx * negroups_ + g, domain_->source_bdf_);
     }
   }
 }

@@ -189,13 +189,14 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         double delayed_source = 0.0f;
         double chi_d = chi_d_[material * negroups_ + g_out];
-        //TODO: Maybe add flow control here to check if chi_d is zero?
-        for (int dg = 0; dg < ndgroups_; dg++) {
-          double lambda = lambda_[material * ndgroups_ + dg];
-          double precursors = precursors_old_[sr * ndgroups_ + dg];
-          delayed_source += precursors * lambda;
-        }
-        source_[sr * negroups_ + g_out] += delayed_source * chi_d;
+        if (chi_d != 0.0) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+            double lambda = lambda_[material * ndgroups_ + dg];
+            double precursors = precursors_old_[sr * ndgroups_ + dg];
+            delayed_source += precursors * lambda;
+          }
+          source_[sr * negroups_ + g_out] += delayed_source * chi_d / (4 * PI); // Does 4 * PI need to be here??
+        }                                                                        // 
       }
     }
   }
@@ -1304,57 +1305,53 @@ void FlatSourceDomain::update_precursors() {
   }
 }
 
-float FlatSourceDomain::source_time_derivative(int index) {
-  vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
-  float dQdt = 0.0;
-  for (int i = 0; i <= bdf_order_; i++) {
+float FlatSourceDomain::bdf_time_derivative(int index, vector<float>* bdf_vector,
+        int derivative_order)
+{
+  vector<float> bdf_coeffs;
+  int n_bdf_terms;
+  double time_factor;
+  if (derivative_order == 1) {
+    bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+    n_bdf_terms = bdf_order_;
+    time_factor = dt_;
+  } else if (derivative_order == 2) {
+    bdf_coeffs = bdf_coefficients_second_order_.at(bdf_order_);
+    n_bdf_terms = bdf_order_ + 1;
+    time_factor = dt_ * dt_;
+  }
+  float bdf_derivative = 0.0;
+  for (int i = 0; i < n_bdf_terms; i++) {
     float coeff = bdf_coeffs[i];
-    float source = (*source_bdf_)[index + i * n_source_elements_];
-    dQdt += coeff * source / dt_;
+    float x = (*bdf_vector)[index + i * n_source_elements_];
+    bdf_derivative += coeff * x / time_factor;
   }
-  return dQdt;
+  return bdf_derivative;
 }
 
-float FlatSourceDomain::scalar_flux_time_derivative2(int index) {
-  vector<float> bdf_coeffs2 = bdf_coefficients_second_order_.at(bdf_order_);
-  // This might cause rounding errors as scalar_flux_bdf_ is of type double
-  double dphi2_dt2 = 0.0;
-  for (int i = 0; i <= bdf_order_ + 1; i++) {
-    dphi2_dt2 += bdf_coeffs2[i] * (*scalar_flux_bdf_)[index + i * n_source_elements_] / (dt_ * dt_);
+float FlatSourceDomain::bdf_time_derivative(int index, vector<double>* bdf_vector,
+        int derivative_order)
+{
+  vector<float> bdf_coeffs;
+  int n_bdf_terms;
+  double time_factor;
+  if (derivative_order == 1) {
+    bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+    n_bdf_terms = bdf_order_;
+    time_factor = dt_;
+  } else if (derivative_order == 2) {
+    bdf_coeffs = bdf_coefficients_second_order_.at(bdf_order_);
+    n_bdf_terms = bdf_order_ + 1;
+    time_factor = dt_ * dt_;
   }
-  return dphi2_dt2;
-}
-
-float FlatSourceDomain::scalar_flux_time_derivative(int index) {
-  vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
-  // This might cause rounding errors as scalar_flux_bdf_ is of type double
-  double dphi_dt = 0.0;
-  for (int i = 0; i <= bdf_order_; i++) {
-    dphi_dt += bdf_coeffs[i] * (*scalar_flux_bdf_)[index + i * n_source_elements_] / dt_;
+  double bdf_derivative = 0.0;
+  for (int i = 0; i < n_bdf_terms; i++) {
+    float coeff = bdf_coeffs[i];
+    double x = (*bdf_vector)[index + i * n_source_elements_];
+    bdf_derivative += coeff * x / time_factor;
   }
-  return dphi_dt;
+  return bdf_derivative;
 }
-
-//float FlatSourceDomain::bdf_time_derivative(int index, int chunk_size, int derivative_order,
-//        vector<float>* bdf_vector)
-//{
-//  if (derivative_order == 1) {
-//    bdf_coeffs = bdf_coefficients_first_order_[bdf_order_];
-//    int n_bdf_terms = bdf_order_;
-//    double time_factor = dt;
-//  } else if (derivative_order == 2) {
-//    bdf_coeffs = bdf_coefficients_second_order_[bdf_order_];
-//    int n_bdf_terms = bdf_order_ + 1;
-//    double time_factor = dt**2;
-//  }
-//  // Using float here might cause rounding errors with certain bdf vectors that
-//  // are doubles
-//  float bdf_derivative = 0.0;
-//  for (int i = 0; i < n_bdf_terms; i++) {
-//    bdf_derivative += bdf_coeffs[i] * *bdf_vector[index + i * chunk_size] / time_factor;
-//  }
-//  return bdf_derivative
-//}
 
 void FlatSourceDomain::update_bdf_vector(vector<float>* bdf_vector,
         vector<float>* new_solution, bool increment)

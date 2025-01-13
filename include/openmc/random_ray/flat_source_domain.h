@@ -162,12 +162,10 @@ public:
   void calculate_steady_state_precursors();
   void initialize_precursors_from_bdf();
   void update_precursors();
-  // Call bdf_order_ inside this function
-  float source_time_derivative(int index);
-  // Calculate d2phi/dt2 from phis
-  float scalar_flux_time_derivative2(int index);
-  // Calculate dphi/dt from phis
-  float scalar_flux_time_derivative(int index);
+  float bdf_time_derivative(int index, vector<float>* bdf_vector,
+          int derivative_order = 1);
+  float bdf_time_derivative(int index, vector<double>* bdf_vector,
+          int derivative_order = 1);
   void update_bdf_vector(vector<float>* bdf_vector, vector<float>* new_solution, bool increment);
   void update_bdf_vector(vector<double>* bdf_vector, vector<double>* new_solution, bool increment);
   void update_bdf_source();
