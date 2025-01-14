@@ -322,7 +322,7 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     float tau = sigma_t * distance;
     float exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
     float new_delta_psi =
-      (angular_flux_[g] - domain_->source_[source_element + g]) * exponential;
+      (angular_flux_[g] - domain_->source_[source_element + g] / sigma_t) * exponential;
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
   }

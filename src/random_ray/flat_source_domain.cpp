@@ -158,7 +158,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
       }
 
       source_[sr * negroups_ + g_out] = 
-        (scatter_source + fission_source * inverse_k_eff)/ sigma_t;
+        (scatter_source + fission_source * inverse_k_eff);
     }
   }
 
@@ -202,7 +202,7 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
 {
   double sigma_t = sigma_t_[material * negroups_ + g];
   scalar_flux_new_[idx] /= (sigma_t * volume);
-  scalar_flux_new_[idx] += source_[idx];
+  scalar_flux_new_[idx] += source_[idx] / sigma_t;
 }
 
 void FlatSourceDomain::set_flux_to_old_flux(int64_t idx)
@@ -517,12 +517,10 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
   double simulation_external_source_strength = 0.0;
 #pragma omp parallel for reduction(+ : simulation_external_source_strength)
   for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
     double volume = volume_[sr] * simulation_volume_;
     for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[material * negroups_ + g];
       simulation_external_source_strength +=
-        external_source_[sr * negroups_ + g] * sigma_t * volume;
+        external_source_[sr * negroups_ + g] * volume;
     }
   }
 
@@ -1012,17 +1010,6 @@ void FlatSourceDomain::convert_external_sources()
       }
     }
   } // End loop over external sources
-
-// Divide the fixed source term by sigma t (to save time when applying each
-// iteration)
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-    for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[material * negroups_ + g];
-      external_source_[sr * negroups_ + g] /= sigma_t;
-    }
-  }
 }
 
 void FlatSourceDomain::flux_swap()
@@ -1084,17 +1071,6 @@ void FlatSourceDomain::set_adjoint_sources(const vector<double>& forward_flux)
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
     external_source_[se] = 1.0 / forward_flux[se];
-  }
-
-  // Divide the fixed source term by sigma t (to save time when applying each
-  // iteration)
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-    for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[material * negroups_ + g];
-      external_source_[sr * negroups_ + g] /= sigma_t;
-    }
   }
 }
 
