@@ -335,6 +335,7 @@ enum class RunMode {
   UNSET, // default value, OpenMC throws error if left to this
   FIXED_SOURCE,
   EIGENVALUE,
+  TIME_DEPENDENT,
   PLOTTING,
   PARTICLE,
   VOLUME

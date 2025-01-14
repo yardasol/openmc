@@ -21,6 +21,7 @@ from .weight_windows import WeightWindows, WeightWindowGenerator
 class RunMode(Enum):
     EIGENVALUE = 'eigenvalue'
     FIXED_SOURCE = 'fixed source'
+    TIME_DEPENDENT = 'time dependent'
     PLOT = 'plot'
     VOLUME = 'volume'
     PARTICLE_RESTART = 'particle restart'
@@ -186,7 +187,7 @@ class Settings:
         The 'nuclides' list indicates what nuclides the method should be applied
         to. In its absence, the method will be applied to all nuclides with 0 K
         elastic scattering data present.
-    run_mode : {'eigenvalue', 'fixed source', 'plot', 'volume', 'particle restart'}
+    run_mode : {'eigenvalue', 'fixed source',  'time dependent', 'plot', 'volume', 'particle restart'}
         The type of calculation to perform (default is 'eigenvalue')
     seed : int
         Seed for the linear congruential pseudorandom number generator
@@ -251,6 +252,24 @@ class Settings:
         sections be loaded at all temperatures within the range. 'multipole' is
         a boolean indicating whether or not the windowed multipole method should
         be used to evaluate resolved resonance cross sections.
+    time_dependent : dict
+        Options for configuring `time dependent` run mode. Acceptable keys are:
+        :timesteps:
+            Array of timesteps. Note that values are not cumulative.
+        :timestep_units:
+            `ms`,`s`, `min`. Units for timesteps. `ms` means miliseconds, `s`
+            means seconds, `min` means minutes.
+        :timestep_particles:
+            Number of particles to simulate in timesteps for the `time dependent` run
+            mode.
+        :timestep_batches:
+            Number of batches to simulate in timesteps for the `time dependent` run
+            mode.
+        :timestep_inactive:
+            Number of inactive batches in timesteps for the `time dependent` run
+            mode.
+
+        .. versionadded:: 0.16
     trace : tuple or list
         Show detailed information about a single particle, indicated by three
         integers: the batch number, generation number, and particle number
@@ -388,6 +407,7 @@ class Settings:
         self._max_tracks = None
 
         self._random_ray = {}
+        self._time_dependent = {}
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -1124,6 +1144,38 @@ class Settings:
 
         self._random_ray = random_ray
 
+    @property
+    def time_dependent(self) -> dict:
+        return self._time_dependent
+
+    @time_dependent.setter
+    def time_dependent(self, time_dependent: dict):
+        if not isinstance(time_dependent, Mapping):
+            raise ValueError(f'Unable to set time_dependent from "{time_dependent}" '
+                             'which is not a dict.')
+        for key, value in time_dependent.items():
+            if key == 'timesteps':
+                cv.check_type('timesteps', value, Iterable, Real)
+                for step in value:
+                    cv.check_greater_than('time step', step, 0)
+            elif key == 'timestep_units':
+                cv.check_value(
+                    'timestep units', value, ('ms', 's', 'min'))
+            elif key == 'timestep_particles':
+                cv.check_type('timestep particles', value, Integral)
+                cv.check_greater_than('timestep particles', value, 0)
+            elif key == 'timestep_batches':
+                cv.check_type('timestep batches', value, Integral)
+                cv.check_greater_than('timestep batches', value, 0)
+            elif key == 'timestep_inactive':
+                cv.check_type('timestep inactive batches', value, Integral)
+                cv.check_greater_than('timestep inactive batches', value, 0, True)
+            else:
+                raise ValueError(f'Unable to set time dependent to "{key}" which is '
+                                 'unsupported by OpenMC')
+
+        self._time_dependent = time_dependent
+
     def _create_run_mode_subelement(self, root):
         elem = ET.SubElement(root, "run_mode")
         elem.text = self._run_mode.value
@@ -1549,6 +1601,19 @@ class Settings:
                     subelement = ET.SubElement(element, key)
                     subelement.text = str(value)
 
+    def _create_time_dependent_subelement(self, root):
+        if self._time_dependent:
+            element = ET.SubElement(root, "time_dependent")
+            for key, value in self._time_dependent.items():
+                if key == 'timesteps':
+                    subelement = ET.SubElement(element, "timesteps")
+                    subelement.text = " ".join(
+                        str(x) for x in self._time_dependent["timesteps"]
+                    )
+                else:
+                    subelement = ET.SubElement(element, key)
+                    subelement.text = str(value)
+
     def _eigenvalue_from_xml_element(self, root):
         elem = root.find('eigenvalue')
         if elem is not None:
@@ -1926,6 +1991,20 @@ class Settings:
                         child.text in ('true', '1')
                     )
 
+    def _time_dependent_from_xml_element(self, root):
+        elem = root.find('time_dependent')
+        if elem is not None:
+            self.time_dependent = {}
+            for child in elem:
+                if child.tag in ('timestep_particles','timestep_batches', 'timestep_inactive'):
+                    self.time_dependent[child.tag] = int(child.text)
+                elif child.tag == 'timestep_units':
+                    self.time_dependent['timestep_units'] = child.text
+                elif child.tag == 'timesteps':
+                    text = get_text(elem, 'timesteps')
+                    if text is not None:
+                        self.time_dependent['timesteps'] = [int(x) for x in text.split()]
+
     def to_xml_element(self, mesh_memo=None):
         """Create a 'settings' element to be written to an XML file.
 
@@ -1989,6 +2068,7 @@ class Settings:
         self._create_max_history_splits_subelement(element)
         self._create_max_tracks_subelement(element)
         self._create_random_ray_subelement(element)
+        self._create_time_dependent_subelement(element)
 
         # Clean the indentation in the file to be user-readable
         clean_indentation(element)
@@ -2093,6 +2173,7 @@ class Settings:
         settings._max_history_splits_from_xml_element(elem)
         settings._max_tracks_from_xml_element(elem)
         settings._random_ray_from_xml_element(elem)
+        settings._time_dependent_from_xml_element(elem)
 
         # TODO: Get volume calculations
         return settings

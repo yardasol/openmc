@@ -157,6 +157,13 @@ extern "C" int verbosity;          //!< How verbose to make output
 extern double weight_cutoff;       //!< Weight cutoff for Russian roulette
 extern double weight_survive;      //!< Survival weight after Russian roulette
 
+// Time-dependent variables
+extern int n_timestep_particles; //!< number of particles for timesteps
+extern int n_timestep_batches;   //!< number of (inactive+active) batches for timesteps
+extern int n_timestep_inactive;  //!< number of inactive batches batches for timesteps
+extern vector<double> timesteps; //!< list of timesteps in seconds
+extern int current_timestep;     //!< current timestep index
+
 } // namespace settings
 
 //==============================================================================

@@ -135,6 +135,13 @@ int verbosity {7};
 double weight_cutoff {0.25};
 double weight_survive {1.0};
 
+// Time-dependent variables
+int n_timestep_particles;
+int n_timestep_batches;
+int n_timestep_inactive;
+vector<double> timesteps;
+int current_timestep;
+
 } // namespace settings
 
 //==============================================================================
@@ -194,7 +201,7 @@ void get_run_parameters(pugi::xml_node node_base)
   }
 
   // Get number of inactive batches
-  if (run_mode == RunMode::EIGENVALUE ||
+  if (run_mode == RunMode::EIGENVALUE || run_mode == RunMode::TIME_DEPENDENT ||
       solver_type == SolverType::RANDOM_RAY) {
     if (check_for_node(node_base, "inactive")) {
       n_inactive = std::stoi(get_node_value(node_base, "inactive"));
@@ -209,6 +216,7 @@ void get_run_parameters(pugi::xml_node node_base)
     simulation::k_generation.reserve(m);
     simulation::entropy.reserve(m);
 
+    // TODO: make keff triggers compatible with time dependent mode
     // Get the trigger information for keff
     if (check_for_node(node_base, "keff_trigger")) {
       xml_node node_keff_trigger = node_base.child("keff_trigger");
@@ -237,6 +245,52 @@ void get_run_parameters(pugi::xml_node node_base)
       } else {
         fatal_error("Specify keff trigger threshold in settings XML");
       }
+    }
+  }
+
+  // Get parameters for time-dependent simulations
+  if (run_mode == RunMode::TIME_DEPENDENT) {
+    xml_node td_node = node_base.child("time_dependent");
+    if (check_for_node(td_node, "timestep_particles")) {
+      n_timestep_particles =
+          std::stoi(get_node_value(td_node, "timestep_particles"));
+    } else {
+      n_timestep_particles = n_particles;
+    }
+    if (check_for_node(td_node, "timestep_batches")) {
+      n_timestep_batches =
+          std::stoi(get_node_value(td_node, "timestep_batches"));
+    } else {
+      fatal_error("Specify active batches for timesteps in settings XML");
+    }
+    if (check_for_node(td_node, "timestep_inactive")) {
+      n_timestep_inactive =
+          std::stoi(get_node_value(td_node, "timestep_inactive"));
+    } else {
+      fatal_error("Specify inactive batches for timesteps in settings XML");
+    }
+    if (check_for_node(td_node, "timestep_units")) {
+      std::string units = get_node_value(td_node, "timestep_units");
+      if (check_for_node(td_node, "timesteps")) {
+        timesteps = get_node_array<double>(td_node, "timesteps");
+        double factor_to_seconds;
+        if (units == "ms") {
+          factor_to_seconds = 1e-3;
+        } else if (units == "s") {
+          factor_to_seconds = 1.0;
+        } else if (units == "min") {
+          factor_to_seconds = 1 / 60;
+        } else {
+          fatal_error("Invalid timestep unit, " + units);
+        }
+        for (int i = 0; i < timesteps.size(); i++) {
+          timesteps[i] *= factor_to_seconds;
+        }
+      } else {
+        fatal_error("Specify timesteps in settings XML");
+      }
+    } else {
+      fatal_error("Specify timestep units in settings XML");
     }
   }
 
@@ -432,6 +486,8 @@ void read_settings_xml(pugi::xml_node root)
         run_mode = RunMode::EIGENVALUE;
       } else if (temp_str == "fixed source") {
         run_mode = RunMode::FIXED_SOURCE;
+      } else if (temp_str == "time dependent") {
+        run_mode = RunMode::TIME_DEPENDENT;
       } else if (temp_str == "plot") {
         run_mode = RunMode::PLOTTING;
       } else if (temp_str == "particle restart") {
@@ -447,7 +503,8 @@ void read_settings_xml(pugi::xml_node root)
     } else {
       warning("<run_mode> should be specified.");
 
-      // Make sure that either eigenvalue or fixed source was specified
+      // Make sure that either eigenvalue, fixed source, or time dependent
+      // was specified
       node_mode = root.child("eigenvalue");
       if (node_mode) {
         run_mode = RunMode::EIGENVALUE;
@@ -456,7 +513,12 @@ void read_settings_xml(pugi::xml_node root)
         if (node_mode) {
           run_mode = RunMode::FIXED_SOURCE;
         } else {
-          fatal_error("<eigenvalue> or <fixed_source> not specified.");
+          node_mode = root.child("time_dependent");
+          if (node_mode) {
+            run_mode = RunMode::TIME_DEPENDENT;
+          } else {
+            fatal_error("<eigenvalue>,  <fixed_source>, or <time_dependent> not specified.");
+          }
         }
       }
     }
@@ -470,7 +532,8 @@ void read_settings_xml(pugi::xml_node root)
                   "when using the random ray solver.");
   }
 
-  if (run_mode == RunMode::EIGENVALUE || run_mode == RunMode::FIXED_SOURCE) {
+  if (run_mode == RunMode::EIGENVALUE || run_mode == RunMode::FIXED_SOURCE ||
+    run_mode == RunMode::TIME_DEPENDENT)  {
     // Read run parameters
     get_run_parameters(node_mode);
 
@@ -486,6 +549,14 @@ void read_settings_xml(pugi::xml_node root)
       fatal_error("Number of max lost particles must be greater than zero.");
     } else if (rel_max_lost_particles <= 0.0 || rel_max_lost_particles >= 1.0) {
       fatal_error("Relative max lost particles must be between zero and one.");
+    }
+    // Check number of timestep active and inactive batches
+    if (run_mode == RunMode::TIME_DEPENDENT) {
+      if (n_timestep_batches <= n_timestep_inactive) {
+        fatal_error("Number of timestep active batches must be greater than zero.");
+      } else if (n_timestep_inactive < 0) {
+        fatal_error("Number of timestep inactive batches must be non-negative.");
+      }
     }
   }
 
