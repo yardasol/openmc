@@ -90,7 +90,7 @@ void LinearSourceDomain::update_neutron_source(double k_eff)
 
       // Compute the flat source term
       source_[sr * negroups_ + g_out] =
-        (scatter_flat + fission_flat * inverse_k_eff) / sigma_t;
+        (scatter_flat + fission_flat * inverse_k_eff);
 
       // Compute the linear source terms
       // In the first 10 iterations when the centroids and spatial moments
@@ -98,7 +98,7 @@ void LinearSourceDomain::update_neutron_source(double k_eff)
       // so as to avoid causing any numerical instability.
       if (simulation::current_batch > 10) {
         source_gradients_[sr * negroups_ + g_out] =
-          invM * ((scatter_linear + fission_linear * inverse_k_eff) / sigma_t);
+          invM * (scatter_linear + fission_linear * inverse_k_eff);
       }
     }
   }
@@ -150,8 +150,9 @@ void LinearSourceDomain::normalize_scalar_flux_and_volumes(
 void LinearSourceDomain::set_flux_to_flux_plus_source(
   int64_t idx, double volume, int material, int g)
 {
+  double sigma_t = sigma_t_[material * negroups_ + g];
   scalar_flux_new_[idx] /= volume;
-  scalar_flux_new_[idx] += source_[idx];
+  scalar_flux_new_[idx] += source_[idx] / sigma_t;
   flux_moments_new_[idx] *= (1.0 / volume);
 }
 

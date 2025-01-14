@@ -420,9 +420,9 @@ void RandomRay::attenuate_flux_linear_source(double distance, bool is_active)
     // calculated from the source gradients dot product with local centroid
     // and direction, respectively.
     float spatial_source =
-      domain_->source_[source_element + g] +
-      rm_local.dot(domain->source_gradients_[source_element + g]);
-    float dir_source = u().dot(domain->source_gradients_[source_element + g]);
+      domain_->source_[source_element + g] / sigma_t +
+      rm_local.dot(domain->source_gradients_[source_element + g] / sigma_t);
+    float dir_source = u().dot(domain->source_gradients_[source_element + g] / sigma_t);
 
     float gn = exponentialG(tau);
     float f1 = 1.0f - tau * gn;
