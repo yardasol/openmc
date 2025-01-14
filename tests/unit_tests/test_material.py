@@ -2,6 +2,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import pytest
+import numpy as np
 
 import openmc
 from openmc.data import decay_photon_energy
@@ -249,7 +250,8 @@ def test_density():
         m.set_density(unit, 1.0)
     with pytest.raises(ValueError):
         m.set_density('g/litre', 1.0)
-
+    with pytest.raises(ValueError):
+        m.set_density('sum', 1.0, [1,1,1])
 
 def test_salphabeta():
     m = openmc.Material()
@@ -495,6 +497,9 @@ def test_from_xml(run_in_tmpdir):
     m2.set_density('kg/m3', 10.0)
     m3 = openmc.Material(3)
     m3.add_nuclide('N14', 0.02)
+    m4 = openmc.Material(4)
+    m4.add_nuclide('C12', 1.0)
+    m4.set_density('g/cc', 12, [12, 14, 14, 14, 12])
 
     mats = openmc.Materials([m1, m2, m3])
     mats.cross_sections = 'fake_path.xml'
@@ -515,6 +520,7 @@ def test_from_xml(run_in_tmpdir):
     assert m2.density == 10.0
     assert m2.density_units == 'kg/m3'
     assert mats[2].density_units == 'sum'
+    assert np.all(m4.density_timeseries == [12, 14, 14, 14, 12])
 
 
 def test_mix_materials():
