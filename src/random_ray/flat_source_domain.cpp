@@ -185,7 +185,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
       }
       float s = (scatter_source + fission_source * inverse_k_eff) / (4 * PI); //DEBUG
       source_[sr * negroups_ + g_out] =
-        (scatter_source + fission_source * inverse_k_eff) / (4 * PI);
+        (scatter_source + fission_source * inverse_k_eff);
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         double delayed_source = 0.0f;
         double chi_d = chi_d_[material * negroups_ + g_out];
@@ -195,8 +195,8 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
             double precursors = precursors_old_[sr * ndgroups_ + dg];
             delayed_source += precursors * lambda;
           }
-          source_[sr * negroups_ + g_out] += delayed_source * chi_d / (4 * PI); // Does 4 * PI need to be here??
-        }                                                                        // 
+          source_[sr * negroups_ + g_out] += delayed_source * chi_d; 
+        }      
       }
     }
   }
@@ -240,9 +240,8 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
   int64_t idx, double volume, int material, int g)
 {
   double sigma_t = sigma_t_[material * negroups_ + g];
-  scalar_flux_new_[idx] /= (sigma_t * volume);
-  scalar_flux_new_[idx] *= 4 * PI;
-  scalar_flux_new_[idx] += 4 * PI * source_[idx] / sigma_t;
+  scalar_flux_new_[idx] /= sigma_t * volume;
+  scalar_flux_new_[idx] += source_[idx] / sigma_t;
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     // Equation E.6
     const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
@@ -1354,7 +1353,7 @@ float FlatSourceDomain::bdf_time_derivative(int index, vector<double>* bdf_vecto
 }
 
 void FlatSourceDomain::update_bdf_vector(vector<float>* bdf_vector,
-        vector<float>* new_solution, bool increment)
+        vector<float>* new_solution, bool increment, float factor)
 { 
   // I don't love the naming scheme being used here...
   int solution_size = new_solution->size();
@@ -1365,11 +1364,14 @@ void FlatSourceDomain::update_bdf_vector(vector<float>* bdf_vector,
   // Replace the oldest solution with the new solution
   for (int i = 0; i < solution_size; i++) {
     (*bdf_vector)[i] = (*new_solution)[i];
+    if (factor != 1.0) {
+        (*bdf_vector)[i] *= factor;
+    }
   }
 }
 
 void FlatSourceDomain::update_bdf_vector(vector<double>* bdf_vector,
-        vector<double>* new_solution, bool increment)
+        vector<double>* new_solution, bool increment, double factor)
 { 
   // I don't love the naming scheme being used here...
   int solution_size = new_solution->size();
@@ -1380,6 +1382,9 @@ void FlatSourceDomain::update_bdf_vector(vector<double>* bdf_vector,
   // Replace the oldest solution with the new solution
   for (int i = 0; i < solution_size; i++) {
     (*bdf_vector)[i] = (*new_solution)[i];
+    if (factor != 1.0) {
+        (*bdf_vector)[i] *= factor;
+    }
   }
 }
 
@@ -1401,7 +1406,7 @@ void FlatSourceDomain::update_bdf_flux() {
 }
 
 void FlatSourceDomain::update_bdf_source() {
-    update_bdf_vector(source_bdf_, &source_, false);
+    update_bdf_vector(source_bdf_, &source_, false, 1 / (4 * PI));
 }
 
 void FlatSourceDomain::update_bdf_precursors(){
@@ -1410,7 +1415,7 @@ void FlatSourceDomain::update_bdf_precursors(){
 
 void FlatSourceDomain::finalize_bdf_vectors() {
     update_bdf_vector(scalar_flux_bdf_, &scalar_flux_final_, false);
-    update_bdf_vector(source_bdf_, &source_, false);
+    update_bdf_vector(source_bdf_, &source_, false, 1 / (4 * PI));
     update_bdf_vector(precursors_bdf_, &precursors_final_, false);
 }
 

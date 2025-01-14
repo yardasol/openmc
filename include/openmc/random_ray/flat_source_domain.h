@@ -166,8 +166,8 @@ public:
           int derivative_order = 1);
   float bdf_time_derivative(int index, vector<double>* bdf_vector,
           int derivative_order = 1);
-  void update_bdf_vector(vector<float>* bdf_vector, vector<float>* new_solution, bool increment);
-  void update_bdf_vector(vector<double>* bdf_vector, vector<double>* new_solution, bool increment);
+  void update_bdf_vector(vector<float>* bdf_vector, vector<float>* new_solution, bool increment, float factor = 1.0);
+  void update_bdf_vector(vector<double>* bdf_vector, vector<double>* new_solution, bool increment, double factor = 1.0);
   void update_bdf_source();
   void update_bdf_flux();
   void update_bdf_precursors();

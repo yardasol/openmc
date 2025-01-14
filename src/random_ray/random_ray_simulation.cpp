@@ -584,6 +584,8 @@ void RandomRaySimulation::simulate()
 
       // Add this iteration's scalar flux estimate to final accumulated estimate
       domain_->accumulate_iteration_flux();
+      // TODO: calculate the final precursors based on the final flux we
+      // calculate in the timestepping loop
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         domain_->accumulate_iteration_precursors();
       }
