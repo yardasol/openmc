@@ -110,7 +110,7 @@ extern array<double, 4>
 extern array<double, 4>
   time_cutoff; //!< Time cutoff in [s] for each particle type
 extern int
-  legendre_to_tabular_points; //!< number of points to convert Legendres
+  legendre_to_tabular_points;  //!< number of points to convert Legendres
 extern int max_order;         //!< Maximum Legendre order for multigroup data
 extern int n_log_bins;        //!< number of bins for logarithmic energy grid
 extern int n_batches;         //!< number of (inactive+active) batches
@@ -147,6 +147,15 @@ extern double
 extern double temperature_default; //!< Default T in [K]
 extern array<double, 2>
   temperature_range;           //!< Min/max T in [K] over which to load xs
+                               
+
+// Time-dependent variables
+extern int n_timestep_particles; //!< number of particles for timesteps
+extern int n_timestep_batches; //!< number of (inactive+active) batches for timesteps
+extern int n_timestep_inactive;//!< number of inactive batches batches for timesteps
+extern vector<double> timesteps;//!< list of timesteps in seconds
+extern int current_timestep;//!< current timestep index
+
 extern int trace_batch;        //!< Batch to trace particle on
 extern int trace_gen;          //!< Generation to trace particle on
 extern int64_t trace_particle; //!< Particle ID to enable trace on

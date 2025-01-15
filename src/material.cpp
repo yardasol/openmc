@@ -76,6 +76,22 @@ Material::Material(pugi::xml_node node)
   std::string units;
   if (density_node) {
     units = get_node_value(density_node, "units");
+    
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      if (check_for_node(density_node, "timeseries")) {
+        if (units == "sum") {
+          fatal_error("Use of density_timeseries_ is incompatible with 'sum'"
+                      "density unit");
+        } else {
+          density_timeseries_ = get_node_array<double>(density_node, "timeseries");
+          if (density_timeseries_.size() != settings::timesteps.size()) {
+            fatal_error("Size mismatch between density_timeseries_ and "
+                        "settings::timesteps.");
+          }
+        }
+      }
+    }
+
     if (units == "sum") {
       sum_density = true;
     } else if (units == "macro") {
@@ -90,18 +106,41 @@ Material::Material(pugi::xml_node node)
         fatal_error("Need to specify a positive density on material " +
                     std::to_string(id_) + ".");
       }
-
+       
+      double scale_factor;
       if (units == "g/cc" || units == "g/cm3") {
         density_ = -val;
+        scale_factor = -1.0;
       } else if (units == "kg/m3") {
         density_ = -1.0e-3 * val;
+        scale_factor = -1.0e-3;
       } else if (units == "atom/b-cm") {
         density_ = val;
+        scale_factor = 1.0;
       } else if (units == "atom/cc" || units == "atom/cm3") {
         density_ = 1.0e-24 * val;
+        scale_factor = 1.0e-24;
       } else {
         fatal_error("Unknown units '" + units + "' specified on material " +
                     std::to_string(id_) + ".");
+      }
+
+      if (density_timeseries_.size() > 0) {
+        this->scale_density_timeseries(scale_factor);
+
+        // Check that all elements are the same sign.
+        vector<double> zero_vector;
+        for (int i = 0; i < density_timeseries_.size(); i++) {
+          zero_vector.push_back(i);
+        }
+        if (!(density_timeseries_ >= zero_vector || density_timeseries_ <= zero_vector)) {
+          fatal_error(
+            "Cannot mix atom and weight percents for density timeseries "
+            "in material " + std::to_string(id_));
+        } else if ((density_timeseries_ >= zero_vector && density_ <= 0) ||
+                (density_timeseries_ <= zero_vector && density_ >= 0)) {
+            fatal_error("density_timeseries_ must be same type as density_");
+        }
       }
     }
   } else {
@@ -370,6 +409,7 @@ Material& Material::clone()
   mat->ncrystal_mat_ = ncrystal_mat_;
   mat->atom_density_ = atom_density_;
   mat->density_ = density_;
+  
   mat->density_gpcc_ = density_gpcc_;
   mat->volume_ = volume_;
   mat->fissionable() = fissionable_;
@@ -381,6 +421,10 @@ Material& Material::clone()
 
   if (ttb_)
     mat->ttb_ = std::make_unique<Bremsstrahlung>(*ttb_);
+
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    mat->density_timeseries_ = density_timeseries_;
+  }
 
   mat->index_ = model::materials.size();
   mat->set_id(C_NONE);
@@ -448,6 +492,10 @@ void Material::normalize_density()
     }
     sum_percent = 1.0 / sum_percent;
     density_ = -density_ * N_AVOGADRO / MASS_NEUTRON * sum_percent;
+    /* TODO: May not compile */
+    for (double & p : density_timeseries_) {
+      p = -p * N_AVOGADRO / MASS_NEUTRON * sum_percent;
+    }
   }
 
   // Calculate nuclide atom densities
@@ -459,6 +507,12 @@ void Material::normalize_density()
     int i_nuc = nuclide_[i];
     double awr = settings::run_CE ? data::nuclides[i_nuc]->awr_ : 1.0;
     density_gpcc_ += atom_density_(i) * awr * MASS_NEUTRON / N_AVOGADRO;
+  }
+}
+
+void Material::scale_density_timeseries(double scale_factor) {
+  for (double & p : density_timeseries_) {
+    p *= scale_factor;
   }
 }
 

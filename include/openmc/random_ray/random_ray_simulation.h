@@ -6,6 +6,25 @@
 
 namespace openmc {
 
+//==============================================================================
+// Global variable declarations
+//==============================================================================
+namespace random_ray_td {
+
+//extern vector<double> precursors_init_;
+extern int bdf_order;
+extern vector<double> scalar_flux_init_;
+extern vector<float> source_init_;
+extern vector<double> scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
+                                           // solutions
+extern vector<float> source_bdf_;          // Holds  bdf_order_ previous source
+                                           // region values
+extern vector<double> precursors_bdf_;     // Holds  bdf_order_ previous precursor
+                                           // values
+} // namespace random_ray_td
+
+
+
 /*
  * The RandomRaySimulation class encompasses data and methods for running a
  * random ray simulation.
@@ -25,6 +44,8 @@ public:
   void simulate();
   void reduce_simulation_statistics();
   void output_simulation_results() const;
+  void point_to_bdf_vectors();
+
   void instability_check(
     int64_t n_hits, double k_eff, double& avg_miss_rate) const;
   void print_results_random_ray(uint64_t total_geometric_intersections,
@@ -32,18 +53,27 @@ public:
     int64_t n_external_source_regions) const;
 
   //----------------------------------------------------------------------------
+  
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
 
+
+  // Data members
+  // Number of energy groups
+  int negroups_;
+  int ndgroups_;
+  // Random ray eigenvalue
+  double k_eff_ {1.0};
+
+  static int bdf_order_max_;                 // Max order for BDF approximation
+                                             // We boostrap up from lower BDF
+                                             // orders.
 private:
   //----------------------------------------------------------------------------
   // Data members
 
   // Contains all flat source region data
-  unique_ptr<FlatSourceDomain> domain_;
-
-  // Random ray eigenvalue
-  double k_eff_ {1.0};
+  unique_ptr<FlatSourceDomain> domain_; 
 
   // Tracks the average FSR miss rate for analysis and reporting
   double avg_miss_rate_ {0.0};
@@ -52,16 +82,16 @@ private:
   // reporting
   uint64_t total_geometric_intersections_ {0};
 
-  // Number of energy groups
-  int negroups_;
-
-}; // class RandomRaySimulation
+  }; // class RandomRaySimulation
 
 //============================================================================
 //! Non-member functions
 //============================================================================
 
-void openmc_run_random_ray();
+void openmc_run_random_ray(bool initial_condition = false);
+void openmc_run_random_ray_time_dependent();
+void initialize_bdf_vectors(int n_source_regions);
+void rename_statepoint_file(int i);
 void validate_random_ray_inputs();
 
 } // namespace openmc

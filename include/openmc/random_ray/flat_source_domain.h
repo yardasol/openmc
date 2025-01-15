@@ -1,6 +1,8 @@
 #ifndef OPENMC_RANDOM_RAY_FLAT_SOURCE_DOMAIN_H
 #define OPENMC_RANDOM_RAY_FLAT_SOURCE_DOMAIN_H
 
+#include <map>
+
 #include "openmc/constants.h"
 #include "openmc/openmp_interface.h"
 #include "openmc/position.h"
@@ -81,6 +83,41 @@ struct TallyTask {
   };
 };
 
+//----------------------------------------------------------------------------
+// Helper Variables
+// Coefficients come from Table 3 in Fornberg (1988)
+// DOI: 10.1090/S0025-5718-1988-0935077-0
+// Note that the signs are flipped compared to the citation, as the author was
+// formulating weights for a forward difference
+const std::map<int, vector<float>> bdf_coefficients_first_order_ = {
+  {1, {1.0, -1.0}},
+  {2, {1.5, -2.0, 0.5}},
+  {3, {11/6, -3.0, 1.5, -1/3}},
+  {4, {25/12, -4.0, 3.0, -4/3, 0.25}},
+  {5, {137/60, -5.0, 5.0, -10/3, 1.25, -0.2}},
+  {6, {2.45, -6.0, 7.5, -20/3, 3.75, -1.2, 1/6}}
+};
+
+const std::map<int, vector<int>> bdf_timestep_coefficients_first_order_ = {
+  {1, {1}},
+  {2, {3, -1}},
+  {3, {11, -7, 2}},
+  {4, {25, -23, 13, -3}},
+  {5, {137, -163, 137, -63, 12}},
+  {6, {147, -213, 237, -163, 62, -10}}
+};
+
+// Coefficients come from Table 3 in Fornberg (1988)
+// DOI: 10.1090/S0025-5718-1988-0935077-0
+const std::map<int, vector<float>> bdf_coefficients_second_order_ = {
+  {1, {1.0, -2.0, 1.0}},
+  {2, {2.0, -5.0, 4, -1}},
+  {3, {35/12, -26/3, 9.5, -14/3, 11/12}},
+  {4, {3.75, -77/6, 107/6, -13.0, 61/12, -5/6}},
+  {5, {203/45, -17.4, 29.25, -254/9, 16.5, -5.4, 137/180}},
+  {6, {469/90, -22.3, 43.95, -949/18, 41.0, -20.1, 1019/180, -0.7}}
+};
+
 /*
  * The FlatSourceDomain class encompasses data and methods for storing
  * scalar flux and source region for all flat source regions in a
@@ -107,26 +144,42 @@ public:
   void reset_tally_volumes();
   void random_ray_tally();
   virtual void accumulate_iteration_flux();
+  virtual void accumulate_iteration_precursors();
   void output_to_vtk() const;
   virtual void all_reduce_replicated_source_regions();
   void convert_external_sources();
   void count_external_source_regions();
   void set_adjoint_sources(const vector<double>& forward_flux);
   virtual void flux_swap();
+  virtual void precursors_swap();
   virtual double evaluate_flux_at_point(Position r, int64_t sr, int g) const;
   double compute_fixed_source_normalization_factor() const;
   void flatten_xs();
   void transpose_scattering_matrix();
 
+  void update_time_dependent_cross_sections(int i);
+  void initialize_source_and_flux_from_bdf();
+  void calculate_steady_state_precursors();
+  void initialize_precursors_from_bdf();
+  void update_precursors();
+  float bdf_time_derivative(int index, vector<float>* bdf_vector,
+          int derivative_order = 1);
+  float bdf_time_derivative(int index, vector<double>* bdf_vector,
+          int derivative_order = 1);
+  void update_bdf_vector(vector<float>* bdf_vector, vector<float>* new_solution, bool increment, float factor = 1.0);
+  void update_bdf_vector(vector<double>* bdf_vector, vector<double>* new_solution, bool increment, double factor = 1.0);
+  void update_bdf_source();
+  void update_bdf_flux();
+  void update_bdf_precursors();
+  void increment_bdf_vectors();
+  void finalize_bdf_vectors();
+
   //----------------------------------------------------------------------------
   // Static Data members
   static bool volume_normalized_flux_tallies_;
   static bool adjoint_; // If the user wants outputs based on the adjoint flux
-
-  //----------------------------------------------------------------------------
-  // Static data members
   static RandomRayVolumeEstimator volume_estimator_;
-
+  
   //----------------------------------------------------------------------------
   // Public Data members
 
@@ -135,6 +188,9 @@ public:
   int64_t n_source_regions_ {0}; // Total number of source regions in the model
   int64_t n_external_source_regions_ {0}; // Total number of source regions with
                                           // non-zero external source terms
+  int bdf_order_;                     // Order for BDF approximation.
+  double dt_; // Timestep size in seconds
+                                      
 
   // 1D array representing source region starting offset for each OpenMC Cell
   // in model::cells
@@ -161,13 +217,42 @@ public:
   int n_materials_;
   vector<double> sigma_t_;
   vector<double> nu_sigma_f_;
+  vector<double> nu_p_sigma_f_;
   vector<double> sigma_f_;
   vector<double> chi_;
+  vector<double> chi_d_;
+  vector<double> inverse_vbar_;
+
+  // 2D arrays stored in 1D representing values for all materials x
+  // delay_groups
+  vector<double> lambda_;
 
   // 3D arrays stored in 1D representing values for all materials x energy
   // groups x energy groups
   vector<double> sigma_s_;
 
+  // 3D arrays stored in 1D representing values for all materials x energy
+  // groups x delay groups
+  vector<double> nu_d_sigma_f_;
+
+  int negroups_;           // Number of energy groups in simulation
+  int ndgroups_;           // Number of delay groups in simulation
+  int64_t n_source_elements_ {0}; // Total number of source regions in the model
+                                  // times the number of energy groups
+  int64_t n_delay_elements_ {0};  // Total number of source regions in the model
+                                  // times the number of delay groups
+                                  //
+  // Arrays for time-dependent simulations
+  vector<double> precursors_new_;
+  vector<double> precursors_old_;
+  vector<double> precursors_final_;
+  vector<double>* scalar_flux_bdf_;    // Holds bdf_order_ previous scalar flux
+                                      // solutions
+  vector<float>* source_bdf_;         // Holds  bdf_order_ previous source
+                                      // region values
+  vector<double>* precursors_bdf_;     // Holds  bdf_order_ previous precursor
+                                      // values
+  
 protected:
   //----------------------------------------------------------------------------
   // Methods
@@ -180,15 +265,11 @@ protected:
     Discrete* discrete, double strength_factor, int32_t target_material_id);
   virtual void set_flux_to_flux_plus_source(
     int64_t idx, double volume, int material, int g);
-  void set_flux_to_source(int64_t idx);
+  void set_flux_to_source(int64_t idx, int material, int g);
   virtual void set_flux_to_old_flux(int64_t idx);
 
   //----------------------------------------------------------------------------
   // Private data members
-  int negroups_;                  // Number of energy groups in simulation
-  int64_t n_source_elements_ {0}; // Total number of source regions in the model
-                                  // times the number of energy groups
-
   double
     simulation_volume_; // Total physical volume of the simulation domain, as
                         // defined by the 3D box of the random ray source

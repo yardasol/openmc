@@ -184,8 +184,10 @@ double RandomRay::distance_active_;
 unique_ptr<Source> RandomRay::ray_source_;
 RandomRaySourceShape RandomRay::source_shape_ {RandomRaySourceShape::FLAT};
 
+// May want to make a subclass for this
 RandomRay::RandomRay()
   : angular_flux_(data::mg.num_energy_groups_),
+    angular_flux_dt_(data::mg.num_energy_groups_),
     delta_psi_(data::mg.num_energy_groups_),
     negroups_(data::mg.num_energy_groups_)
 {
@@ -321,8 +323,32 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     float sigma_t = domain_->sigma_t_[material * negroups_ + g];
     float tau = sigma_t * distance;
     float exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
-    float new_delta_psi =
-      (angular_flux_[g] - domain_->source_[source_element + g]) * exponential;
+    float angular_flux = angular_flux_[g];       // DEBUGGING
+    float Q = domain_->source_[source_element + g]; // DEBUGGING
+    float new_delta_psi = 
+        (angular_flux_[g] - (domain_->source_[source_element + g] / sigma_t)) * exponential;
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) { // Maybe add "is active" here?
+      float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
+      float dQdt = domain_->bdf_time_derivative(source_element + g, domain_->source_bdf_);
+      float T;
+      // Truncate dphi2_dt2 when we can't calculate it
+      // TODO: make a dphi2_dt2 approxi2ation
+      //if (settings::current_timestep < 2 || simulation::current_batch <= 1) {
+      // Let's just Truncate dphi2_dt2 for now...
+      T = dQdt;
+      //} else {
+      //  float dphi2_dt2 = domain_->bdf_time_derivative(source_element + g,
+      //  domain_->scalar_flux_bdf_, 2); 
+      //  T = dQdt - inverse_vbar * dphi2_dt2 / (4 * PI);
+      //}
+      float angular_flux_dt = angular_flux_dt_[g]; //DEBUGGING
+      float S = angular_flux_dt_[g] - T / sigma_t; 
+      // Add time-dependent terms to delta psi
+      new_delta_psi += inverse_vbar *  T / (sigma_t * sigma_t) * exponential;
+      new_delta_psi += distance * inverse_vbar * S * (1 - exponential);
+      // Calculate delta for dpsi/dt
+      angular_flux_dt_[g] -= S * exponential;
+    }
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
   }
@@ -337,10 +363,11 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     // Accumulate delta psi into new estimate of source region flux for
     // this iteration
     for (int g = 0; g < negroups_; g++) {
+      float delta_psi = delta_psi_[g]; //DEBUG
       domain_->scalar_flux_new_[source_element + g] += delta_psi_[g];
     }
 
-    // Accomulate volume (ray distance) into this iteration's estimate
+    // Accumulate volume (ray distance) into this iteration's estimate
     // of the source region's volume
     domain_->volume_[source_region] += distance;
 
@@ -542,7 +569,14 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
 
   for (int g = 0; g < negroups_; g++) {
     angular_flux_[g] = domain_->source_[source_region_idx * negroups_ + g];
+    // Initialize ray's starting angular flux time derivative to starting
+    // location's isotropic source time derivative. Like the angular flux, it
+    // the approximation for this should improve over the active ray length
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      angular_flux_dt_[g] = domain_->bdf_time_derivative(source_region_idx * negroups_ + g, domain_->source_bdf_);
+    }
   }
 }
+
 
 } // namespace openmc

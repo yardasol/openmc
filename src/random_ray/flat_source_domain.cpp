@@ -1,6 +1,7 @@
 #include "openmc/random_ray/flat_source_domain.h"
 
 #include "openmc/cell.h"
+#include "openmc/constants.h"
 #include "openmc/eigenvalue.h"
 #include "openmc/geometry.h"
 #include "openmc/material.h"
@@ -16,6 +17,7 @@
 #include "openmc/timer.h"
 
 #include <cstdio>
+#include <algorithm>
 
 namespace openmc {
 
@@ -29,7 +31,9 @@ RandomRayVolumeEstimator FlatSourceDomain::volume_estimator_ {
 bool FlatSourceDomain::volume_normalized_flux_tallies_ {false};
 bool FlatSourceDomain::adjoint_ {false};
 
-FlatSourceDomain::FlatSourceDomain() : negroups_(data::mg.num_energy_groups_)
+FlatSourceDomain::FlatSourceDomain()
+  : negroups_(data::mg.num_energy_groups_),
+    ndgroups_(data::mg.num_delayed_groups_)
 {
   // Count the number of source regions, compute the cell offset
   // indices, and store the material type The reason for the offsets is that
@@ -42,6 +46,7 @@ FlatSourceDomain::FlatSourceDomain() : negroups_(data::mg.num_energy_groups_)
       source_region_offsets_.push_back(n_source_regions_);
       n_source_regions_ += c->n_instances_;
       n_source_elements_ += c->n_instances_ * negroups_;
+      n_delay_elements_ += c->n_instances_ * ndgroups_;
     }
   }
 
@@ -65,12 +70,21 @@ FlatSourceDomain::FlatSourceDomain() : negroups_(data::mg.num_energy_groups_)
   if (settings::run_mode == RunMode::EIGENVALUE) {
     // If in eigenvalue mode, set starting flux to guess of unity
     scalar_flux_old_.assign(n_source_elements_, 1.0);
-  } else {
+  } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
     // If in fixed source mode, set starting flux to guess of zero
     // and initialize external source arrays
     scalar_flux_old_.assign(n_source_elements_, 0.0);
     external_source_.assign(n_source_elements_, 0.0);
     external_source_present_.assign(n_source_regions_, false);
+  } else {
+    // If in time-dependent mode, set starting flux to steady state flux,
+    // set starting precursors to steady state precursors, and set starting
+    // source to steady state source.
+    precursors_old_.assign(n_delay_elements_, 0.0);
+    precursors_new_.assign(n_delay_elements_, 0.0);
+    precursors_final_.assign(n_delay_elements_, 0.0);
+    scalar_flux_old_.assign(n_source_elements_, 0.0);
+    source_.assign(n_source_elements_, 0.0);
   }
 
   // Initialize material array
@@ -127,6 +141,14 @@ void FlatSourceDomain::accumulate_iteration_flux()
   }
 }
 
+void FlatSourceDomain::accumulate_iteration_precursors()
+{
+#pragma omp parallel for
+  for (int64_t de = 0; de < n_delay_elements_; de++) {
+    precursors_final_[de] += precursors_new_[de];
+  }
+}
+
 // Compute new estimate of scattering + fission sources in each source region
 // based on the flux estimate from the previous iteration.
 void FlatSourceDomain::update_neutron_source(double k_eff)
@@ -135,46 +157,50 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
 
   double inverse_k_eff = 1.0 / k_eff;
 
-  // Add scattering source
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int material = material_[sr];
 
     for (int g_out = 0; g_out < negroups_; g_out++) {
-      double sigma_t = sigma_t_[material * negroups_ + g_out];
-      double scatter_source = 0.0;
-
+      double sigma_t = sigma_t_[material * negroups_ + g_out]; 
+      double scatter_source = 0.0f;
+      double fission_source = 0.0f;
+      
       for (int g_in = 0; g_in < negroups_; g_in++) {
         double scalar_flux = scalar_flux_old_[sr * negroups_ + g_in];
+
+        double nu_sigma_f;
+        if (settings::run_mode != RunMode::TIME_DEPENDENT) {
+          nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+        } else {
+          nu_sigma_f = nu_p_sigma_f_[material * negroups_ + g_in];
+        }
+
         double sigma_s =
-          sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
-        scatter_source += sigma_s * scalar_flux;
-      }
-
-      source_[sr * negroups_ + g_out] = scatter_source / sigma_t;
-    }
-  }
-
-  // Add fission source
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-
-    for (int g_out = 0; g_out < negroups_; g_out++) {
-      double sigma_t = sigma_t_[material * negroups_ + g_out];
-      double fission_source = 0.0;
-
-      for (int g_in = 0; g_in < negroups_; g_in++) {
-        double scalar_flux = scalar_flux_old_[sr * negroups_ + g_in];
-        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+            sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
         double chi = chi_[material * negroups_ + g_out];
+        
+        scatter_source += sigma_s * scalar_flux;
         fission_source += nu_sigma_f * scalar_flux * chi;
       }
-      source_[sr * negroups_ + g_out] +=
-        fission_source * inverse_k_eff / sigma_t;
+      float s = (scatter_source + fission_source * inverse_k_eff) / (4 * PI); //DEBUG
+      source_[sr * negroups_ + g_out] =
+        (scatter_source + fission_source * inverse_k_eff);
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        double delayed_source = 0.0f;
+        double chi_d = chi_d_[material * negroups_ + g_out];
+        if (chi_d != 0.0) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+            double lambda = lambda_[material * ndgroups_ + dg];
+            double precursors = precursors_old_[sr * ndgroups_ + dg];
+            delayed_source += precursors * lambda;
+          }
+          source_[sr * negroups_ + g_out] += delayed_source * chi_d; 
+        }      
+      }
     }
   }
-
+  
   // Add external source if in fixed source mode
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
 #pragma omp parallel for
@@ -214,8 +240,22 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
   int64_t idx, double volume, int material, int g)
 {
   double sigma_t = sigma_t_[material * negroups_ + g];
-  scalar_flux_new_[idx] /= (sigma_t * volume);
-  scalar_flux_new_[idx] += source_[idx];
+  scalar_flux_new_[idx] /= sigma_t * volume;
+  scalar_flux_new_[idx] += source_[idx] / sigma_t;
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    // Equation E.6
+    const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+    float A0 = bdf_coeffs[0] / dt_;
+
+    double flux_rhs_bdf = 0.0;
+    for (int j = 1; j < bdf_order_; j++) {
+      flux_rhs_bdf += bdf_coeffs[j] * (*scalar_flux_bdf_)[idx + j * n_source_elements_];
+    }
+    flux_rhs_bdf /= dt_;
+    double inverse_vbar = inverse_vbar_[material * negroups_ + g];
+    scalar_flux_new_[idx] -= flux_rhs_bdf * inverse_vbar / sigma_t;
+    scalar_flux_new_[idx] /= 1 + A0 * inverse_vbar / sigma_t;
+  }
 }
 
 void FlatSourceDomain::set_flux_to_old_flux(int64_t idx)
@@ -223,9 +263,10 @@ void FlatSourceDomain::set_flux_to_old_flux(int64_t idx)
   scalar_flux_new_[idx] = scalar_flux_old_[idx];
 }
 
-void FlatSourceDomain::set_flux_to_source(int64_t idx)
+void FlatSourceDomain::set_flux_to_source(int64_t idx, int material, int g)
 {
-  scalar_flux_new_[idx] = source_[idx];
+  double sigma_t = sigma_t_[material * negroups_ + g];
+  scalar_flux_new_[idx] = source_[idx] / sigma_t;
 }
 
 // Combine transport flux contributions and flat source contributions from the
@@ -297,7 +338,7 @@ int64_t FlatSourceDomain::add_source_to_scalar_flux()
         if (external_source_present) {
           set_flux_to_old_flux(idx);
         } else {
-          set_flux_to_source(idx);
+          set_flux_to_source(idx, material, g);
         }
       }
       // If the FSR was not hit this iteration, and it has never been hit in
@@ -535,7 +576,7 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
     for (int g = 0; g < negroups_; g++) {
       double sigma_t = sigma_t_[material * negroups_ + g];
       simulation_external_source_strength +=
-        external_source_[sr * negroups_ + g] * sigma_t * volume;
+        external_source_[sr * negroups_ + g] * volume;
     }
   }
 
@@ -1028,19 +1069,24 @@ void FlatSourceDomain::convert_external_sources()
 
 // Divide the fixed source term by sigma t (to save time when applying each
 // iteration)
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-    for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[material * negroups_ + g];
-      external_source_[sr * negroups_ + g] /= sigma_t;
-    }
-  }
+//#pragma omp parallel for
+//  for (int sr = 0; sr < n_source_regions_; sr++) {
+//    int material = material_[sr];
+//    for (int g = 0; g < negroups_; g++) {
+//      double sigma_t = sigma_t_[material * negroups_ + g];
+//      external_source_[sr * negroups_ + g] /= sigma_t;
+//    }
+//  }
 }
 
 void FlatSourceDomain::flux_swap()
 {
   scalar_flux_old_.swap(scalar_flux_new_);
+}
+
+void FlatSourceDomain::precursors_swap()
+{
+  precursors_old_.swap(precursors_new_);
 }
 
 void FlatSourceDomain::flatten_xs()
@@ -1053,14 +1099,43 @@ void FlatSourceDomain::flatten_xs()
 
   n_materials_ = data::mg.macro_xs_.size();
   for (auto& m : data::mg.macro_xs_) {
+    if (m.exists_in_model) {
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        for (int dg = 0; dg < ndgroups_; dg++) {
+          double lambda =
+            m.get_xs(MgxsType::DECAY_RATE, 0, NULL, NULL, &dg, t, a);
+          lambda_.push_back(lambda);
+        }
+      }
+    }
     for (int g_out = 0; g_out < negroups_; g_out++) {
       if (m.exists_in_model) {
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+             double nu_d_Sigma_f =
+               m.get_xs(MgxsType::DELAYED_NU_FISSION, g_out, NULL, NULL, &dg, t, a);
+             nu_d_sigma_f_.push_back(nu_d_Sigma_f);
+          }
+
+          double inverse_vbar =
+            m.get_xs(MgxsType::INVERSE_VELOCITY, g_out, NULL, NULL, NULL, t, a);
+          inverse_vbar_.push_back(inverse_vbar);
+
+          double chi_d =
+            m.get_xs(MgxsType::CHI_DELAYED, g_out, &g_out, NULL, NULL, t, a);
+          chi_d_.push_back(chi_d);
+
+          double nu_p_Sigma_f =
+            m.get_xs(MgxsType::PROMPT_NU_FISSION, g_out, NULL, NULL, NULL, t, a);
+          nu_p_sigma_f_.push_back(nu_p_Sigma_f);
+        } 
+        
         double sigma_t =
           m.get_xs(MgxsType::TOTAL, g_out, NULL, NULL, NULL, t, a);
         sigma_t_.push_back(sigma_t);
-
+        
         double nu_Sigma_f =
-          m.get_xs(MgxsType::NU_FISSION, g_out, NULL, NULL, NULL, t, a);
+            m.get_xs(MgxsType::NU_FISSION, g_out, NULL, NULL, NULL, t, a);
         nu_sigma_f_.push_back(nu_Sigma_f);
 
         double sigma_f =
@@ -1077,6 +1152,14 @@ void FlatSourceDomain::flatten_xs()
           sigma_s_.push_back(sigma_s);
         }
       } else {
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+             nu_d_sigma_f_.push_back(0);
+          }
+          inverse_vbar_.push_back(0);
+          chi_d_.push_back(0);
+          nu_p_sigma_f_.push_back(0);
+        }
         sigma_t_.push_back(0);
         nu_sigma_f_.push_back(0);
         sigma_f_.push_back(0);
@@ -1101,14 +1184,14 @@ void FlatSourceDomain::set_adjoint_sources(const vector<double>& forward_flux)
 
   // Divide the fixed source term by sigma t (to save time when applying each
   // iteration)
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int material = material_[sr];
-    for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[material * negroups_ + g];
-      external_source_[sr * negroups_ + g] /= sigma_t;
-    }
-  }
+//#pragma omp parallel for
+//  for (int sr = 0; sr < n_source_regions_; sr++) {
+//    int material = material_[sr];
+//    for (int g = 0; g < negroups_; g++) {
+//      double sigma_t = sigma_t_[material * negroups_ + g];
+//      external_source_[sr * negroups_ + g] /= sigma_t;
+//    }
+//  }
 }
 
 void FlatSourceDomain::transpose_scattering_matrix()
@@ -1127,6 +1210,213 @@ void FlatSourceDomain::transpose_scattering_matrix()
       }
     }
   }
+}
+
+void FlatSourceDomain::update_time_dependent_cross_sections(int i) {
+  // Update material density and cross sections
+#pragma omp parallel for
+  for (int j = 0; j < model::materials.size(); j++) {
+    auto& mat {model::materials[j]};
+    if (mat->density_timeseries_.size() != 0) {
+      double timeseries_d = mat->density_timeseries_[i]; // DEBUG
+      double density_factor = mat->density_timeseries_[i] / mat->density_; 
+      mat->density_ = density_factor;
+      for (int g_out = 0; g_out < negroups_; g_out++) {
+        for (int dg = 0; dg < ndgroups_; dg++) {
+          nu_d_sigma_f_[j * negroups_ * ndgroups_ + g_out * ndgroups_ + dg] *= density_factor;
+        }
+        nu_p_sigma_f_[j * negroups_ + g_out] *= density_factor;
+        sigma_t_[j * negroups_ + g_out] *= density_factor;
+        nu_sigma_f_[j * negroups_ + g_out] *= density_factor;
+        sigma_f_[j * negroups_ + g_out] *= density_factor;
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          sigma_s_[j * negroups_ * negroups_ + g_out * negroups_ + g_in] *= density_factor;
+        }
+      }
+    }
+  }
+}
+
+void FlatSourceDomain::initialize_source_and_flux_from_bdf() {
+#pragma omp parallel for
+  for (int se = 0; se < n_source_elements_; se++) {
+    scalar_flux_old_[se] = (*scalar_flux_bdf_)[se];
+    source_[se] = (*source_bdf_)[se];
+  }
+}
+
+void FlatSourceDomain::calculate_steady_state_precursors() {
+#pragma omp parallel for
+  for (int sr = 0; sr < n_source_regions_; sr++) {
+    int mat = material_[sr];
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      double lambda = lambda_[mat * ndgroups_ + dg];
+      if (lambda == 0.0) {
+        precursors_old_[sr * ndgroups_ + dg] = 0.0;
+      } else {
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          double nu_d_sigma_f =
+            nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
+          float p = scalar_flux_old_[sr * negroups_ + g_in] * nu_d_sigma_f / lambda; //DEBUGGING
+          precursors_old_[sr * ndgroups_ + dg] += scalar_flux_old_[sr * negroups_ + g_in] * nu_d_sigma_f / lambda;
+        }
+      }
+    (*precursors_bdf_)[sr * ndgroups_ + dg] = precursors_old_[sr * ndgroups_ + dg];
+    }
+  }
+}
+
+void FlatSourceDomain::initialize_precursors_from_bdf() {
+#pragma omp parallel for
+  for (int de = 0; de < n_delay_elements_; de++) {
+    precursors_old_[de] = (*precursors_bdf_)[de];
+  }
+}
+
+void FlatSourceDomain::update_precursors() {
+#pragma omp parallel for
+  for (int sr = 0; sr < n_source_regions_; sr++) {
+    int mat = material_[sr];
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      double lambda = lambda_[mat * ndgroups_ + dg];
+      if (lambda == 0.0) {
+        precursors_new_[sr * ndgroups_ + dg] = 0.0;
+      } else {
+        double sum_term = 0.0;
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          double nu_d_sigma_f =
+            nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
+          sum_term += scalar_flux_new_[sr * negroups_ + g_in] * nu_d_sigma_f;
+        }
+      
+        const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+        float A0 = bdf_coeffs[0] / dt_;
+
+        double precursor_lhs_bdf = 0.0;
+        for (int j = 1; j < bdf_order_; j++) {
+          precursor_lhs_bdf += bdf_coeffs[j] * (*precursors_bdf_)[sr * ndgroups_ + dg  + j * n_source_elements_];
+        }
+        precursor_lhs_bdf /= dt_;
+        precursors_new_[sr * ndgroups_ + dg] = sum_term - precursor_lhs_bdf;
+        precursors_new_[sr * ndgroups_ + dg] /= A0 + lambda;
+      }      
+    }
+  }
+}
+
+float FlatSourceDomain::bdf_time_derivative(int index, vector<float>* bdf_vector,
+        int derivative_order)
+{
+  vector<float> bdf_coeffs;
+  int n_bdf_terms;
+  double time_factor;
+  if (derivative_order == 1) {
+    bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+    n_bdf_terms = bdf_order_;
+    time_factor = dt_;
+  } else if (derivative_order == 2) {
+    bdf_coeffs = bdf_coefficients_second_order_.at(bdf_order_);
+    n_bdf_terms = bdf_order_ + 1;
+    time_factor = dt_ * dt_;
+  }
+  float bdf_derivative = 0.0;
+  for (int i = 0; i < n_bdf_terms + 1; i++) {
+    float coeff = bdf_coeffs[i];
+    float x = (*bdf_vector)[index + i * n_source_elements_];
+    bdf_derivative += coeff * x / time_factor;
+  }
+  return bdf_derivative;
+}
+
+float FlatSourceDomain::bdf_time_derivative(int index, vector<double>* bdf_vector,
+        int derivative_order)
+{
+  vector<float> bdf_coeffs;
+  int n_bdf_terms;
+  double time_factor;
+  if (derivative_order == 1) {
+    bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+    n_bdf_terms = bdf_order_;
+    time_factor = dt_;
+  } else if (derivative_order == 2) {
+    bdf_coeffs = bdf_coefficients_second_order_.at(bdf_order_);
+    n_bdf_terms = bdf_order_ + 1;
+    time_factor = dt_ * dt_;
+  }
+  double bdf_derivative = 0.0;
+  for (int i = 0; i < n_bdf_terms + 1; i++) {
+    float coeff = bdf_coeffs[i];
+    double x = (*bdf_vector)[index + i * n_source_elements_];
+    bdf_derivative += coeff * x / time_factor;
+  }
+  return bdf_derivative;
+}
+
+void FlatSourceDomain::update_bdf_vector(vector<float>* bdf_vector,
+        vector<float>* new_solution, bool increment, float factor)
+{ 
+  // I don't love the naming scheme being used here...
+  int solution_size = new_solution->size();
+  if (increment) {
+    // Move the oldest solution to the front of the vector
+    rotate(bdf_vector->rbegin(), bdf_vector->rbegin() + solution_size, bdf_vector->rend());
+  }
+  // Replace the oldest solution with the new solution
+  for (int i = 0; i < solution_size; i++) {
+    (*bdf_vector)[i] = (*new_solution)[i];
+    if (factor != 1.0) {
+        (*bdf_vector)[i] *= factor;
+    }
+  }
+}
+
+void FlatSourceDomain::update_bdf_vector(vector<double>* bdf_vector,
+        vector<double>* new_solution, bool increment, double factor)
+{ 
+  // I don't love the naming scheme being used here...
+  int solution_size = new_solution->size();
+  if (increment) {
+    // Move the oldest solution to the front of the vector
+    rotate(bdf_vector->rbegin(), bdf_vector->rbegin() + solution_size, bdf_vector->rend());
+  }
+  // Replace the oldest solution with the new solution
+  for (int i = 0; i < solution_size; i++) {
+    (*bdf_vector)[i] = (*new_solution)[i];
+    if (factor != 1.0) {
+        (*bdf_vector)[i] *= factor;
+    }
+  }
+}
+
+void FlatSourceDomain::increment_bdf_vectors() {
+    vector<double> scalar_flux_blank;
+    vector<float> source_blank;
+    vector<double> precursors_blank;
+    scalar_flux_blank.assign(n_source_elements_, 0.0);
+    source_blank.assign(n_source_elements_, 0.0);
+    precursors_blank.assign(n_delay_elements_, 0.0);
+
+    update_bdf_vector(scalar_flux_bdf_, &scalar_flux_blank, true);
+    update_bdf_vector(source_bdf_, &source_blank, true); // This will be updated by
+    update_bdf_vector(precursors_bdf_, &precursors_blank, true);
+}
+
+void FlatSourceDomain::update_bdf_flux() {
+    update_bdf_vector(scalar_flux_bdf_, &scalar_flux_new_, false);
+}
+
+void FlatSourceDomain::update_bdf_source() {
+    update_bdf_vector(source_bdf_, &source_, false, 1 / (4 * PI));
+}
+
+void FlatSourceDomain::update_bdf_precursors(){
+    update_bdf_vector(precursors_bdf_, &precursors_new_, false);
+}
+
+void FlatSourceDomain::finalize_bdf_vectors() {
+    update_bdf_vector(scalar_flux_bdf_, &scalar_flux_final_, false);
+    update_bdf_vector(source_bdf_, &source_, false, 1 / (4 * PI));
+    update_bdf_vector(precursors_bdf_, &precursors_final_, false);
 }
 
 } // namespace openmc
