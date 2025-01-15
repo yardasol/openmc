@@ -315,6 +315,9 @@ void validate_random_ray_inputs()
 // RandomRaySimulation implementation
 //==============================================================================
 
+// Static variable declaration
+int RandomRaySimulation::bdf_order_max_ {1};
+
 RandomRaySimulation::RandomRaySimulation()
   : negroups_(data::mg.num_energy_groups_)
 {

@@ -175,6 +175,12 @@ class Settings:
             Whether to run the random ray solver in adjoint mode (bool). The
             default is 'False'.
 
+        Additional options are available when using `time dependent` run mode:
+
+        :bdf_order:
+            Indicates the integer order of BDF formula used for Time Derivative
+            Propogation.
+
         .. versionadded:: 0.15.0
     resonance_scattering : dict
         Settings for resonance elastic scattering. Accepted keys are 'enable'
@@ -1138,6 +1144,11 @@ class Settings:
                 cv.check_type('volume normalized flux tallies', value, bool)
             elif key == 'adjoint':
                 cv.check_type('adjoint', value, bool)
+            elif self.run_mode == 'time dependent':
+                if key == 'bdf_order':
+                    cv.check_type('BDF order', value, Integer)
+                    cv.check_greater_than('BDF order', value, 0)
+                    cv.check_less_than('BDF order', value, 7)
             else:
                 raise ValueError(f'Unable to set random ray to "{key}" which is '
                                  'unsupported by OpenMC')
@@ -1990,6 +2001,8 @@ class Settings:
                     self.random_ray['adjoint'] = (
                         child.text in ('true', '1')
                     )
+                elif child.tag == 'bdf_order':
+                    self.random_ray['bdf_order'] = int(child.text)
 
     def _time_dependent_from_xml_element(self, root):
         elem = root.find('time_dependent')

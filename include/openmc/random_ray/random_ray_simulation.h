@@ -35,6 +35,10 @@ public:
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
 
+  //---------------------------------------------------------------------------
+  // Data members
+  static int bdf_order_max_; // Maximum order for BDF approximation.
+
 private:
   //----------------------------------------------------------------------------
   // Data members

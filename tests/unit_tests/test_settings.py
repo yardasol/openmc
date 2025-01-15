@@ -2,9 +2,11 @@ import openmc
 import openmc.stats
 
 import numpy as np
+import pytest
 
 
-def test_export_to_xml(run_in_tmpdir):
+@pytest.mark.parametrize("time_dependent", [True, False])
+def test_export_to_xml(run_in_tmpdir, time_dependent):
     s = openmc.Settings(run_mode='fixed source', batches=1000, seed=17)
     s.generations_per_batch = 10
     s.inactive = 100
@@ -67,6 +69,8 @@ def test_export_to_xml(run_in_tmpdir):
             space=openmc.stats.Box((-1., -1., -1.), (1., 1., 1.))
         )
     }
+    if time_dependent:
+        s.random_ray['bdf_order'] = 3
 
     s.max_particle_events = 100
 
@@ -152,6 +156,8 @@ def test_export_to_xml(run_in_tmpdir):
     assert s.random_ray['distance_active'] == 100.0
     assert s.random_ray['ray_source'].space.lower_left == [-1., -1., -1.]
     assert s.random_ray['ray_source'].space.upper_right == [1., 1., 1.]
+    if time_dependent:
+        assert s.random_ray['bdf_order'] == 3
     assert np.all(s.time_dependent['timesteps'] == [1, 1, 1])
     assert s.time_dependent['timestep_units'] == 's'
     assert s.time_dependent['timestep_particles'] == 50

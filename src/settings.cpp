@@ -25,6 +25,7 @@
 #include "openmc/plot.h"
 #include "openmc/random_lcg.h"
 #include "openmc/random_ray/random_ray.h"
+#include "openmc/random_ray/random_ray_simulation.h"
 #include "openmc/simulation.h"
 #include "openmc/source.h"
 #include "openmc/string_utils.h"
@@ -358,6 +359,18 @@ void get_run_parameters(pugi::xml_node node_base)
     if (check_for_node(random_ray_node, "adjoint")) {
       FlatSourceDomain::adjoint_ =
         get_node_value_bool(random_ray_node, "adjoint");
+    }
+    if (run_mode == RunMode::TIME_DEPENDENT) {
+      if (check_for_node(random_ray_node, "bdf_order")) {
+        static int n = std::stod(get_node_value(random_ray_node, "bdf_order"));
+        if (n < 1 || n > 6) {
+          fatal_error("Specified BDF order of " + std::to_string(n) + ". BDF order must be between 1 and 6");
+        } else {
+          RandomRaySimulation::bdf_order_max_ = n;
+        }
+      } else {
+        fatal_error("Specify BDF approximation order in settings XML");
+      }
     }
   }
 }

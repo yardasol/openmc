@@ -1,6 +1,9 @@
 #ifndef OPENMC_RANDOM_RAY_FLAT_SOURCE_DOMAIN_H
 #define OPENMC_RANDOM_RAY_FLAT_SOURCE_DOMAIN_H
 
+#include <map>
+#include <algorithm>
+
 #include "openmc/constants.h"
 #include "openmc/openmp_interface.h"
 #include "openmc/position.h"
@@ -81,6 +84,32 @@ struct TallyTask {
   };
 };
 
+//----------------------------------------------------------------------------
+// Helper Variables
+// Coefficients come from Table 3 in Fornberg (1988)
+// DOI: 10.1090/S0025-5718-1988-0935077-0
+// Note that the signs are flipped compared to the citation, as the author was
+// formulating weights for a forward difference
+const std::map<int, vector<float>> bdf_coefficients_first_order_ = {
+  {1, {1.0, -1.0}},
+  {2, {1.5, -2.0, 0.5}},
+  {3, {1.833333, -3.0, 1.5, -0.333333}},
+  {4, {2.083333, -4.0, 3.0, -1.333333, 0.25}},
+  {5, {2.283333, -5.0, 5.0, -3.333333, 1.25, -0.2}},
+  {6, {2.45, -6.0, 7.5, -6.666666, 3.75, -1.2, 0.166666}}
+};
+
+// Coefficients come from Table 3 in Fornberg (1988)
+// DOI: 10.1090/S0025-5718-1988-0935077-0
+const std::map<int, vector<float>> bdf_coefficients_second_order_ = {
+  {1, {1.0, -2.0, 1.0}},
+  {2, {2.0, -5.0, 4, -1}},
+  {3, {2.916666, -8.666666, 9.5, -4.666666, 0.916666}},
+  {4, {3.75, -12.833333, 17.833333, -13.0, 5.083333, -0.833333}},
+  {5, {4.511111, -17.4, 29.25, -28.222222, 16.5, -5.4, 0.761111}},
+  {6, {5.211111, -22.3, 43.95, -52.722222, 41.0, -20.1, 5.661111, -0.7}}
+};
+
 /*
  * The FlatSourceDomain class encompasses data and methods for storing
  * scalar flux and source region for all flat source regions in a
@@ -117,7 +146,7 @@ public:
   double compute_fixed_source_normalization_factor() const;
   void flatten_xs();
   void transpose_scattering_matrix();
-
+ 
   //----------------------------------------------------------------------------
   // Static Data members
   static bool volume_normalized_flux_tallies_;
@@ -135,7 +164,9 @@ public:
   int64_t n_source_regions_ {0}; // Total number of source regions in the model
   int64_t n_external_source_regions_ {0}; // Total number of source regions with
                                           // non-zero external source terms
-
+  int bdf_order_ {1}; // Order of BDF approximation for time-dependent
+                      // simulations using SDP
+  
   // 1D array representing source region starting offset for each OpenMC Cell
   // in model::cells
   vector<int64_t> source_region_offsets_;
@@ -257,6 +288,50 @@ void parallel_fill(vector<T>& arr, T value)
   for (int i = 0; i < arr.size(); i++) {
     arr[i] = value;
   }
+}
+
+// BDF vector funtions
+template<typename T>
+T bdf_time_derivative(int index, vector<T>* bdf_vector, int bdf_order, double dt, int offset, int derivative_order = 1)
+{
+  vector<float> bdf_coeffs;
+  int n_bdf_terms;
+  double time_factor;
+  if (derivative_order == 1) {
+    bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order);
+    time_factor = 1 /  dt;
+    n_bdf_terms = bdf_order + 1;
+  } else if (derivative_order == 2) {
+    bdf_coeffs = bdf_coefficients_second_order_.at(bdf_order);
+    n_bdf_terms = bdf_order + 2;
+    time_factor = 1 / (dt * dt);
+  } else {
+    fatal_error("Only first or second order BDF derivatives are allowed.");
+  }
+  T bdf_derivative = 0.0;
+  for (int i = 0; i < n_bdf_terms; i++) {
+    float coeff = bdf_coeffs[i];
+    T x = (*bdf_vector)[index + i * offset]; // n_source_elements_ in most cases
+    bdf_derivative += coeff * x * time_factor;
+  }
+  return bdf_derivative;
+}
+
+// Update the first n elements of bdf_vector with
+// all n elements of  new_solution.
+// Optionally scale rotate bdf_vector so the last n
+// elements are moved to the first n elements
+// before updating
+template<typename T>
+void update_bdf_vector(vector<T>* bdf_vector, vector<T>* new_solution, bool increment)  
+{ 
+  int n = new_solution->size();
+  // Move the oldest solution to the front of the vector
+  if (increment) 
+    rotate(bdf_vector->rbegin(), bdf_vector->rbegin() + n, bdf_vector->rend());
+  // Replace the oldest solution with the new solution
+  for (int i = 0; i < n; i++)
+    (*bdf_vector)[i] = (*new_solution)[i];
 }
 
 } // namespace openmc

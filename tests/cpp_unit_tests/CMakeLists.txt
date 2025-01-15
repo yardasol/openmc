@@ -4,6 +4,7 @@ set(TEST_NAMES
   test_tally
   test_interpolate
   test_math
+  test_bdf_utils
   # Add additional unit test files here
 )
 
