@@ -1320,7 +1320,7 @@ float FlatSourceDomain::bdf_time_derivative(int index, vector<float>* bdf_vector
     time_factor = dt_ * dt_;
   }
   float bdf_derivative = 0.0;
-  for (int i = 0; i < n_bdf_terms; i++) {
+  for (int i = 0; i < n_bdf_terms + 1; i++) {
     float coeff = bdf_coeffs[i];
     float x = (*bdf_vector)[index + i * n_source_elements_];
     bdf_derivative += coeff * x / time_factor;
@@ -1344,7 +1344,7 @@ float FlatSourceDomain::bdf_time_derivative(int index, vector<double>* bdf_vecto
     time_factor = dt_ * dt_;
   }
   double bdf_derivative = 0.0;
-  for (int i = 0; i < n_bdf_terms; i++) {
+  for (int i = 0; i < n_bdf_terms + 1; i++) {
     float coeff = bdf_coeffs[i];
     double x = (*bdf_vector)[index + i * n_source_elements_];
     bdf_derivative += coeff * x / time_factor;
