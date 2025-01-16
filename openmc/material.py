@@ -67,8 +67,8 @@ class Material(IDManagerMixin):
         Density of the material (units defined separately)
     density_timeseries : list of float
         Density timeseries of the material for time-dependent simulations. Units
-        assumed to be the same as `density_units`. Must be the same length as
-        :attr:`openmc.Setttings.timesteps`.
+        assumed to be the same as `density_units`. Must be have size equal to
+        :attr:`openmc.Settings.n_timesteps`.
 
         .. versionadded:: 0.16.0
     density_units : str

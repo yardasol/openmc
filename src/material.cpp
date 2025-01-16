@@ -83,7 +83,7 @@ Material::Material(pugi::xml_node node)
                       "density unit");
         } else {
           density_timeseries_ = get_node_array<double>(density_node, "timeseries");
-          if (density_timeseries_.size() != settings::timesteps.size()) {
+          if (density_timeseries_.size() != settings::n_timesteps) {
             fatal_error("Size mismatch between density_timeseries and "
                         "timesteps.");
           }

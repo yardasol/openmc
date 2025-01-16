@@ -75,7 +75,8 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     s.max_particle_events = 100
 
     s.time_dependent = {
-        'timesteps': [1, 1, 1],
+        'dt': 0.1,
+        'n_timesteps': 41,
         'timestep_units': 's',
         'timestep_particles': 50,
         'timestep_batches': 300,
@@ -158,7 +159,8 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     assert s.random_ray['ray_source'].space.upper_right == [1., 1., 1.]
     if time_dependent:
         assert s.random_ray['bdf_order'] == 3
-    assert np.all(s.time_dependent['timesteps'] == [1, 1, 1])
+    assert s.time_dependent['dt'] == 0.1
+    assert s.time_dependent['n_timesteps'] == 41
     assert s.time_dependent['timestep_units'] == 's'
     assert s.time_dependent['timestep_particles'] == 50
     assert s.time_dependent['timestep_batches'] == 300

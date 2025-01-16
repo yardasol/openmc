@@ -161,7 +161,8 @@ extern double weight_survive;      //!< Survival weight after Russian roulette
 extern int n_timestep_particles; //!< number of particles for timesteps
 extern int n_timestep_batches;   //!< number of (inactive+active) batches for timesteps
 extern int n_timestep_inactive;  //!< number of inactive batches batches for timesteps
-extern vector<double> timesteps; //!< list of timesteps in seconds
+extern int n_timesteps;          //!< number of timesteps
+extern double dt;                //!< fixed timestep size
 extern int current_timestep;     //!< current timestep index
 
 } // namespace settings

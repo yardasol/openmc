@@ -260,8 +260,10 @@ class Settings:
         be used to evaluate resolved resonance cross sections.
     time_dependent : dict
         Options for configuring `time dependent` run mode. Acceptable keys are:
-        :timesteps:
-            Array of timesteps. Note that values are not cumulative.
+        :dt:
+            Fixed timestep size.
+        :n_timesteps:
+            Numeber of timesteps.
         :timestep_units:
             `ms`,`s`, `min`. Units for timesteps. `ms` means miliseconds, `s`
             means seconds, `min` means minutes.
@@ -1165,10 +1167,12 @@ class Settings:
             raise ValueError(f'Unable to set time_dependent from "{time_dependent}" '
                              'which is not a dict.')
         for key, value in time_dependent.items():
-            if key == 'timesteps':
-                cv.check_type('timesteps', value, Iterable, Real)
-                for step in value:
-                    cv.check_greater_than('time step', step, 0)
+            if key == 'dt':
+                cv.check_type('dt', value, Real)
+                cv.check_greater_than('dt', value, 0)
+            elif key == 'n_timesteps':
+                cv.check_type('n_timesteps', value, Integral)
+                cv.check_greater_than('n_timesteps', value, 0)
             elif key == 'timestep_units':
                 cv.check_value(
                     'timestep units', value, ('ms', 's', 'min'))
@@ -1616,14 +1620,8 @@ class Settings:
         if self._time_dependent:
             element = ET.SubElement(root, "time_dependent")
             for key, value in self._time_dependent.items():
-                if key == 'timesteps':
-                    subelement = ET.SubElement(element, "timesteps")
-                    subelement.text = " ".join(
-                        str(x) for x in self._time_dependent["timesteps"]
-                    )
-                else:
-                    subelement = ET.SubElement(element, key)
-                    subelement.text = str(value)
+                subelement = ET.SubElement(element, key)
+                subelement.text = str(value)
 
     def _eigenvalue_from_xml_element(self, root):
         elem = root.find('eigenvalue')
@@ -2009,14 +2007,12 @@ class Settings:
         if elem is not None:
             self.time_dependent = {}
             for child in elem:
-                if child.tag in ('timestep_particles','timestep_batches', 'timestep_inactive'):
+                if child.tag in ('n_timesteps', 'timestep_particles','timestep_batches', 'timestep_inactive'):
                     self.time_dependent[child.tag] = int(child.text)
                 elif child.tag == 'timestep_units':
                     self.time_dependent['timestep_units'] = child.text
-                elif child.tag == 'timesteps':
-                    text = get_text(elem, 'timesteps')
-                    if text is not None:
-                        self.time_dependent['timesteps'] = [int(x) for x in text.split()]
+                elif child.tag == 'dt':
+                    self.time_dependent['dt'] = float(child.text)
 
     def to_xml_element(self, mesh_memo=None):
         """Create a 'settings' element to be written to an XML file.

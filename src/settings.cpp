@@ -140,7 +140,8 @@ double weight_survive {1.0};
 int n_timestep_particles;
 int n_timestep_batches;
 int n_timestep_inactive;
-vector<double> timesteps;
+int n_timesteps;
+double dt;
 int current_timestep;
 
 } // namespace settings
@@ -270,10 +271,15 @@ void get_run_parameters(pugi::xml_node node_base)
     } else {
       fatal_error("Specify inactive batches for timesteps in settings XML");
     }
+    if (check_for_node(td_node, "n_timesteps")) {
+      n_timesteps =
+          std::stoi(get_node_value(td_node, "n_timesteps"));
+    } else {
+      fatal_error("Specify number of timesteps in settings XML");
+    }
     if (check_for_node(td_node, "timestep_units")) {
       std::string units = get_node_value(td_node, "timestep_units");
-      if (check_for_node(td_node, "timesteps")) {
-        timesteps = get_node_array<double>(td_node, "timesteps");
+      if (check_for_node(td_node, "dt")) {
         double factor_to_seconds;
         if (units == "ms") {
           factor_to_seconds = 1e-3;
@@ -284,11 +290,9 @@ void get_run_parameters(pugi::xml_node node_base)
         } else {
           fatal_error("Invalid timestep unit, " + units);
         }
-        for (int i = 0; i < timesteps.size(); i++) {
-          timesteps[i] *= factor_to_seconds;
-        }
+        dt *= factor_to_seconds;
       } else {
-        fatal_error("Specify timesteps in settings XML");
+        fatal_error("Specify dt in settings XML");
       }
     } else {
       fatal_error("Specify timestep units in settings XML");
