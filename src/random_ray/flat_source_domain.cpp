@@ -210,9 +210,10 @@ void FlatSourceDomain::set_flux_to_old_flux(int64_t idx)
   scalar_flux_new_[idx] = scalar_flux_old_[idx];
 }
 
-void FlatSourceDomain::set_flux_to_source(int64_t idx)
+void FlatSourceDomain::set_flux_to_source(int64_t idx, int material, int g)
 {
-  scalar_flux_new_[idx] = source_[idx];
+  double sigma_t = sigma_t_[material * negroups_ + g];
+  scalar_flux_new_[idx] = source_[idx] / sigma_t;
 }
 
 // Combine transport flux contributions and flat source contributions from the
@@ -284,7 +285,7 @@ int64_t FlatSourceDomain::add_source_to_scalar_flux()
         if (external_source_present) {
           set_flux_to_old_flux(idx);
         } else {
-          set_flux_to_source(idx);
+          set_flux_to_source(idx, material, g);
         }
       }
       // If the FSR was not hit this iteration, and it has never been hit in

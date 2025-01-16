@@ -211,7 +211,7 @@ protected:
     Discrete* discrete, double strength_factor, int32_t target_material_id);
   virtual void set_flux_to_flux_plus_source(
     int64_t idx, double volume, int material, int g);
-  void set_flux_to_source(int64_t idx);
+  void set_flux_to_source(int64_t idx, int material, int g);
   virtual void set_flux_to_old_flux(int64_t idx);
 
   //----------------------------------------------------------------------------
