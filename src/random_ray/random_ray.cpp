@@ -186,6 +186,7 @@ RandomRaySourceShape RandomRay::source_shape_ {RandomRaySourceShape::FLAT};
 
 RandomRay::RandomRay()
   : angular_flux_(data::mg.num_energy_groups_),
+    angular_flux_dt_(data::mg.num_energy_groups_),
     delta_psi_(data::mg.num_energy_groups_),
     negroups_(data::mg.num_energy_groups_)
 {
@@ -323,6 +324,24 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     float exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
     float new_delta_psi =
       (angular_flux_[g] - domain_->source_[source_element + g] / sigma_t) * exponential;
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) { // Maybe add "is active" here?
+      float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
+
+      int &bdf_order = domain_->bdf_order_;
+      double &dt = settings::dt;
+      int64_t &n_source_elements = domain_->n_source_elements_;
+      float dQdt = bdf_time_derivative(source_element + g, domain_->source_bdf_, bdf_order, dt, n_source_elements);
+
+      // Truncate dphi2_dt2 when we can't calculate it
+      float T = dQdt;
+      // TODO: make a dphi2_dt2 approxi2ation
+      float S = angular_flux_dt_[g] - T / sigma_t; 
+      // Add time-dependent terms to delta psi
+      new_delta_psi += inverse_vbar *  T / (sigma_t * sigma_t) * exponential;
+      new_delta_psi += distance * inverse_vbar * S * (1 - exponential);
+      // Calculate delta for dpsi/dt
+      angular_flux_dt_[g] -= S * exponential;
+    }
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
   }
@@ -542,6 +561,24 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
 
   for (int g = 0; g < negroups_; g++) {
     angular_flux_[g] = domain_->source_[source_region_idx * negroups_ + g];
+    // Initialize ray's starting angular flux time derivative to starting
+    // location's isotropic source time derivative. Like the angular flux, it
+    // the approximation for this should improve over the active ray length
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        // If we have a scalar flux solution, use that to approximate dphi/dt
+        // Otherwise use the source derivative as an approximation for dphi/dt
+        int &bdf_order = domain_->bdf_order_;
+        double &dt = settings::dt;
+        int64_t &n_source_elements = domain_->n_source_elements_;
+
+        if ((*(domain_->scalar_flux_bdf_))[source_region_idx * negroups_ + g] != 0.0) {
+          angular_flux_dt_[g] = bdf_time_derivative(source_region_idx * negroups_ + g, domain_->scalar_flux_bdf_, bdf_order, dt, n_source_elements);
+          //angular_flux_dt_[g] /= 4 * PI;
+        } else {
+          angular_flux_dt_[g] = bdf_time_derivative(source_region_idx * negroups_ + g, domain_->source_bdf_, bdf_order, dt, n_source_elements);
+          //angular_flux_dt_[g] /= 4 * PI;
+        }
+    }
   }
 }
 

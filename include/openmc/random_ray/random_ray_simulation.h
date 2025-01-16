@@ -37,7 +37,12 @@ public:
 
   //---------------------------------------------------------------------------
   // Data members
-  static int bdf_order_max_; // Maximum order for BDF approximation.
+
+  // Maximum order for BDF approximation.
+  static int bdf_order_max_;
+
+  // Random ray eigenvalue
+  double k_eff_ {1.0};
 
 private:
   //----------------------------------------------------------------------------
@@ -45,9 +50,6 @@ private:
 
   // Contains all flat source region data
   unique_ptr<FlatSourceDomain> domain_;
-
-  // Random ray eigenvalue
-  double k_eff_ {1.0};
 
   // Tracks the average FSR miss rate for analysis and reporting
   double avg_miss_rate_ {0.0};
@@ -65,8 +67,24 @@ private:
 //! Non-member functions
 //============================================================================
 
-void openmc_run_random_ray();
+void openmc_run_random_ray(bool initial_condition = false);
 void validate_random_ray_inputs();
+
+void openmc_run_random_ray_time_dependent();
+void rename_statepoint_file(int i);
+void initialize_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, int bdf_order_max, vector<double>* scalar_flux_bdf, vector<float>* source_bdf, vector<double>* precursors_bdf, vector<double>* criticality_scalar_flux, vector<float>* criticality_source);
+void increment_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, vector<double>* scalar_flux_bdf, vector<float>* source_bdf, vector<double>* precursors_bdf);
+void rename_statepoint_file(int i);
+
+//==============================================================================
+// Time-dependent global variables
+//==============================================================================
+extern vector<double> scalar_flux_bdf;
+extern vector<float> source_bdf;
+extern vector<double> precursors_bdf;
+
+extern vector<double> criticality_scalar_flux;
+extern vector<float> criticality_source;
 
 } // namespace openmc
 

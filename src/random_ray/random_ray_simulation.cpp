@@ -21,7 +21,7 @@ namespace openmc {
 // Non-member functions
 //==============================================================================
 
-void openmc_run_random_ray()
+void openmc_run_random_ray(bool initial_condition)
 {
   //////////////////////////////////////////////////////////
   // Run forward simulation
@@ -85,6 +85,13 @@ void openmc_run_random_ray()
 
     // Output all simulation results
     sim.output_simulation_results();
+
+    // Extract flux and source for initial condition for time-dependent
+    // simulation
+    if (initial_condition) {
+      criticality_scalar_flux = forward_flux;
+      criticality_source = sim.domain()->source_;
+    }
   }
 
   //////////////////////////////////////////////////////////
@@ -133,6 +140,161 @@ void openmc_run_random_ray()
     // Output all simulation results
     adjoint_sim.output_simulation_results();
   }
+}
+
+//==============================================================================
+// Time-dependent global variables 
+//==============================================================================
+vector<double> scalar_flux_bdf;
+vector<float> source_bdf;
+vector<double> precursors_bdf;
+
+vector<double> criticality_scalar_flux;
+vector<float> criticality_source;
+
+void openmc_run_random_ray_time_dependent()
+{
+  // Criticality solve to get initial condition
+  settings::run_mode = RunMode::EIGENVALUE;
+  openmc_run_random_ray(true);
+  rename_statepoint_file(0);
+  double k_eff_0 = simulation::keff;
+
+  // Settings for timestepping loop
+  settings::run_mode = RunMode::TIME_DEPENDENT;
+  settings::statepoint_batch.erase(settings::n_batches);
+  settings::n_batches = settings::n_timestep_batches;
+  settings::n_inactive = settings::n_timestep_inactive;
+  settings::statepoint_batch.insert(settings::n_batches);
+  int bdf_order = 1;
+  int bdf_order_max = RandomRaySimulation::bdf_order_max_;
+  int64_t n_source_elements = criticality_scalar_flux.size();
+  int64_t n_delay_elements =  n_source_elements / data::mg.num_energy_groups_ * data::mg.num_delayed_groups_;
+
+  // Define and initialize BDF vectors
+  // TODO: try to make bdf_order_max a global rather than a class variable 
+  initialize_bdf_vectors(n_source_elements, n_delay_elements, bdf_order_max, &scalar_flux_bdf, &source_bdf, &precursors_bdf, &criticality_scalar_flux, &criticality_source); 
+
+  // Timestepping loop
+  for (int i = 0; i < settings::n_timesteps; i++) {
+    settings::current_timestep = i;
+
+    // Print simulation information
+    if (mpi::master) {
+      // Offset to resolve steady state
+      std::string message = fmt::format("TIME DEPENDENT SOLVE {0}", i + 1);
+      const char* msg = message.c_str();
+      header(msg, 3);
+    }
+
+    reset_timers();
+
+    // Initialize OpenMC general data structures
+    openmc_simulation_init();
+
+    RandomRaySimulation sim_td;
+    sim_td.k_eff_ = k_eff_0;
+    sim_td.domain()->bdf_order_ = bdf_order;
+    // TODO: Determine it defining the domain variables as pointers will cause
+    // issues with parallelization
+    // Define domain pointers to global BDF vectors
+    sim_td.domain()->scalar_flux_bdf_ = &scalar_flux_bdf;
+    sim_td.domain()->source_bdf_ = &source_bdf;
+    sim_td.domain()->precursors_bdf_ = &precursors_bdf;
+    sim_td.domain()->set_initial_condition(k_eff_0); 
+    
+    // Update time dependent cross section based on the density
+    sim_td.domain()->update_material_density(i); 
+
+    // Begin main simulation timer
+    simulation::time_total.start();
+
+    // Increment BDF vectors to a zero-valued solution to be filled in.
+    increment_bdf_vectors(n_source_elements, n_delay_elements, &scalar_flux_bdf, &source_bdf, &precursors_bdf);
+
+    // Execute random ray simulation
+    sim_td.simulate();
+
+    // End main simulation timer
+    simulation::time_total.stop();
+
+    // Finalize OpenMC
+    openmc_simulation_finalize();
+
+    // Reduce variables across MPI ranks
+    sim_td.reduce_simulation_statistics();
+
+    // Output all simulation results
+    sim_td.output_simulation_results();
+
+    // Rename statepoint file
+    rename_statepoint_file(i + 1);
+
+    // Normalize and save the final forward flux
+    double source_normalization_factor =
+      sim_td.domain()->compute_fixed_source_normalization_factor() /
+      (settings::n_batches - settings::n_inactive);
+
+    // Alias for convenience
+    vector<double> &final_flux = sim_td.domain()->scalar_flux_final_;
+#pragma omp parallel for
+    for (uint64_t i = 0; i < final_flux.size(); i++) {
+      final_flux[i] *= source_normalization_factor;
+    }
+    sim_td.domain()->compute_precursors(k_eff_0);
+    
+
+    // Store final solutions in BDF vectors
+    update_bdf_vector(&scalar_flux_bdf, &(sim_td.domain()->scalar_flux_final_), false);
+    update_bdf_vector(&source_bdf, &(sim_td.domain()->source_), false);
+    update_bdf_vector(&precursors_bdf, &(sim_td.domain()->precursors_), false);
+
+    // Increment BDF order up to the maximum allowed by the user
+    if (i < RandomRaySimulation::bdf_order_max_) {
+        bdf_order++;
+    }
+  }
+}
+
+void initialize_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, int bdf_order_max, vector<double>* scalar_flux_bdf, vector<float>* source_bdf, vector<double>* precursors_bdf, vector<double>* criticality_scalar_flux, vector<float>* criticality_source) {
+  // We need bdf_order_max + 2 solutions to take 2nd-order derivatives.
+  (*scalar_flux_bdf).assign(n_source_elements * (bdf_order_max + 2), 0.0);
+  (*source_bdf).assign(n_source_elements * (bdf_order_max + 1), 0.0);
+
+  // Store criticality solutions to the bdf vectors
+#pragma omp parallel for
+  for (int i = 0; i < n_source_elements; i++) {
+      (*scalar_flux_bdf)[i] = (*criticality_scalar_flux)[i];
+      (*source_bdf)[i] = (*criticality_source)[i];
+  }
+  (*precursors_bdf).assign(n_delay_elements * (bdf_order_max + 1), 0.0);
+}
+
+void increment_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, vector<double>* scalar_flux_bdf, vector<float>* source_bdf, vector<double>* precursors_bdf) {
+    vector<double> scalar_flux_blank;
+    vector<float> source_blank;
+    vector<double> precursors_blank;
+
+    scalar_flux_blank.assign(n_source_elements, 0.0);
+    source_blank.assign(n_source_elements, 0.0);
+    source_blank.assign(n_delay_elements, 0.0);
+
+    update_bdf_vector(scalar_flux_bdf, &scalar_flux_blank, true);
+    update_bdf_vector(source_bdf, &source_blank, true);
+    update_bdf_vector(precursors_bdf, &precursors_blank, true);
+}
+
+void rename_statepoint_file(int i)
+{
+  // Rename statepoint file
+  std::string old_filename_ = fmt::format("{0}statepoint.{1}.h5",
+          settings::path_output, settings::n_batches);
+  std::string new_filename_ = fmt::format("{0}openmc_td_simulation_{1}.h5",
+              settings::path_output, i);
+
+  const char* old_fname = old_filename_.c_str();
+  const char* new_fname = new_filename_.c_str();
+  std::rename(old_fname, new_fname);
 }
 
 // Enforces restrictions on inputs in random ray mode.  While there are
@@ -377,6 +539,8 @@ void RandomRaySimulation::simulate()
 
     // Update source term (scattering + fission)
     domain_->update_neutron_source(k_eff_);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT)
+       update_bdf_vector(&source_bdf, &(domain_->source_), false);
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
@@ -419,7 +583,15 @@ void RandomRaySimulation::simulate()
 
       // Add this iteration's scalar flux estimate to final accumulated estimate
       domain_->accumulate_iteration_flux();
-
+      // calculate precursors each batch or not... I think so, but we can try
+      // calculating precursors without...
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        double source_normalization_factor = domain_->compute_fixed_source_normalization_factor();
+        source_normalization_factor /= (simulation::current_batch - settings::n_inactive);
+        update_bdf_vector(&scalar_flux_bdf, &(domain_->scalar_flux_final_), false, source_normalization_factor);
+        // TODO: Computer precursor (see update_precursors, and
+        // update_precursors_bdf)
+      }
       if (mpi::master) {
         // Generate mapping between source regions and tallies
         if (!domain_->mapped_all_tallies_) {
@@ -433,6 +605,8 @@ void RandomRaySimulation::simulate()
 
     // Set phi_old = phi_new
     domain_->flux_swap();
+    // TODO: precursors_swap?
+    // TODO: precursors_swap?
 
     // Check for any obvious insabilities/nans/infs
     instability_check(n_hits, k_eff_, avg_miss_rate_);

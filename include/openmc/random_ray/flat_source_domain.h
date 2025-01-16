@@ -146,6 +146,10 @@ public:
   double compute_fixed_source_normalization_factor() const;
   void flatten_xs();
   void transpose_scattering_matrix();
+  void set_initial_condition(double k_eff_0);
+  void compute_criticality_precursors(double k_eff_0);
+  void update_material_density(int i);
+  void compute_precursors(double k_eff_0);
  
   //----------------------------------------------------------------------------
   // Static Data members
@@ -164,6 +168,12 @@ public:
   int64_t n_source_regions_ {0}; // Total number of source regions in the model
   int64_t n_external_source_regions_ {0}; // Total number of source regions with
                                           // non-zero external source terms
+  int negroups_;                  // Number of energy groups in simulation
+  int ndgroups_;                  // Number of delay groups in simulation
+  int64_t n_source_elements_ {0}; // Total number of source regions in the model
+                                  // times the number of energy group
+  int64_t n_delay_elements_ {0};  // Total number of source regions in the model
+                                  // times the number of delay groups
   int bdf_order_ {1}; // Order of BDF approximation for time-dependent
                       // simulations using SDP
   
@@ -187,6 +197,10 @@ public:
   vector<bool> external_source_present_;
   vector<double> scalar_flux_final_;
 
+  // 2D arrays stored in 1D representing values for all source regions x delay
+  // groups
+  vector<double> precursors_;
+
   // 2D arrays stored in 1D representing values for all materials x energy
   // groups
   int n_materials_;
@@ -194,10 +208,26 @@ public:
   vector<double> nu_sigma_f_;
   vector<double> sigma_f_;
   vector<double> chi_;
+  vector<double> nu_p_sigma_f_;
+  vector<double> inverse_vbar_;
+
+  // 2D arrays stored in 1D representing values for all materials x
+  // delay_groups
+  vector<double> lambda_;
 
   // 3D arrays stored in 1D representing values for all materials x energy
   // groups x energy groups
   vector<double> sigma_s_;
+
+  // 3D arrays stored in 1D representing values for all materials x energy
+  // groups x delay groups
+  vector<double> nu_d_sigma_f_;
+  vector<double> chi_d_;
+
+  // Pointers to BDF vectors
+  vector<double>* scalar_flux_bdf_;
+  vector<float>* source_bdf_;
+  vector<double>* precursors_bdf_;
 
 protected:
   //----------------------------------------------------------------------------
@@ -215,11 +245,7 @@ protected:
   virtual void set_flux_to_old_flux(int64_t idx);
 
   //----------------------------------------------------------------------------
-  // Private data members
-  int negroups_;                  // Number of energy groups in simulation
-  int64_t n_source_elements_ {0}; // Total number of source regions in the model
-                                  // times the number of energy groups
-
+  // Private data members 
   double
     simulation_volume_; // Total physical volume of the simulation domain, as
                         // defined by the 3D box of the random ray source
@@ -321,9 +347,10 @@ T bdf_time_derivative(int index, vector<T>* bdf_vector, int bdf_order, double dt
 // all n elements of  new_solution.
 // Optionally scale rotate bdf_vector so the last n
 // elements are moved to the first n elements
-// before updating
+// before updating.
+// Optionally scale the new solutions by factor
 template<typename T>
-void update_bdf_vector(vector<T>* bdf_vector, vector<T>* new_solution, bool increment)  
+void update_bdf_vector(vector<T>* bdf_vector, vector<T>* new_solution, bool increment, T factor = 1)
 { 
   int n = new_solution->size();
   // Move the oldest solution to the front of the vector
@@ -331,7 +358,7 @@ void update_bdf_vector(vector<T>* bdf_vector, vector<T>* new_solution, bool incr
     rotate(bdf_vector->rbegin(), bdf_vector->rbegin() + n, bdf_vector->rend());
   // Replace the oldest solution with the new solution
   for (int i = 0; i < n; i++)
-    (*bdf_vector)[i] = (*new_solution)[i];
+    (*bdf_vector)[i] = (*new_solution)[i] * factor;
 }
 
 } // namespace openmc

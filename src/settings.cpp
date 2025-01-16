@@ -280,6 +280,7 @@ void get_run_parameters(pugi::xml_node node_base)
     if (check_for_node(td_node, "timestep_units")) {
       std::string units = get_node_value(td_node, "timestep_units");
       if (check_for_node(td_node, "dt")) {
+        dt = std::stod(get_node_value(td_node, "dt"));
         double factor_to_seconds;
         if (units == "ms") {
           factor_to_seconds = 1e-3;

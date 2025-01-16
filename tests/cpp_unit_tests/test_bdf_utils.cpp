@@ -1,5 +1,6 @@
-#include "openmc/random_ray/flat_source_domain.h"
 #include <iostream>
+#include "openmc/random_ray/flat_source_domain.h"
+#include "openmc/random_ray/random_ray_simulation.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -73,4 +74,47 @@ TEST_CASE("Test update_bdf_vector")
 
   update_bdf_vector(&test_vector, &new_solution, true);
   REQUIRE_THAT(test_vector, Catch::Matchers::Equals(ref_vector_increment));
+}
+
+TEST_CASE("Test initialize_bdf_vectors")
+{
+  std::vector<double> ref_scalar_flux_bdf = {0.3, 0.4, 0.0, 0.0, 0.0, 0.0};
+  std::vector<float> ref_source_bdf = {0.1, 0.2, 0.0, 0.0};
+  std::vector<double> ref_precursors_bdf = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+  int bdf_order_max = 1;
+  int64_t n_source_elements = 2;
+  int64_t n_delay_elements = 3;
+
+  std::vector<double> criticality_scalar_flux = {0.3, 0.4};
+  std::vector<float> criticality_source = {0.1, 0.2};
+
+  std::vector<double> scalar_flux_bdf;
+  std::vector<float> source_bdf;
+  std::vector<double> precursors_bdf;
+
+  initialize_bdf_vectors(n_source_elements, n_delay_elements, bdf_order_max, &scalar_flux_bdf, &source_bdf, &precursors_bdf, &criticality_scalar_flux, &criticality_source); 
+  REQUIRE_THAT(ref_scalar_flux_bdf, Catch::Matchers::Equals(scalar_flux_bdf));
+  REQUIRE_THAT(ref_source_bdf, Catch::Matchers::Equals(source_bdf));
+  REQUIRE_THAT(ref_precursors_bdf, Catch::Matchers::Equals(precursors_bdf));
+}
+
+TEST_CASE("Test increment_bdf_vectors")
+{
+  std::vector<double> ref_scalar_flux_bdf = {0.0, 0.0, 0.3, 0.4, 0.0, 0.0};
+  std::vector<float> ref_source_bdf = {0.0, 0.0, 0.1, 0.2};
+  std::vector<double> ref_precursors_bdf = {0.0, 0.0, 0.0, 5.0, 6.0, 7.0};
+
+  int bdf_order_max = 1;
+  int64_t n_source_elements = 2;
+  int64_t n_delay_elements = 3;
+
+  std::vector<double> test_scalar_flux_bdf = {0.3, 0.4, 0.0, 0.0};
+  std::vector<float> test_source_bdf = {0.1, 0.1};
+  std::vector<double> test_precursors_bdf = {5.0, 6.0, 7.0};
+
+  increment_bdf_vectors(n_source_elements, n_delay_elements, &test_scalar_flux_bdf, &test_source_bdf, &test_precursors_bdf);
+  REQUIRE_THAT(ref_scalar_flux_bdf, Catch::Matchers::Equals(test_scalar_flux_bdf));
+  REQUIRE_THAT(ref_source_bdf, Catch::Matchers::Equals(test_source_bdf));
+  REQUIRE_THAT(ref_precursors_bdf, Catch::Matchers::Equals(test_precursors_bdf));
 }
