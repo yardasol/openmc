@@ -460,6 +460,21 @@ double Mgxs::get_xs(MgxsType xstype, int gin, const int* gout, const double* mu,
       val = 0.;
     }
     break;
+  case MgxsType::CHI:
+    if (fissionable) {
+      if (gout != nullptr) {
+        val = xs_t->chi(a, gin, *gout);
+      } else {
+        // provide an outgoing group-wise sum
+        val = 0.;
+        for (int g = 0; g < xs_t->chi.shape()[2]; g++) {
+          val += xs_t->chi(a, gin, g);
+        }
+      }
+    } else {
+      val = 0.;
+    }
+    break;
   case MgxsType::CHI_PROMPT:
     if (fissionable) {
       if (gout != nullptr) {

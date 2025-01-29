@@ -1068,7 +1068,7 @@ void FlatSourceDomain::flatten_xs()
         sigma_f_.push_back(sigma_f);
 
         double chi =
-          m.get_xs(MgxsType::CHI_PROMPT, g_out, &g_out, NULL, NULL, t, a);
+          m.get_xs(MgxsType::CHI, g_out, &g_out, NULL, NULL, t, a);
         chi_.push_back(chi);
 
         for (int g_in = 0; g_in < negroups_; g_in++) {

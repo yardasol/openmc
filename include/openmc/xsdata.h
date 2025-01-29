@@ -83,7 +83,10 @@ public:
   // delayed_nu_fission has the following dimensions:
   // [angle][delayed group][incoming group]
   xt::xtensor<double, 3> delayed_nu_fission;
-  // chi_prompt has the following dimensions:
+  // chi has the following dimensions:
+  // [angle][incoming group][outgoing group]
+  xt::xtensor<double, 3> chi;
+  // chi has the following dimensions:
   // [angle][incoming group][outgoing group]
   xt::xtensor<double, 3> chi_prompt;
   // chi_delayed has the following dimensions:
