@@ -1574,26 +1574,24 @@ class Library:
 
         error_flag = False
 
-        transport_type = 'monte carlo'
         if random_ray:
             required_xs_types = np.array(['total', 'absorption', 'nu-fission',
-                                          'fission', 'nu-scatter matrix',
-                                          'multiplicity matrix', 'chi'])
+                                 'fission', 'chi-prompt', 'scatter matrix'])
             transport_type = 'random ray'
-        if time_dependent:
-            required_xs_types_td = np.array(['delayed-nu-fission',
-                                             'chi-prompt', 'chi-delayed',
-                                             'decay-rate', 'inverse-velocity'])
-            required_xs_types = np.append(np.delete(required_xs_types, 1),
-                                          required_xs_types_td)
-            transport_type = "time-dependent " + transport_type
+            if time_dependent:
+                required_xs_types_td = np.array(['delayed-nu-fission',
+                                                 'chi-delayed', 'decay-rate',
+                                                 'inverse-velocity'])
+                required_xs_types = np.append(np.delete(required_xs_types, 1),
+                                              required_xs_types_td)
+                transport_type = "time-dependent " + transport_type
 
-        for xs_type in required_xs_types:
-            if xs_type not in self.mgxs_types:
-                error_flag = True
-                warn_string = 'A "{}" MGXS type is required for {} ' \
-                              'transport.'.format(xs_type, transport_type)
-                warn(warn_string)
+            for xs_type in required_xs_types:
+                if xs_type not in self.mgxs_types:
+                    error_flag = True
+                    warn_string = 'A "{}" MGXS type is required for {} ' \
+                                  'transport.'.format(xs_type, transport_type)
+                    warn(warn_string)
         else:
             # if correction is 'P0', then transport must be provided
             # otherwise total must be provided
