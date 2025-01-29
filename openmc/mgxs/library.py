@@ -945,7 +945,7 @@ class Library:
             return pickle.load(f)
 
     def get_xsdata(self, domain, xsdata_name, nuclide='total', xs_type='macro',
-                   subdomain=None, apply_domain_chi=False, random_ray=False):
+                   subdomain=None, apply_domain_chi=False):
         """Generates an openmc.XSdata object describing a multi-group cross section
         dataset for writing to an openmc.MGXSLibrary object.
 
@@ -981,9 +981,6 @@ class Library:
             downstream multigroup solvers that precompute a material-specific
             chi before the transport solve provides group-wise fluxes. Defaults
             to False.
-        random_ray : bool
-            Flag to determine whether or not to generate a
-            :class:`openmc.XSdata` object for random ray transport or not
 
         Returns
         -------
@@ -1156,46 +1153,52 @@ class Library:
             xsdata.set_decay_rate_mgxs(mymgxs, xs_type=xs_type, nuclide=[nuclide],
                                 subdomain=subdomain)
 
-        if random_ray:
-            mymgxs = self.get_mgxs(domain, 'scatter matrix')
-            xsdata.set_scatter_matrix_mgxs(mymgxs, xs_type=xs_type, nuclide=[nuclide],
-                                subdomain=subdomain)
+        # If multiplicity matrix is available, prefer that
+        if 'multiplicity matrix' in self.mgxs_types:
+            mymgxs = self.get_mgxs(domain, 'multiplicity matrix')
+            xsdata.set_multiplicity_matrix_mgxs(mymgxs, xs_type=xs_type,
+                                                nuclide=[nuclide],
+                                                subdomain=subdomain)
+            using_multiplicity = True
+
+        # multiplicity will fall back to using scatter and nu-scatter
+        elif 'scatter matrix' in self.mgxs_types and \
+             'nu-scatter matrix' in self.mgxs_types:
+            scatt_mgxs = self.get_mgxs(domain, 'scatter matrix')
+            nuscatt_mgxs = self.get_mgxs(domain, 'nu-scatter matrix')
+            xsdata.set_multiplicity_matrix_mgxs(nuscatt_mgxs, scatt_mgxs,
+                                                xs_type=xs_type,
+                                                nuclide=[nuclide],
+                                                subdomain=subdomain)
+            using_multiplicity = True
+
+        # multiplicity will fall back to using scatter and nu-scatter
+        elif 'consistent scatter matrix' in self.mgxs_types and \
+             'consistent nu-scatter matrix' in self.mgxs_types:
+            scatt_mgxs = self.get_mgxs(domain, 'consistent scatter matrix')
+            nuscatt_mgxs = \
+                self.get_mgxs(domain, 'consistent nu-scatter matrix')
+            xsdata.set_multiplicity_matrix_mgxs(nuscatt_mgxs, scatt_mgxs,
+                                                xs_type=xs_type,
+                                                nuclide=[nuclide],
+                                                subdomain=subdomain)
+            using_multiplicity = True
+
         else:
-            # If multiplicity matrix is available, prefer that
-            if 'multiplicity matrix' in self.mgxs_types:
-                mymgxs = self.get_mgxs(domain, 'multiplicity matrix')
-                xsdata.set_multiplicity_matrix_mgxs(mymgxs, xs_type=xs_type,
-                                                    nuclide=[nuclide],
-                                                    subdomain=subdomain)
-                using_multiplicity = True
+            using_multiplicity = False
 
-            # multiplicity will fall back to using scatter and nu-scatter
-            elif 'scatter matrix' in self.mgxs_types and \
-                 'nu-scatter matrix' in self.mgxs_types:
-                scatt_mgxs = self.get_mgxs(domain, 'scatter matrix')
+        if using_multiplicity:
+            if 'nu-scatter matrix' in self.mgxs_types:
                 nuscatt_mgxs = self.get_mgxs(domain, 'nu-scatter matrix')
-                xsdata.set_multiplicity_matrix_mgxs(nuscatt_mgxs, scatt_mgxs,
-                                                    xs_type=xs_type,
-                                                    nuclide=[nuclide],
-                                                    subdomain=subdomain)
-                using_multiplicity = True
-
-            # multiplicity will fall back to using scatter and nu-scatter
-            elif 'consistent scatter matrix' in self.mgxs_types and \
-                 'consistent nu-scatter matrix' in self.mgxs_types:
-                scatt_mgxs = self.get_mgxs(domain, 'consistent scatter matrix')
+            else:
                 nuscatt_mgxs = \
                     self.get_mgxs(domain, 'consistent nu-scatter matrix')
-                xsdata.set_multiplicity_matrix_mgxs(nuscatt_mgxs, scatt_mgxs,
-                                                    xs_type=xs_type,
-                                                    nuclide=[nuclide],
-                                                    subdomain=subdomain)
-                using_multiplicity = True
-
-            else:
-                using_multiplicity = False
-
-            if using_multiplicity:
+            xsdata.set_scatter_matrix_mgxs(nuscatt_mgxs, xs_type=xs_type,
+                                           nuclide=[nuclide],
+                                           subdomain=subdomain)
+        else:
+            if 'nu-scatter matrix' in self.mgxs_types or \
+                    'consistent nu-scatter matrix' in self.mgxs_types:
                 if 'nu-scatter matrix' in self.mgxs_types:
                     nuscatt_mgxs = self.get_mgxs(domain, 'nu-scatter matrix')
                 else:
@@ -1204,63 +1207,51 @@ class Library:
                 xsdata.set_scatter_matrix_mgxs(nuscatt_mgxs, xs_type=xs_type,
                                                nuclide=[nuclide],
                                                subdomain=subdomain)
-            else:
-                if 'nu-scatter matrix' in self.mgxs_types or \
-                        'consistent nu-scatter matrix' in self.mgxs_types:
-                    if 'nu-scatter matrix' in self.mgxs_types:
-                        nuscatt_mgxs = self.get_mgxs(domain, 'nu-scatter matrix')
-                    else:
-                        nuscatt_mgxs = \
-                            self.get_mgxs(domain, 'consistent nu-scatter matrix')
-                    xsdata.set_scatter_matrix_mgxs(nuscatt_mgxs, xs_type=xs_type,
-                                                   nuclide=[nuclide],
-                                                   subdomain=subdomain)
 
-                    # Since we are not using multiplicity, then
-                    # scattering multiplication (nu-scatter) must be
-                    # accounted for approximately by using an adjusted
-                    # absorption cross section.
-                    if 'total' in self.mgxs_types or 'transport' in self.mgxs_types:
-                        if xsdata.scatter_format == 'legendre':
-                            for i in range(len(xsdata.temperatures)):
-                                if representation == 'isotropic':
-                                    xsdata._absorption[i] = \
-                                        np.subtract(xsdata._total[i], np.sum(
-                                            xsdata._scatter_matrix[i][:, :, 0],
-                                            axis=1))
-                                elif representation == 'angle':
-                                    xsdata._absorption[i] = \
-                                        np.subtract(xsdata._total[i], np.sum(
-                                            xsdata._scatter_matrix[i][:, :, :, :, 0],
-                                            axis=3))
-                        elif xsdata.scatter_format == 'histogram':
-                            for i in range(len(xsdata.temperatures)):
-                                if representation == 'isotropic':
-                                    xsdata._absorption[i] = \
-                                        np.subtract(xsdata._total[i], np.sum(np.sum(
-                                            xsdata._scatter_matrix[i][:, :, :],
-                                            axis=2), axis=1))
-                                elif representation == 'angle':
-                                    xsdata._absorption[i] = \
-                                        np.subtract(xsdata._total[i], np.sum(np.sum(
-                                            xsdata._scatter_matrix[i][:, :, :, :, :],
-                                            axis=4), axis=3))
-                # if only scatter matrices have been tallied, multiplicity cannot
-                # be accounted for
-                else:
-                    msg = 'Scatter multiplicity (such as (n,xn) reactions) '\
-                          'are ignored since multiplicity or nu-scatter matrices '\
-                          'were not tallied for ' + xsdata_name
-                    warn(msg, RuntimeWarning)
-                    xsdata.set_scatter_matrix_mgxs(scatt_mgxs, xs_type=xs_type,
-                                                   nuclide=[nuclide],
-                                                   subdomain=subdomain)
+                # Since we are not using multiplicity, then
+                # scattering multiplication (nu-scatter) must be
+                # accounted for approximately by using an adjusted
+                # absorption cross section.
+                if 'total' in self.mgxs_types or 'transport' in self.mgxs_types:
+                    if xsdata.scatter_format == 'legendre':
+                        for i in range(len(xsdata.temperatures)):
+                            if representation == 'isotropic':
+                                xsdata._absorption[i] = \
+                                    np.subtract(xsdata._total[i], np.sum(
+                                        xsdata._scatter_matrix[i][:, :, 0],
+                                        axis=1))
+                            elif representation == 'angle':
+                                xsdata._absorption[i] = \
+                                    np.subtract(xsdata._total[i], np.sum(
+                                        xsdata._scatter_matrix[i][:, :, :, :, 0],
+                                        axis=3))
+                    elif xsdata.scatter_format == 'histogram':
+                        for i in range(len(xsdata.temperatures)):
+                            if representation == 'isotropic':
+                                xsdata._absorption[i] = \
+                                    np.subtract(xsdata._total[i], np.sum(np.sum(
+                                        xsdata._scatter_matrix[i][:, :, :],
+                                        axis=2), axis=1))
+                            elif representation == 'angle':
+                                xsdata._absorption[i] = \
+                                    np.subtract(xsdata._total[i], np.sum(np.sum(
+                                        xsdata._scatter_matrix[i][:, :, :, :, :],
+                                        axis=4), axis=3))
+            # if only scatter matrices have been tallied, multiplicity cannot
+            # be accounted for
+            else:
+                msg = 'Scatter multiplicity (such as (n,xn) reactions) '\
+                      'are ignored since multiplicity or nu-scatter matrices '\
+                      'were not tallied for ' + xsdata_name
+                warn(msg, RuntimeWarning)
+                xsdata.set_scatter_matrix_mgxs(scatt_mgxs, xs_type=xs_type,
+                                               nuclide=[nuclide],
+                                               subdomain=subdomain)
 
         return xsdata
 
     def create_mg_library(self, xs_type='macro', xsdata_names=None,
-                          apply_domain_chi=False, random_ray=False,
-                          time_dependent=False):
+                          apply_domain_chi=False):
         """Creates an openmc.MGXSLibrary object to contain the MGXS data for the
         Multi-Group mode of OpenMC.
 
@@ -1286,12 +1277,6 @@ class Library:
             downstream multigroup solvers that precompute a material-specific
             chi before the transport solve provides group-wise fluxes. Defaults
             to False.
-        random_ray : bool
-            Whether or not :class:`MGXSLibrary` object will be used for random
-            ray transport
-        time_dependent : bool
-            Whether or not :class:`MGXSLibrary` object will be used for
-            time-dependent transport
 
         Returns
         -------
@@ -1314,7 +1299,7 @@ class Library:
 
         # Check to ensure the Library contains the correct
         # multi-group cross section types
-        self.check_library_for_openmc_mgxs(random_ray, time_dependent)
+        self.check_library_for_openmc_mgxs()
 
         cv.check_value('xs_type', xs_type, ['macro', 'micro'])
         if xsdata_names is not None:
@@ -1344,8 +1329,7 @@ class Library:
 
                     # Create XSdata and Macroscopic for this domain
                     xsdata = self.get_xsdata(domain, xsdata_name,
-                                             subdomain=subdomain,
-                                             random_ray=random_ray)
+                                             subdomain=subdomain)
                     mgxs_file.add_xsdata(xsdata)
                     i += 1
 
@@ -1365,16 +1349,14 @@ class Library:
 
                     xsdata = self.get_xsdata(domain, xsdata_name,
                                              nuclide=nuclide, xs_type=xs_type,
-                                             apply_domain_chi=apply_domain_chi,
-                                             random_ray=random_ray)
+                                             apply_domain_chi=apply_domain_chi)
 
                     mgxs_file.add_xsdata(xsdata)
 
         return mgxs_file
 
     def create_mg_mode(self, xsdata_names=None, bc=['reflective'] * 6,
-                       apply_domain_chi=False, random_ray=False,
-                       time_dependent=False):
+                       apply_domain_chi=False):
         """Creates an openmc.MGXSLibrary object to contain the MGXS data for the
         Multi-Group mode of OpenMC as well as the associated openmc.Materials
         and openmc.Geometry objects.
@@ -1407,13 +1389,6 @@ class Library:
             downstream multigroup solvers that precompute a material-specific
             chi before the transport solve provides group-wise fluxes. Defaults
             to False.
-       random_ray : bool
-            Whether or not :class:`MGXSLibrary` object will be used for random
-            ray transport.
-       time_dependent : bool
-            Whether or not :class:`MGXSLibrary` object will be used for
-            time-dependent transport. Will raise a warning if True and
-            :attr:`domain_type` is 'mesh'.
 
         Returns
         -------
@@ -1442,7 +1417,7 @@ class Library:
 
         # Check to ensure the Library contains the correct
         # multi-group cross section types
-        self.check_library_for_openmc_mgxs(random_ray, time_dependent)
+        self.check_library_for_openmc_mgxs()
 
         # If the domain type is a mesh, then there can only be one domain for
         # this method. This is because we can build a model automatically if
@@ -1455,15 +1430,10 @@ class Library:
 
         # Get the MGXS File Data
         mgxs_file = self.create_mg_library('macro', xsdata_names,
-                                           apply_domain_chi=apply_domain_chi,
-                                           random_ray=random_ray,
-                                           time_dependent=time_dependent)
+                                           apply_domain_chi=apply_domain_chi)
 
         # Now move on the creating the geometry and assigning materials
         if self.domain_type == 'mesh':
-            if time_dependent:
-                warn('domain_type is "mesh", time-dependent material densities '
-                     'will be lost.')
             root = openmc.Universe(name='root', universe_id=0)
 
             # Add cells representative of the mesh with reflective BC
@@ -1507,13 +1477,6 @@ class Library:
                 # Create Material and add to collection
                 material = openmc.Material(name=xsdata.name)
                 material.add_macroscopic(macroscopic)
-                if time_dependent:
-                    if domain.density_timeseries is not None:
-                        timeseries = np.array([])
-                        for p in domain.density_timeseries:
-                            timeseries = np.append(timeseries, p /
-                                                   domain.density)
-                        material.set_density('macro', 1.0, timeseries)
                 materials.append(material)
 
                 # Differentiate Geometry with new Material
@@ -1534,8 +1497,7 @@ class Library:
 
         return mgxs_file, materials, geometry
 
-    def check_library_for_openmc_mgxs(self, random_ray=False,
-                                      time_dependent=False):
+    def check_library_for_openmc_mgxs(self):
         """This routine will check the MGXS Types within a Library
         to ensure the MGXS types provided can be used to create
         a MGXS Library for OpenMC's Multi-Group mode.
@@ -1556,15 +1518,6 @@ class Library:
           accuracy, either using a multiplicity or scatter and nu-scatter matrix
           tally.
 
-        Parameters
-        ----------
-        random_ray : bool
-            Whether or not :class:`MGXSLibrary` object will be used for random
-            ray transport
-        time_dependent : bool
-            Whether or not :class:`MGXSLibrary` object will be used for
-            time-dependent transport
-
         See also
         --------
         Library.create_mg_library()
@@ -1574,78 +1527,59 @@ class Library:
 
         error_flag = False
 
-        if random_ray:
-            required_xs_types = np.array(['total', 'absorption', 'nu-fission',
-                                 'fission', 'chi-prompt', 'scatter matrix'])
-            transport_type = 'random ray'
-            if time_dependent:
-                required_xs_types_td = np.array(['delayed-nu-fission',
-                                                 'chi-delayed', 'decay-rate',
-                                                 'inverse-velocity'])
-                required_xs_types = np.append(np.delete(required_xs_types, 1),
-                                              required_xs_types_td)
-                transport_type = "time-dependent " + transport_type
-
-            for xs_type in required_xs_types:
-                if xs_type not in self.mgxs_types:
-                    error_flag = True
-                    warn_string = 'A "{}" MGXS type is required for {} ' \
-                                  'transport.'.format(xs_type, transport_type)
-                    warn(warn_string)
+        # if correction is 'P0', then transport must be provided
+        # otherwise total must be provided
+        if self.correction == 'P0':
+            if ('transport' not in self.mgxs_types and
+                'nu-transport' not in self.mgxs_types):
+                error_flag = True
+                warn('If the "correction" parameter is "P0", then a '
+                     '"transport" or "nu-transport" MGXS type is required.')
         else:
-            # if correction is 'P0', then transport must be provided
-            # otherwise total must be provided
-            if self.correction == 'P0':
-                if ('transport' not in self.mgxs_types and
-                    'nu-transport' not in self.mgxs_types):
-                    error_flag = True
-                    warn('If the "correction" parameter is "P0", then a '
-                         '"transport" or "nu-transport" MGXS type is required.')
-            else:
-                if 'total' not in self.mgxs_types:
-                    error_flag = True
-                    warn('If the "correction" parameter is None, then a '
-                         '"total" MGXS type is required.')
-
-            # Check consistency of "nu-transport" and "nu-scatter"
-            if 'nu-transport' in self.mgxs_types:
-                if not ('nu-scatter matrix' in self.mgxs_types or
-                        'consistent nu-scatter matrix' in self.mgxs_types):
-                    error_flag = True
-                    warn('If a "nu-transport" MGXS type is used then a '
-                         '"nu-scatter matrix" or "consistent nu-scatter matrix" '
-                         'must also be used.')
-            elif 'transport' in self.mgxs_types:
-                if not ('scatter matrix' in self.mgxs_types or
-                        'consistent scatter matrix' in self.mgxs_types):
-                    error_flag = True
-                    warn('If a "transport" MGXS type is used then a '
-                         '"scatter matrix" or "consistent scatter matrix" '
-                         'must also be used.')
-
-            # Make sure there is some kind of a scattering matrix data
-            if 'nu-scatter matrix' not in self.mgxs_types and \
-                'consistent nu-scatter matrix' not in self.mgxs_types and \
-                'scatter matrix' not in self.mgxs_types and \
-                'consistent scatter matrix' not in self.mgxs_types:
+            if 'total' not in self.mgxs_types:
                 error_flag = True
-                warn('A "nu-scatter matrix", "consistent nu-scatter matrix", '
-                     '"scatter matrix", or "consistent scatter matrix" MGXS '
-                     'type is required.')
+                warn('If the "correction" parameter is None, then a '
+                     '"total" MGXS type is required.')
 
-            # Make sure there is some kind of a scattering multiplicity matrix data
-            if 'multiplicity matrix' not in self.mgxs_types and \
-                ('scatter matrix' not in self.mgxs_types or
-                 'nu-scatter matrix' not in self.mgxs_types) and\
-                ('consistent scatter matrix' not in self.mgxs_types or
-                 'consistent nu-scatter matrix' not in self.mgxs_types):
-                warn('A "multiplicity matrix" or both a "scatter" and "nu-scatter" '
-                     'matrix MGXS type(s) should be provided.')
-
-            # Ensure absorption is present
-            if 'absorption' not in self.mgxs_types:
+        # Check consistency of "nu-transport" and "nu-scatter"
+        if 'nu-transport' in self.mgxs_types:
+            if not ('nu-scatter matrix' in self.mgxs_types or
+                    'consistent nu-scatter matrix' in self.mgxs_types):
                 error_flag = True
-                warn('An "absorption" MGXS type is required but not provided.')
+                warn('If a "nu-transport" MGXS type is used then a '
+                     '"nu-scatter matrix" or "consistent nu-scatter matrix" '
+                     'must also be used.')
+        elif 'transport' in self.mgxs_types:
+            if not ('scatter matrix' in self.mgxs_types or
+                    'consistent scatter matrix' in self.mgxs_types):
+                error_flag = True
+                warn('If a "transport" MGXS type is used then a '
+                     '"scatter matrix" or "consistent scatter matrix" '
+                     'must also be used.')
+
+        # Make sure there is some kind of a scattering matrix data
+        if 'nu-scatter matrix' not in self.mgxs_types and \
+            'consistent nu-scatter matrix' not in self.mgxs_types and \
+            'scatter matrix' not in self.mgxs_types and \
+            'consistent scatter matrix' not in self.mgxs_types:
+            error_flag = True
+            warn('A "nu-scatter matrix", "consistent nu-scatter matrix", '
+                 '"scatter matrix", or "consistent scatter matrix" MGXS '
+                 'type is required.')
+
+        # Make sure there is some kind of a scattering multiplicity matrix data
+        if 'multiplicity matrix' not in self.mgxs_types and \
+            ('scatter matrix' not in self.mgxs_types or
+             'nu-scatter matrix' not in self.mgxs_types) and\
+            ('consistent scatter matrix' not in self.mgxs_types or
+             'consistent nu-scatter matrix' not in self.mgxs_types):
+            warn('A "multiplicity matrix" or both a "scatter" and "nu-scatter" '
+                 'matrix MGXS type(s) should be provided.')
+
+        # Ensure absorption is present
+        if 'absorption' not in self.mgxs_types:
+            error_flag = True
+            warn('An "absorption" MGXS type is required but not provided.')
 
         if error_flag:
             raise ValueError('Invalid MGXS configuration encountered.')
