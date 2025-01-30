@@ -172,7 +172,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         fission_source += nu_sigma_f * scalar_flux * chi;
       }
       source_[sr * negroups_ + g_out] = 
-        (scatter_source + fission_source * inverse_k_eff);
+        (scatter_source + fission_source * inverse_k_eff) / (4 * PI);
 
       // Add delayed source
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
@@ -184,7 +184,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
           double precursors = precursors_[sr * ndgroups_ + dg];
           delayed_source += chi_d * precursors * lambda;
         }
-        source_[sr * negroups_ + g_out] += delayed_source;
+        source_[sr * negroups_ + g_out] += delayed_source / (4 * PI);
       }
     }
   }
@@ -193,7 +193,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
 #pragma omp parallel for
     for (int64_t se = 0; se < n_source_elements_; se++) {
-      source_[se] += external_source_[se];
+      source_[se] += external_source_[se] / (4 * PI);
     }
   }
 
@@ -229,7 +229,8 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
 {
   double sigma_t = sigma_t_[material * negroups_ + g];
   scalar_flux_new_[idx] /= (sigma_t * volume);
-  scalar_flux_new_[idx] += source_[idx] / sigma_t;
+  scalar_flux_new_[idx] *= 4 * PI;
+  scalar_flux_new_[idx] += 4 * PI * source_[idx] / sigma_t;
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     // Equation E.6
     const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
