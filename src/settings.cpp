@@ -258,18 +258,21 @@ void get_run_parameters(pugi::xml_node node_base)
           std::stoi(get_node_value(td_node, "timestep_particles"));
     } else {
       n_timestep_particles = n_particles;
+      warning("Number of timestep particles unspecified. Using steady state particles for timesteps");
     }
     if (check_for_node(td_node, "timestep_batches")) {
       n_timestep_batches =
           std::stoi(get_node_value(td_node, "timestep_batches"));
     } else {
-      fatal_error("Specify active batches for timesteps in settings XML");
+      n_timestep_batches = n_batches;
+      warning("Number of timestep batches unspecified. Using steady state batches for timesteps");
     }
     if (check_for_node(td_node, "timestep_inactive")) {
       n_timestep_inactive =
           std::stoi(get_node_value(td_node, "timestep_inactive"));
     } else {
-      fatal_error("Specify inactive batches for timesteps in settings XML");
+      n_timestep_inactive = n_inactive;
+      warning("Number of timestep inactive batches unspecified. Using steady state inactive batches for timesteps");
     }
     if (check_for_node(td_node, "n_timesteps")) {
       n_timesteps =
