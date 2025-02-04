@@ -71,6 +71,7 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     }
     if time_dependent:
         s.random_ray['bdf_order'] = 3
+        s.random_ray['time_mode'] = 'ti'
 
     s.max_particle_events = 100
 

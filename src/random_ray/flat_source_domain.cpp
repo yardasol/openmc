@@ -231,19 +231,21 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
   scalar_flux_new_[idx] /= (sigma_t * volume);
   scalar_flux_new_[idx] *= 4 * PI;
   scalar_flux_new_[idx] += 4 * PI * source_[idx] / sigma_t;
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    // Equation E.6
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) { 
     const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
-    float A0 = bdf_coeffs[0] / settings::dt;
-
     double flux_rhs_bdf = 0.0;
     for (int j = 1; j < bdf_order_; j++) {
       flux_rhs_bdf += bdf_coeffs[j] * (*scalar_flux_bdf_)[idx + j * n_source_elements_];
     }
     flux_rhs_bdf /= settings::dt;
+
     double inverse_vbar = inverse_vbar_[material * negroups_ + g];
-    scalar_flux_new_[idx] -= flux_rhs_bdf * inverse_vbar / sigma_t;
-    scalar_flux_new_[idx] /= 1 + A0 * inverse_vbar / sigma_t;
+    float A0 = bdf_coeffs[0] / settings::dt;
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      // Equation E.6
+      scalar_flux_new_[idx] -= flux_rhs_bdf * inverse_vbar / sigma_t;
+      scalar_flux_new_[idx] /= 1 + A0 * inverse_vbar / sigma_t;
+    }
   }
 }
 

@@ -376,6 +376,17 @@ void get_run_parameters(pugi::xml_node node_base)
       } else {
         fatal_error("Specify BDF approximation order in settings XML");
       }
+      if (check_for_node(random_ray_node, "time_mode")) {
+        std::string temp_str =
+          get_node_value(random_ray_node, "time_mode", true, true);
+        if (temp_str == "ti") {
+          RandomRay::time_mode_ = RandomRayTimeMode::TI;
+        } else if (temp_str == "sdp") {
+          RandomRay::time_mode_ = RandomRayTimeMode::SDP;
+        } else {
+          fatal_error("Unrecognized time mode: " + temp_str);
+        }
+      }
     }
   }
 }

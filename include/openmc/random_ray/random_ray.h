@@ -38,6 +38,7 @@ public:
   static double distance_active_;            // Active ray length
   static unique_ptr<Source> ray_source_;     // Starting source for ray sampling
   static RandomRaySourceShape source_shape_; // Flag for linear source
+  static RandomRayTimeMode time_mode_;       // Flag for time mode
 
   //----------------------------------------------------------------------------
   // Public data members

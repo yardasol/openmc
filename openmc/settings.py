@@ -180,6 +180,10 @@ class Settings:
         :bdf_order:
             Indicates the integer order of BDF formula used for Time Derivative
             Propogation.
+        :time_mode:
+            Method for resolving :math:`\frac{\partial}{\partial t}
+            I_{g,r}(s,t)` term in the time-dependent charactersitic equation.
+            Opetions are 'ti' (default), or 'sdp'.
 
         .. versionadded:: 0.15.0
     resonance_scattering : dict
@@ -1151,6 +1155,9 @@ class Settings:
                     cv.check_type('BDF order', value, Integer)
                     cv.check_greater_than('BDF order', value, 0)
                     cv.check_less_than('BDF order', value, 7)
+                elif key == 'time_mode':
+                    cv.check_value('time mode', value,
+                                   ('ti', 'sdp'))
             else:
                 raise ValueError(f'Unable to set random ray to "{key}" which is '
                                  'unsupported by OpenMC')
@@ -2001,6 +2008,9 @@ class Settings:
                     )
                 elif child.tag == 'bdf_order':
                     self.random_ray['bdf_order'] = int(child.text)
+                elif child.tag == 'time_mode':
+                    self.random_ray['time_mode'] = child.text
+
 
     def _time_dependent_from_xml_element(self, root):
         elem = root.find('time_dependent')
