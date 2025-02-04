@@ -481,7 +481,8 @@ void validate_random_ray_inputs()
 int RandomRaySimulation::bdf_order_max_ {1};
 
 RandomRaySimulation::RandomRaySimulation()
-  : negroups_(data::mg.num_energy_groups_)
+  : negroups_(data::mg.num_energy_groups_),
+    ndgroups_(data::mg.num_delayed_groups_)
 {
   // There are no source sites in random ray mode, so be sure to disable to
   // ensure we don't attempt to write source sites to statepoint
@@ -636,7 +637,7 @@ void RandomRaySimulation::output_simulation_results() const
   // Print random ray results
   if (mpi::master) {
     print_results_random_ray(total_geometric_intersections_,
-      avg_miss_rate_ / settings::n_batches, negroups_,
+      avg_miss_rate_ / settings::n_batches, negroups_, ndgroups_,
       domain_->n_source_regions_, domain_->n_external_source_regions_);
     if (model::plots.size() > 0) {
       domain_->output_to_vtk();
@@ -676,7 +677,7 @@ void RandomRaySimulation::instability_check(
 
 // Print random ray simulation results
 void RandomRaySimulation::print_results_random_ray(
-  uint64_t total_geometric_intersections, double avg_miss_rate, int negroups,
+  uint64_t total_geometric_intersections, double avg_miss_rate, int negroups, int ndgroups,
   int64_t n_source_regions, int64_t n_external_source_regions) const
 {
   using namespace simulation;
@@ -727,6 +728,15 @@ void RandomRaySimulation::print_results_random_ray(
 
     std::string adjoint_true = (FlatSourceDomain::adjoint_) ? "ON" : "OFF";
     fmt::print(" Adjoint Flux Mode                 = {}\n", adjoint_true);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      for (int dg = 0; dg < ndgroups; dg++) {
+        double C = 0.0;
+        int source_regions = precursors_bdf.size() / (ndgroups * RandomRaySimulation::bdf_order_max_);
+        for (int sr = 0; sr < source_regions; sr++)
+          C += precursors_bdf[sr + dg];
+        fmt::print(" Precursors (Delay Group {})       = {:.6f}\n", dg, C);
+      }
+    }
 
     header("Timing Statistics", 4);
     show_time("Total time for initialization", time_initialize.elapsed());
