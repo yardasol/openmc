@@ -1235,7 +1235,7 @@ void FlatSourceDomain::update_material_density(int i) {
   }
 } 
 
-void FlatSourceDomain::compute_precursors(double k_eff_0) {
+void FlatSourceDomain::compute_precursors(double k_eff_0, vector<double>& scalar_flux) {
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int mat = material_[sr];
@@ -1248,7 +1248,7 @@ void FlatSourceDomain::compute_precursors(double k_eff_0) {
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
-          sum_term += scalar_flux_final_[sr * negroups_ + g_in] * nu_d_sigma_f;
+          sum_term += scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
           sum_term /= k_eff_0;
         }
 

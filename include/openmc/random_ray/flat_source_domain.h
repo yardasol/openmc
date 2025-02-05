@@ -149,7 +149,7 @@ public:
   void set_initial_condition(double k_eff_0);
   void compute_criticality_precursors(double k_eff_0);
   void update_material_density(int i);
-  void compute_precursors(double k_eff_0);
+  void compute_precursors(double k_eff_0, vector<double>& scalar_flux);
  
   //----------------------------------------------------------------------------
   // Static Data members

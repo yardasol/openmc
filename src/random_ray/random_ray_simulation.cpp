@@ -241,7 +241,7 @@ void openmc_run_random_ray_time_dependent()
     for (uint64_t i = 0; i < final_flux.size(); i++) {
       final_flux[i] *= source_normalization_factor;
     }
-    sim_td.domain()->compute_precursors(k_eff_0);
+    sim_td.domain()->compute_precursors(k_eff_0, sim_td.domain()->scalar_flux_final_);
     
 
     // Store final solutions in BDF vectors
@@ -584,14 +584,12 @@ void RandomRaySimulation::simulate()
 
       // Add this iteration's scalar flux estimate to final accumulated estimate
       domain_->accumulate_iteration_flux();
-      // calculate precursors each batch or not... I think so, but we can try
-      // calculating precursors without...
+      // Update the precursor using the normalized scalar flux estimate
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         double source_normalization_factor = domain_->compute_fixed_source_normalization_factor();
         source_normalization_factor /= (simulation::current_batch - settings::n_inactive);
         update_bdf_vector(&scalar_flux_bdf, &(domain_->scalar_flux_final_), false, source_normalization_factor);
-        // TODO: Computer precursor (see update_precursors, and
-        // update_precursors_bdf)
+        domain_->compute_precursors(k_eff_, scalar_flux_bdf);
       }
       if (mpi::master) {
         // Generate mapping between source regions and tallies
