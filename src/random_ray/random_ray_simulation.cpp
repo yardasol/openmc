@@ -245,9 +245,9 @@ void openmc_run_random_ray_time_dependent()
     
 
     // Store final solutions in BDF vectors
-    update_bdf_vector(&scalar_flux_bdf, &(sim_td.domain()->scalar_flux_final_), false);
-    update_bdf_vector(&source_bdf, &(sim_td.domain()->source_), false);
-    update_bdf_vector(&precursors_bdf, &(sim_td.domain()->precursors_), false);
+    update_bdf_vector(&scalar_flux_bdf, sim_td.domain()->scalar_flux_final_, false);
+    update_bdf_vector(&source_bdf, sim_td.domain()->source_, false);
+    update_bdf_vector(&precursors_bdf, sim_td.domain()->precursors_, false);
 
     // Increment BDF order up to the maximum allowed by the user
     if (i < RandomRaySimulation::bdf_order_max_) {
@@ -277,11 +277,11 @@ void increment_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, 
 
     scalar_flux_blank.assign(n_source_elements, 0.0);
     source_blank.assign(n_source_elements, 0.0);
-    source_blank.assign(n_delay_elements, 0.0);
+    precursors_blank.assign(n_delay_elements, 0.0);
 
-    update_bdf_vector(scalar_flux_bdf, &scalar_flux_blank, true);
-    update_bdf_vector(source_bdf, &source_blank, true);
-    update_bdf_vector(precursors_bdf, &precursors_blank, true);
+    update_bdf_vector(scalar_flux_bdf, scalar_flux_blank, true);
+    update_bdf_vector(source_bdf, source_blank, true);
+    update_bdf_vector(precursors_bdf, precursors_blank, true);
 }
 
 void rename_statepoint_file(int i)
@@ -541,7 +541,7 @@ void RandomRaySimulation::simulate()
     // Update source term (scattering + fission)
     domain_->update_neutron_source(k_eff_);
     if (settings::run_mode == RunMode::TIME_DEPENDENT)
-       update_bdf_vector(&source_bdf, &(domain_->source_), false);
+       update_bdf_vector(&source_bdf, domain_->source_, false);
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
@@ -588,7 +588,7 @@ void RandomRaySimulation::simulate()
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         double source_normalization_factor = domain_->compute_fixed_source_normalization_factor();
         source_normalization_factor /= (simulation::current_batch - settings::n_inactive);
-        update_bdf_vector(&scalar_flux_bdf, &(domain_->scalar_flux_final_), false, source_normalization_factor);
+        update_bdf_vector(&scalar_flux_bdf, domain_->scalar_flux_final_, false, source_normalization_factor);
         domain_->compute_precursors(k_eff_, scalar_flux_bdf);
       }
       if (mpi::master) {

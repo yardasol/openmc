@@ -69,10 +69,10 @@ TEST_CASE("Test update_bdf_vector")
   std::vector<int> test_vector {0, 0, 3, 4, 5, 6};
   std::vector<int> new_solution {1, 2};
 
-  update_bdf_vector(&test_vector, &new_solution, false);
+  update_bdf_vector(&test_vector, new_solution, false);
   REQUIRE_THAT(test_vector, Catch::Matchers::Equals(ref_vector_no_increment));
 
-  update_bdf_vector(&test_vector, &new_solution, true);
+  update_bdf_vector(&test_vector, new_solution, true);
   REQUIRE_THAT(test_vector, Catch::Matchers::Equals(ref_vector_increment));
 }
 
@@ -99,19 +99,19 @@ TEST_CASE("Test initialize_bdf_vectors")
   REQUIRE_THAT(ref_precursors_bdf, Catch::Matchers::Equals(precursors_bdf));
 }
 
+// This test gets stuck for some reason :/
 TEST_CASE("Test increment_bdf_vectors")
 {
   std::vector<double> ref_scalar_flux_bdf = {0.0, 0.0, 0.3, 0.4, 0.0, 0.0};
   std::vector<float> ref_source_bdf = {0.0, 0.0, 0.1, 0.2};
   std::vector<double> ref_precursors_bdf = {0.0, 0.0, 0.0, 5.0, 6.0, 7.0};
 
-  int bdf_order_max = 1;
   int64_t n_source_elements = 2;
   int64_t n_delay_elements = 3;
 
-  std::vector<double> test_scalar_flux_bdf = {0.3, 0.4, 0.0, 0.0};
-  std::vector<float> test_source_bdf = {0.1, 0.1};
-  std::vector<double> test_precursors_bdf = {5.0, 6.0, 7.0};
+  std::vector<double> test_scalar_flux_bdf = {0.3, 0.4, 0.0, 0.0, 1.0, 1.0};
+  std::vector<float> test_source_bdf = {0.1, 0.2, 1.0, 1.0};
+  std::vector<double> test_precursors_bdf = {5.0, 6.0, 7.0, 1.0, 1.0, 1.0};
 
   increment_bdf_vectors(n_source_elements, n_delay_elements, &test_scalar_flux_bdf, &test_source_bdf, &test_precursors_bdf);
   REQUIRE_THAT(ref_scalar_flux_bdf, Catch::Matchers::Equals(test_scalar_flux_bdf));

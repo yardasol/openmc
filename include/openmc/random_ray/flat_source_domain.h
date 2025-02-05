@@ -350,15 +350,15 @@ T bdf_time_derivative(int index, vector<T>* bdf_vector, int bdf_order, double dt
 // before updating.
 // Optionally scale the new solutions by factor
 template<typename T>
-void update_bdf_vector(vector<T>* bdf_vector, vector<T>* new_solution, bool increment, T factor = 1)
+void update_bdf_vector(vector<T>* bdf_vector, vector<T>& new_solution, bool increment, T factor = 1)
 { 
-  int n = new_solution->size();
+  int n = new_solution.size();
   // Move the oldest solution to the front of the vector
   if (increment) 
     rotate(bdf_vector->rbegin(), bdf_vector->rbegin() + n, bdf_vector->rend());
   // Replace the oldest solution with the new solution
   for (int i = 0; i < n; i++)
-    (*bdf_vector)[i] = (*new_solution)[i] * factor;
+    (*bdf_vector)[i] = new_solution[i] * factor;
 }
 
 } // namespace openmc
