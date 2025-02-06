@@ -233,14 +233,9 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
   scalar_flux_new_[idx] += 4 * PI * source_[idx] / sigma_t;
   if (settings::run_mode == RunMode::TIME_DEPENDENT) { 
     const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
-    double flux_rhs_bdf = 0.0;
-    for (int j = 1; j <= bdf_order_; j++) {
-      flux_rhs_bdf += bdf_coeffs[j] * (*scalar_flux_bdf_)[idx + j * n_source_elements_];
-    }
-    flux_rhs_bdf /= settings::dt;
-
-    double inverse_vbar = inverse_vbar_[material * negroups_ + g];
     float A0 = bdf_coeffs[0] / settings::dt;
+    double flux_rhs_bdf = rhs_backwards_difference(scalar_flux_bdf_, n_source_elements_, idx, bdf_coeffs, settings::dt);
+    double inverse_vbar = inverse_vbar_[material * negroups_ + g];
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
       // Equation E.6
       scalar_flux_new_[idx] -= flux_rhs_bdf * inverse_vbar / sigma_t;
@@ -1251,11 +1246,8 @@ void FlatSourceDomain::compute_precursors(double k_eff_0, vector<double>& scalar
         const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
         float A0 = bdf_coeffs[0] / settings::dt;
 
-        double precursor_rhs_bdf = 0.0;
-        for (int j = 1; j <= bdf_order_; j++) {
-          precursor_rhs_bdf += bdf_coeffs[j] * (*precursors_bdf_)[sr * ndgroups_ + dg  + j * n_delay_elements_];
-        }
-        precursor_rhs_bdf /= settings::dt;
+        int idx = sr * ndgroups_ + dg;
+        double precursor_rhs_bdf = rhs_backwards_difference(precursors_bdf_, n_delay_elements_, idx, bdf_coeffs, settings::dt);
 
         precursors_[sr * ndgroups_ + dg] = sum_term - precursor_rhs_bdf;
         precursors_[sr * ndgroups_ + dg] /= A0 + lambda;

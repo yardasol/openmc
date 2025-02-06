@@ -361,6 +361,18 @@ void update_bdf_vector(vector<T>* bdf_vector, vector<T>& new_solution, bool incr
     (*bdf_vector)[i] = new_solution[i] * factor;
 }
 
+
+template<typename T>
+T rhs_backwards_difference(vector<T>* bdf_vector, int64_t vector_size, int idx, const vector<float>& bdf_coeffs, double dt)
+{ 
+    int bdf_order = bdf_coeffs.size() - 1;
+    T rhs_bdf = 0.0;
+    for (int j = 1; j <= bdf_order; j++)
+      rhs_bdf += bdf_coeffs[j] * (*bdf_vector)[idx + j * vector_size];
+    rhs_bdf /= dt;
+    return rhs_bdf;
+}
+
 } // namespace openmc
 
 #endif // OPENMC_RANDOM_RAY_FLAT_SOURCE_DOMAIN_H

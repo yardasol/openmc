@@ -329,18 +329,15 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
       (angular_flux_[g] - domain_->source_[source_element + g] / sigma_t) * exponential;
     if (settings::run_mode == RunMode::TIME_DEPENDENT) { 
       float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
-      int &bdf_order = domain_->bdf_order_;
-      double &dt = settings::dt;
+      int& bdf_order = domain_->bdf_order_;
+      double& dt = settings::dt;
 
-      int64_t &n_source_elements = domain_->n_source_elements_;
+      int64_t& n_source_elements = domain_->n_source_elements_;
       const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order);
-      double flux_rhs_bdf = 0.0;
-      for (int j = 1; j <= bdf_order; j++) {
-        flux_rhs_bdf += bdf_coeffs[j] * (*(domain_->scalar_flux_bdf_))[source_element + g + j * n_source_elements];
-      }
-      flux_rhs_bdf /= dt * 4 * PI;
-
       float A0 = bdf_coeffs[0] / dt;
+      int idx = source_element + g;
+      double flux_rhs_bdf = rhs_backwards_difference(domain_->scalar_flux_bdf_, n_source_elements, idx,  bdf_coeffs, dt);
+      flux_rhs_bdf /= 4 * PI;
 
       if (time_mode_ == RandomRayTimeMode::TI) {
         float K = exponential / (distance * sigma_t);

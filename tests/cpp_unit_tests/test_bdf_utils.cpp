@@ -118,3 +118,25 @@ TEST_CASE("Test increment_bdf_vectors")
   REQUIRE_THAT(ref_source_bdf, Catch::Matchers::Equals(test_source_bdf));
   REQUIRE_THAT(ref_precursors_bdf, Catch::Matchers::Equals(test_precursors_bdf));
 }
+
+TEST_CASE("Test rhs_backwards_difference")
+{
+
+  const std::vector<float> bdf_coeffs1 = {1.0, -1.0};
+  const std::vector<float> bdf_coeffs2 = {1.5, -2.0, 0.5};
+
+  std::vector<double> bdf_vector = {1.0, 0.9, 2.0, 1.9, 2.5, 2.4};
+
+  int64_t vector_size = 2;
+  int idx = 0;
+  double dt = 1.0;
+
+  double ref_rhs_bdf1 = -2.0; 
+  double ref_rhs_bdf2 = -2.75;
+
+  double test_rhs_bdf1 = rhs_backwards_difference(&bdf_vector, vector_size, idx, bdf_coeffs1, dt);
+  double test_rhs_bdf2 = rhs_backwards_difference(&bdf_vector, vector_size, idx, bdf_coeffs2, dt);
+
+  REQUIRE(ref_rhs_bdf1 == test_rhs_bdf1);
+  REQUIRE(ref_rhs_bdf2 == test_rhs_bdf2);
+}
