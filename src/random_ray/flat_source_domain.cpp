@@ -1182,10 +1182,6 @@ void FlatSourceDomain::set_initial_condition(double k_eff_0){
       // section data from FlatSourceDomain to compute the precursors
       if (settings::current_timestep == 0)
         compute_criticality_precursors(k_eff_0);
-#pragma omp parallel for
-      for (int64_t de = 0; de < n_delay_elements_; de++){
-        precursors_[de] = (*precursors_bdf_)[de];
-      }
     }
 
 void FlatSourceDomain::compute_criticality_precursors(double k_eff_0) {
