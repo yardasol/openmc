@@ -587,22 +587,15 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
     domain_->source_region_offsets_[i_cell] + cell_instance();
 
   for (int g = 0; g < negroups_; g++) {
-    angular_flux_[g] = domain_->source_[source_region_idx * negroups_ + g];
-    // Initialize ray's starting angular flux time derivative to starting
-    // location's isotropic source time derivative. Like the angular flux, it
-    // the approximation for this should improve over the active ray length
+    angular_flux_[g] = domain_->source_[source_region_idx * negroups_ + g]; 
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-        // If we have a scalar flux solution, use that to approximate dphi/dt
-        // Otherwise use the source derivative as an approximation for dphi/dt
-        int &bdf_order = domain_->bdf_order_;
-        double &dt = settings::dt;
-        int64_t &n_source_elements = domain_->n_source_elements_;
-
-        if ((*(domain_->scalar_flux_bdf_))[source_region_idx * negroups_ + g] != 0.0) {
-          angular_flux_dt_[g] = bdf_time_derivative(source_region_idx * negroups_ + g, domain_->scalar_flux_bdf_, bdf_order, dt, n_source_elements);
-        } else {
-          angular_flux_dt_[g] = bdf_time_derivative(source_region_idx * negroups_ + g, domain_->source_bdf_, bdf_order, dt, n_source_elements);
-        }
+      // Initialize ray's starting angular flux time derivative to starting
+      // location's isotropic source time derivative. Like the angular flux, it
+      // the approximation for this should improve over the active ray length
+      int& bdf_order = domain_->bdf_order_;
+      double& dt = settings::dt;
+      int64_t& n_source_elements = domain_->n_source_elements_;
+      angular_flux_dt_[g] = bdf_time_derivative(source_region_idx * negroups_ + g, domain_->source_bdf_, bdf_order, dt, n_source_elements);
     }
   }
 }
