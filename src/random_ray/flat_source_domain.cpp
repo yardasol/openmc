@@ -234,7 +234,7 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
   if (settings::run_mode == RunMode::TIME_DEPENDENT) { 
     const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
     double flux_rhs_bdf = 0.0;
-    for (int j = 1; j < bdf_order_; j++) {
+    for (int j = 1; j <= bdf_order_; j++) {
       flux_rhs_bdf += bdf_coeffs[j] * (*scalar_flux_bdf_)[idx + j * n_source_elements_];
     }
     flux_rhs_bdf /= settings::dt;
@@ -1245,18 +1245,19 @@ void FlatSourceDomain::compute_precursors(double k_eff_0, vector<double>& scalar
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
           sum_term += scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
-          sum_term /= k_eff_0;
         }
+        sum_term /= k_eff_0;
 
         const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
         float A0 = bdf_coeffs[0] / settings::dt;
 
-        double precursor_lhs_bdf = 0.0;
-        for (int j = 1; j < bdf_order_; j++) {
-          precursor_lhs_bdf += bdf_coeffs[j] * (*precursors_bdf_)[sr * ndgroups_ + dg  + j * n_delay_elements_];
+        double precursor_rhs_bdf = 0.0;
+        for (int j = 1; j <= bdf_order_; j++) {
+          precursor_rhs_bdf += bdf_coeffs[j] * (*precursors_bdf_)[sr * ndgroups_ + dg  + j * n_delay_elements_];
         }
-        precursor_lhs_bdf /= settings::dt;
-        precursors_[sr * ndgroups_ + dg] = sum_term - precursor_lhs_bdf;
+        precursor_rhs_bdf /= settings::dt;
+
+        precursors_[sr * ndgroups_ + dg] = sum_term - precursor_rhs_bdf;
         precursors_[sr * ndgroups_ + dg] /= A0 + lambda;
       }      
     }

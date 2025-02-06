@@ -335,7 +335,7 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
       int64_t &n_source_elements = domain_->n_source_elements_;
       const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order);
       double flux_rhs_bdf = 0.0;
-      for (int j = 1; j < bdf_order; j++) {
+      for (int j = 1; j <= bdf_order; j++) {
         flux_rhs_bdf += bdf_coeffs[j] * (*(domain_->scalar_flux_bdf_))[source_element + g + j * n_source_elements];
       }
       flux_rhs_bdf /= dt * 4 * PI;
