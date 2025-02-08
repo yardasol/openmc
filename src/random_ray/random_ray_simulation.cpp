@@ -574,10 +574,10 @@ void RandomRaySimulation::simulate()
     //if (settings::run_mode == RunMode::EIGENVALUE) {
       // Compute random ray k-eff
     k_eff_ = domain_->compute_k_eff(k_eff_);
-
-      // Store random ray k-eff into OpenMC's native k-eff variable
-    global_tally_tracklength = k_eff_;
     //}
+
+    // Store random ray k-eff into OpenMC's native k-eff variable
+    global_tally_tracklength = k_eff_;
 
     // Execute all tallying tasks, if this is an active batch
     if (simulation::current_batch > settings::n_inactive) {

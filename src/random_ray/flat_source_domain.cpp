@@ -79,8 +79,7 @@ FlatSourceDomain::FlatSourceDomain()
     // set starting precursors to steady state precursors, and set starting
     // source to steady state source.
     precursors_.assign(n_delay_elements_, 0.0);
-    scalar_flux_old_.assign(n_source_elements_, 0.0);
-    source_.assign(n_source_elements_, 0.0);
+    scalar_flux_old_.assign(n_source_elements_, 1.0);
   }
 
   // Initialize material array
@@ -1171,7 +1170,7 @@ void FlatSourceDomain::set_initial_condition(double k_eff_0){
 //#pragma omp parallel for
   int i = 0;
   for (int64_t se = 0; se < n_source_elements_; se++){
-    scalar_flux_old_[se] = (*scalar_flux_bdf_)[se];
+    //scalar_flux_old_[se] = (*scalar_flux_bdf_)[se];
     source_[se] = (*source_bdf_)[se];
   }
   // I'd rather do this in the main timestepping loop, but I need the cross
