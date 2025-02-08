@@ -175,17 +175,17 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         (scatter_source + fission_source * inverse_k_eff) / (4 * PI);
 
       // Add delayed source
-      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-        double delayed_source = 0.0f;
-        for (int dg = 0; dg < ndgroups_; dg++) {
-          double chi_d =
-            chi_d_[material * negroups_ * ndgroups_ + g_out * ndgroups_ + dg];
-          double lambda = lambda_[material * ndgroups_ + dg];
-          double precursors = precursors_[sr * ndgroups_ + dg];
-          delayed_source += chi_d * precursors * lambda;
-        }
-        source_[sr * negroups_ + g_out] += delayed_source / (4 * PI);
-      }
+      //if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      //  double delayed_source = 0.0f;
+      //  for (int dg = 0; dg < ndgroups_; dg++) {
+      //    double chi_d =
+      //      chi_d_[material * negroups_ * ndgroups_ + g_out * ndgroups_ + dg];
+      //    double lambda = lambda_[material * ndgroups_ + dg];
+      //    double precursors = precursors_[sr * ndgroups_ + dg];
+      //    delayed_source += chi_d * precursors * lambda;
+      //  }
+      //  source_[sr * negroups_ + g_out] += delayed_source / (4 * PI);
+      //}
     }
   }
 
@@ -231,17 +231,17 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
   scalar_flux_new_[idx] /= (sigma_t * volume);
   scalar_flux_new_[idx] *= 4 * PI;
   scalar_flux_new_[idx] += 4 * PI * source_[idx] / sigma_t;
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) { 
-    const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
-    float A0 = bdf_coeffs[0] / settings::dt;
-    double flux_rhs_bdf = rhs_backwards_difference(scalar_flux_bdf_, n_source_elements_, idx, bdf_coeffs, settings::dt);
-    double inverse_vbar = inverse_vbar_[material * negroups_ + g];
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-      // Equation E.6
-      scalar_flux_new_[idx] -= flux_rhs_bdf * inverse_vbar / sigma_t;
-      scalar_flux_new_[idx] /= 1 + A0 * inverse_vbar / sigma_t;
-    }
-  }
+  //if (settings::run_mode == RunMode::TIME_DEPENDENT) { 
+  //  const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order_);
+  //  float A0 = bdf_coeffs[0] / settings::dt;
+  //  double flux_rhs_bdf = rhs_backwards_difference(scalar_flux_bdf_, n_source_elements_, idx, bdf_coeffs, settings::dt);
+  //  double inverse_vbar = inverse_vbar_[material * negroups_ + g];
+  //  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+  //    // Equation E.6
+  //    scalar_flux_new_[idx] -= flux_rhs_bdf * inverse_vbar / sigma_t;
+  //    scalar_flux_new_[idx] /= 1 + A0 * inverse_vbar / sigma_t;
+  //  }
+  //}
 }
 
 void FlatSourceDomain::set_flux_to_old_flux(int64_t idx)
@@ -1168,16 +1168,17 @@ void FlatSourceDomain::transpose_scattering_matrix()
 }
 
 void FlatSourceDomain::set_initial_condition(double k_eff_0){
-#pragma omp parallel for
-      for (int64_t se = 0; se < n_source_elements_; se++){
-        scalar_flux_old_[se] = (*scalar_flux_bdf_)[se];
-        source_[se] = (*source_bdf_)[se];
-      }
-      // I'd rather do this in the main timestepping loop, but I need the cross
-      // section data from FlatSourceDomain to compute the precursors
-      if (settings::current_timestep == 0)
-        compute_criticality_precursors(k_eff_0);
-    }
+//#pragma omp parallel for
+  int i = 0;
+  for (int64_t se = 0; se < n_source_elements_; se++){
+    scalar_flux_old_[se] = (*scalar_flux_bdf_)[se];
+    source_[se] = (*source_bdf_)[se];
+  }
+  // I'd rather do this in the main timestepping loop, but I need the cross
+  // section data from FlatSourceDomain to compute the precursors
+  //if (settings::current_timestep == 0)
+  //  compute_criticality_precursors(k_eff_0);
+}
 
 void FlatSourceDomain::compute_criticality_precursors(double k_eff_0) {
 #pragma omp parallel for

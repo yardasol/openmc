@@ -327,43 +327,43 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     float exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
     float new_delta_psi =
       (angular_flux_[g] - domain_->source_[source_element + g] / sigma_t) * exponential;
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) { 
-      float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
-      int& bdf_order = domain_->bdf_order_;
-      double& dt = settings::dt;
+    //if (settings::run_mode == RunMode::TIME_DEPENDENT) { 
+    //  float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
+    //  int& bdf_order = domain_->bdf_order_;
+    //  double& dt = settings::dt;
 
-      int64_t& n_source_elements = domain_->n_source_elements_;
-      const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order);
-      float A0 = bdf_coeffs[0] / dt;
-      int idx = source_element + g;
-      double flux_rhs_bdf = rhs_backwards_difference(domain_->scalar_flux_bdf_, n_source_elements, idx,  bdf_coeffs, dt);
-      flux_rhs_bdf /= 4 * PI;
+    //  int64_t& n_source_elements = domain_->n_source_elements_;
+    //  const vector<float> bdf_coeffs = bdf_coefficients_first_order_.at(bdf_order);
+    //  float A0 = bdf_coeffs[0] / dt;
+    //  int idx = source_element + g;
+    //  double flux_rhs_bdf = rhs_backwards_difference(domain_->scalar_flux_bdf_, n_source_elements, idx,  bdf_coeffs, dt);
+    //  flux_rhs_bdf /= 4 * PI;
 
-      if (time_mode_ == RandomRayTimeMode::TI) {
-        float K = exponential / (distance * sigma_t);
-        float average_angular_flux = angular_flux_[g] * K;
-        average_angular_flux += (domain_->source_[source_element + g] / sigma_t - flux_rhs_bdf * inverse_vbar / sigma_t) * (1 - K);
-        average_angular_flux /= 1 + A0 * inverse_vbar * (1 - K) / sigma_t;
+    //  if (time_mode_ == RandomRayTimeMode::TI) {
+    //    float K = exponential / (distance * sigma_t);
+    //    float average_angular_flux = angular_flux_[g] * K;
+    //    average_angular_flux += (domain_->source_[source_element + g] / sigma_t - flux_rhs_bdf * inverse_vbar / sigma_t) * (1 - K);
+    //    average_angular_flux /= 1 + A0 * inverse_vbar * (1 - K) / sigma_t;
 
-        new_delta_psi += inverse_vbar * (A0 * average_angular_flux + flux_rhs_bdf) * exponential / sigma_t;
+    //    new_delta_psi += inverse_vbar * (A0 * average_angular_flux + flux_rhs_bdf) * exponential / sigma_t;
 
-        scalar_flux_contribution[g] = distance * inverse_vbar * (A0 * average_angular_flux + flux_rhs_bdf);
-      } else if (time_mode_ == RandomRayTimeMode::SDP ) {
-        float dQdt = bdf_time_derivative(source_element + g, domain_->source_bdf_, bdf_order, dt, n_source_elements);
+    //    scalar_flux_contribution[g] = distance * inverse_vbar * (A0 * average_angular_flux + flux_rhs_bdf);
+    // } else if (time_mode_ == RandomRayTimeMode::SDP ) {
+    //   float dQdt = bdf_time_derivative(source_element + g, domain_->source_bdf_, bdf_order, dt, n_source_elements);
 
-        // Truncate dphi2_dt2 when we can't calculate it
-        float T = dQdt;
-        // TODO: make a dphi2_dt2 approxi2ation
+    //    // Truncate dphi2_dt2 when we can't calculate it
+    //    float T = dQdt;
+    //    // TODO: make a dphi2_dt2 approxi2ation
  
-        float S = angular_flux_dt_[g] - T / sigma_t; 
+    //    float S = angular_flux_dt_[g] - T / sigma_t; 
 
         // Add time-dependent terms to delta psi
-        new_delta_psi += inverse_vbar *  T / (sigma_t * sigma_t) * exponential;
-        new_delta_psi += distance * inverse_vbar * S * (1 - exponential);
-        // Calculate delta for dpsi/dt
-        angular_flux_dt_[g] -= S * exponential;
-      }
-    }
+    //    new_delta_psi += inverse_vbar *  T / (sigma_t * sigma_t) * exponential;
+    //    new_delta_psi += distance * inverse_vbar * S * (1 - exponential);
+    //    // Calculate delta for dpsi/dt
+    //    angular_flux_dt_[g] -= S * exponential;
+    //  }
+    //}
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
   }
@@ -379,8 +379,8 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     // this iteration
     for (int g = 0; g < negroups_; g++) {
       domain_->scalar_flux_new_[source_element + g] += delta_psi_[g];
-      if (settings::run_mode == RunMode::TIME_DEPENDENT && time_mode_ == RandomRayTimeMode::TI)
-        domain_->scalar_flux_new_[source_element + g] -= scalar_flux_contribution[g];
+      //if (settings::run_mode == RunMode::TIME_DEPENDENT && time_mode_ == RandomRayTimeMode::TI)
+      //  domain_->scalar_flux_new_[source_element + g] -= scalar_flux_contribution[g];
     }
 
     // Accomulate volume (ray distance) into this iteration's estimate
@@ -585,15 +585,15 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
 
   for (int g = 0; g < negroups_; g++) {
     angular_flux_[g] = domain_->source_[source_region_idx * negroups_ + g]; 
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    //if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       // Initialize ray's starting angular flux time derivative to starting
       // location's isotropic source time derivative. Like the angular flux, it
       // the approximation for this should improve over the active ray length
-      int& bdf_order = domain_->bdf_order_;
-      double& dt = settings::dt;
-      int64_t& n_source_elements = domain_->n_source_elements_;
-      angular_flux_dt_[g] = bdf_time_derivative(source_region_idx * negroups_ + g, domain_->source_bdf_, bdf_order, dt, n_source_elements);
-    }
+    //  int& bdf_order = domain_->bdf_order_;
+    //  double& dt = settings::dt;
+    //  int64_t& n_source_elements = domain_->n_source_elements_;
+    //  angular_flux_dt_[g] = bdf_time_derivative(source_region_idx * negroups_ + g, domain_->source_bdf_, bdf_order, dt, n_source_elements);
+    //}
   }
 }
 

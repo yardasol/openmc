@@ -204,7 +204,7 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->set_initial_condition(k_eff_0); 
     
     // Update time dependent cross section based on the density
-    sim_td.domain()->update_material_density(i); 
+    //sim_td.domain()->update_material_density(i); 
 
     // Begin main simulation timer
     simulation::time_total.start();
@@ -241,13 +241,13 @@ void openmc_run_random_ray_time_dependent()
     for (uint64_t i = 0; i < final_flux.size(); i++) {
       final_flux[i] *= source_normalization_factor;
     }
-    sim_td.domain()->compute_precursors(k_eff_0, sim_td.domain()->scalar_flux_final_);
+    //sim_td.domain()->compute_precursors(k_eff_0, sim_td.domain()->scalar_flux_final_);
     
 
     // Store final solutions in BDF vectors
     update_bdf_vector(&scalar_flux_bdf, sim_td.domain()->scalar_flux_final_, false);
     update_bdf_vector(&source_bdf, sim_td.domain()->source_, false);
-    update_bdf_vector(&precursors_bdf, sim_td.domain()->precursors_, false);
+    //update_bdf_vector(&precursors_bdf, sim_td.domain()->precursors_, false);
 
     // Increment BDF order up to the maximum allowed by the user
     if (i < RandomRaySimulation::bdf_order_max_) {
@@ -571,13 +571,13 @@ void RandomRaySimulation::simulate()
     // Add source to scalar flux, compute number of FSR hits
     int64_t n_hits = domain_->add_source_to_scalar_flux();
 
-    if (settings::run_mode == RunMode::EIGENVALUE) {
+    //if (settings::run_mode == RunMode::EIGENVALUE) {
       // Compute random ray k-eff
-      k_eff_ = domain_->compute_k_eff(k_eff_);
+    k_eff_ = domain_->compute_k_eff(k_eff_);
 
       // Store random ray k-eff into OpenMC's native k-eff variable
-      global_tally_tracklength = k_eff_;
-    }
+    global_tally_tracklength = k_eff_;
+    //}
 
     // Execute all tallying tasks, if this is an active batch
     if (simulation::current_batch > settings::n_inactive) {
@@ -585,12 +585,12 @@ void RandomRaySimulation::simulate()
       // Add this iteration's scalar flux estimate to final accumulated estimate
       domain_->accumulate_iteration_flux();
       // Update the precursor using the normalized scalar flux estimate
-      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-        double source_normalization_factor = domain_->compute_fixed_source_normalization_factor();
-        source_normalization_factor /= (simulation::current_batch - settings::n_inactive);
-        update_bdf_vector(&scalar_flux_bdf, domain_->scalar_flux_final_, false, source_normalization_factor);
-        domain_->compute_precursors(k_eff_, scalar_flux_bdf);
-      }
+      //if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      //  double source_normalization_factor = domain_->compute_fixed_source_normalization_factor();
+      //  source_normalization_factor /= (simulation::current_batch - settings::n_inactive);
+      //  update_bdf_vector(&scalar_flux_bdf, domain_->scalar_flux_final_, false, source_normalization_factor);
+      //  domain_->compute_precursors(k_eff_, scalar_flux_bdf);
+      //}
       if (mpi::master) {
         // Generate mapping between source regions and tallies
         if (!domain_->mapped_all_tallies_) {
@@ -726,15 +726,15 @@ void RandomRaySimulation::print_results_random_ray(
 
     std::string adjoint_true = (FlatSourceDomain::adjoint_) ? "ON" : "OFF";
     fmt::print(" Adjoint Flux Mode                 = {}\n", adjoint_true);
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      for (int dg = 0; dg < ndgroups; dg++) {
-        double C = 0.0;
-        int source_regions = precursors_bdf.size() / (ndgroups * RandomRaySimulation::bdf_order_max_);
-        for (int sr = 0; sr < source_regions; sr++)
-          C += precursors_bdf[sr + dg];
-        fmt::print(" Precursors (Delay Group {})       = {:.6f}\n", dg, C);
-      }
-    }
+    //if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    //  for (int dg = 0; dg < ndgroups; dg++) {
+    //    double C = 0.0;
+    //    int source_regions = precursors_bdf.size() / (ndgroups * RandomRaySimulation::bdf_order_max_);
+    //    for (int sr = 0; sr < source_regions; sr++)
+    //      C += precursors_bdf[sr + dg];
+    //    fmt::print(" Precursors (Delay Group {})       = {:.6f}\n", dg, C);
+    //  }
+    //}
 
     header("Timing Statistics", 4);
     show_time("Total time for initialization", time_initialize.elapsed());
