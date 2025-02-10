@@ -88,8 +88,6 @@ extern vector<double> precursors_bdf;
 extern vector<double> criticality_scalar_flux;
 extern vector<float> criticality_source;
 
-extern vector<double> k_generation_0;
-
 } // namespace openmc
 
 #endif // OPENMC_RANDOM_RAY_SIMULATION_H
