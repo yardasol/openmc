@@ -74,7 +74,7 @@ void validate_random_ray_inputs();
 
 void openmc_run_random_ray_time_dependent();
 void rename_statepoint_file(int i);
-void initialize_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, int bdf_order_max, vector<double>* scalar_flux_bdf, vector<float>* source_bdf, vector<double>* precursors_bdf, vector<double>* criticality_scalar_flux, vector<float>* criticality_source);
+void initialize_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, int bdf_order_max, vector<double>* scalar_flux_bdf, vector<float>* source_bdf, vector<double>* precursors_bdf, vector<double>* criticality_scalar_flux);
 void increment_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, vector<double>* scalar_flux_bdf, vector<float>* source_bdf, vector<double>* precursors_bdf);
 void rename_statepoint_file(int i);
 
@@ -86,7 +86,6 @@ extern vector<float> source_bdf;
 extern vector<double> precursors_bdf;
 
 extern vector<double> criticality_scalar_flux;
-extern vector<float> criticality_source;
 
 extern vector<double> k_generation_0;
 

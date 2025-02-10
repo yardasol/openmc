@@ -88,11 +88,8 @@ void openmc_run_random_ray(bool initial_condition)
 
     // Extract flux and source for initial condition for time-dependent
     // simulation
-    if (initial_condition) {
+    if (initial_condition)
       criticality_scalar_flux = forward_flux;
-      // This is fine for now, but we should really calculate this using the forward flux!
-      criticality_source = sim.domain()->source_;
-    }
   }
 
   //////////////////////////////////////////////////////////
@@ -165,7 +162,6 @@ void openmc_run_random_ray_time_dependent()
   k_generation_0.assign(simulation::k_generation.begin(), simulation::k_generation.end());
 
   // Settings for timestepping loop
-  //settings::run_mode = RunMode::TIME_DEPENDENT;
   settings::statepoint_batch.erase(settings::n_batches);
   settings::n_batches = settings::n_timestep_batches;
   settings::n_inactive = settings::n_timestep_inactive;
@@ -177,7 +173,7 @@ void openmc_run_random_ray_time_dependent()
 
   // Define and initialize BDF vectors
   // TODO: try to make bdf_order_max a global rather than a class variable 
-  initialize_bdf_vectors(n_source_elements, n_delay_elements, bdf_order_max, &scalar_flux_bdf, &source_bdf, &precursors_bdf, &criticality_scalar_flux, &criticality_source); 
+  initialize_bdf_vectors(n_source_elements, n_delay_elements, bdf_order_max, &scalar_flux_bdf, &source_bdf, &precursors_bdf, &criticality_scalar_flux); 
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
@@ -196,6 +192,7 @@ void openmc_run_random_ray_time_dependent()
     // Initialize OpenMC general data structures
     openmc_simulation_init();
 
+    //settings::run_mode = RunMode::TIME_DEPENDENT;
     RandomRaySimulation sim_td;
     sim_td.k_eff_ = k_eff_0;
     sim_td.domain()->bdf_order_ = bdf_order;
@@ -205,7 +202,7 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->scalar_flux_bdf_ = &scalar_flux_bdf;
     sim_td.domain()->source_bdf_ = &source_bdf;
     sim_td.domain()->precursors_bdf_ = &precursors_bdf;
-    //sim_td.domain()->set_initial_condition(k_eff_0); 
+    sim_td.domain()->set_initial_condition(k_eff_0); 
     // Update time dependent cross section based on the density
     //sim_td.domain()->update_material_density(i); 
 
@@ -258,17 +255,16 @@ void openmc_run_random_ray_time_dependent()
   }
 }
 
-void initialize_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, int bdf_order_max, vector<double>* scalar_flux_bdf, vector<float>* source_bdf, vector<double>* precursors_bdf, vector<double>* criticality_scalar_flux, vector<float>* criticality_source) {
+void initialize_bdf_vectors(int64_t n_source_elements, int64_t n_delay_elements, int bdf_order_max, vector<double>* scalar_flux_bdf, vector<float>* source_bdf, vector<double>* precursors_bdf, vector<double>* criticality_scalar_flux) {
   // We need bdf_order_max + 2 solutions to take 2nd-order derivatives.
   (*scalar_flux_bdf).assign(n_source_elements * (bdf_order_max + 2), 0.0);
   (*source_bdf).assign(n_source_elements * (bdf_order_max + 1), 0.0);
 
   // Store criticality solutions to the bdf vectors
 #pragma omp parallel for
-  for (int i = 0; i < n_source_elements; i++) {
+  for (int i = 0; i < n_source_elements; i++)
       (*scalar_flux_bdf)[i] = (*criticality_scalar_flux)[i];
-      (*source_bdf)[i] = (*criticality_source)[i];
-  }
+  (*source_bdf).assign(n_source_elements * (bdf_order_max + 1), 0.0);
   (*precursors_bdf).assign(n_delay_elements * (bdf_order_max + 1), 0.0);
 }
 
@@ -542,8 +538,8 @@ void RandomRaySimulation::simulate(bool td)
 
     // Update source term (scattering + fission)
     domain_->update_neutron_source(k_eff_);
-    if (settings::run_mode == RunMode::TIME_DEPENDENT)
-       update_bdf_vector(&source_bdf, domain_->source_, false);
+    //if (settings::run_mode == RunMode::TIME_DEPENDENT)
+    //   update_bdf_vector(&source_bdf, domain_->source_, false);
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
