@@ -153,6 +153,8 @@ vector<double> precursors_bdf;
 vector<double> criticality_scalar_flux;
 vector<float> criticality_source;
 
+vector<double> k_generation_0;
+
 void openmc_run_random_ray_time_dependent()
 {
   // Criticality solve to get initial condition
@@ -160,6 +162,7 @@ void openmc_run_random_ray_time_dependent()
   openmc_run_random_ray(true);
   rename_statepoint_file(0);
   double k_eff_0 = simulation::keff;
+  k_generation_0.assign(simulation::k_generation.begin(), simulation::k_generation.end());
 
   // Settings for timestepping loop
   //settings::run_mode = RunMode::TIME_DEPENDENT;
@@ -202,7 +205,7 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->scalar_flux_bdf_ = &scalar_flux_bdf;
     sim_td.domain()->source_bdf_ = &source_bdf;
     sim_td.domain()->precursors_bdf_ = &precursors_bdf;
-    sim_td.domain()->set_initial_condition(k_eff_0); 
+    //sim_td.domain()->set_initial_condition(k_eff_0); 
     // Update time dependent cross section based on the density
     //sim_td.domain()->update_material_density(i); 
 
@@ -572,9 +575,11 @@ void RandomRaySimulation::simulate(bool td)
 
     //if (settings::run_mode == RunMode::EIGENVALUE) {
       // Compute random ray k-eff
-    //if (!td)
-    k_eff_ = domain_->compute_k_eff(k_eff_);
-    //}
+    if (td){
+      k_eff_ = k_generation_0[simulation::current_batch-1];
+    } else {
+      k_eff_ = domain_->compute_k_eff(k_eff_);
+    }
 
     // Store random ray k-eff into OpenMC's native k-eff variable
     global_tally_tracklength = k_eff_;
