@@ -125,7 +125,7 @@ public:
 
   //----------------------------------------------------------------------------
   // Methods
-  virtual void update_neutron_source(double k_eff, bool td = false);
+  virtual void update_neutron_source(double k_eff);
   double compute_k_eff(double k_eff_old) const;
   virtual void normalize_scalar_flux_and_volumes(
     double total_active_distance_per_iteration);

@@ -79,7 +79,7 @@ TEST_CASE("Test update_bdf_vector")
 TEST_CASE("Test initialize_bdf_vectors")
 {
   std::vector<double> ref_scalar_flux_bdf = {0.3, 0.4, 0.0, 0.0, 0.0, 0.0};
-  std::vector<float> ref_source_bdf = {0.0, 0.0, 0.0, 0.0};
+  std::vector<float> ref_source_bdf = {0.1, 0.2, 0.0, 0.0};
   std::vector<double> ref_precursors_bdf = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
   int bdf_order_max = 1;
@@ -87,12 +87,13 @@ TEST_CASE("Test initialize_bdf_vectors")
   int64_t n_delay_elements = 3;
 
   std::vector<double> criticality_scalar_flux = {0.3, 0.4};
+  std::vector<float> criticality_source = {0.1, 0.2};
 
   std::vector<double> scalar_flux_bdf;
   std::vector<float> source_bdf;
   std::vector<double> precursors_bdf;
 
-  initialize_bdf_vectors(n_source_elements, n_delay_elements, bdf_order_max, &scalar_flux_bdf, &source_bdf, &precursors_bdf, &criticality_scalar_flux); 
+  initialize_bdf_vectors(n_source_elements, n_delay_elements, bdf_order_max, &scalar_flux_bdf, &source_bdf, &precursors_bdf, &criticality_scalar_flux, &criticality_source); 
   REQUIRE_THAT(ref_scalar_flux_bdf, Catch::Matchers::Equals(scalar_flux_bdf));
   REQUIRE_THAT(ref_source_bdf, Catch::Matchers::Equals(source_bdf));
   REQUIRE_THAT(ref_precursors_bdf, Catch::Matchers::Equals(precursors_bdf));

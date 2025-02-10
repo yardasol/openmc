@@ -24,7 +24,7 @@ public:
 
   //----------------------------------------------------------------------------
   // Methods
-  void update_neutron_source(double k_eff, bool td = false) override;
+  void update_neutron_source(double k_eff) override;
   double compute_k_eff(double k_eff_old) const;
   void normalize_scalar_flux_and_volumes(
     double total_active_distance_per_iteration) override;

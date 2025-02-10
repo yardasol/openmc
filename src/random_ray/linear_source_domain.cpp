@@ -50,7 +50,7 @@ void LinearSourceDomain::batch_reset()
   }
 }
 
-void LinearSourceDomain::update_neutron_source(double k_eff, bool td)
+void LinearSourceDomain::update_neutron_source(double k_eff)
 {
   simulation::time_update_src.start();
 
