@@ -1167,12 +1167,9 @@ void FlatSourceDomain::transpose_scattering_matrix()
 }
 
 void FlatSourceDomain::set_initial_condition(double k_eff_0){
-//#pragma omp parallel for
-  int i = 0;
-  //for (int64_t se = 0; se < n_source_elements_; se++){
-    //scalar_flux_old_[se] = (*scalar_flux_bdf_)[se];
-  //  source_[se] = (*source_bdf_)[se];
-  //}
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++)
+    scalar_flux_old_[se] = (*scalar_flux_bdf_)[se];
   // I'd rather do this in the main timestepping loop, but I need the cross
   // section data from FlatSourceDomain to compute the precursors
   //if (settings::current_timestep == 0)

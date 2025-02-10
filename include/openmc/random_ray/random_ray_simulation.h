@@ -22,7 +22,7 @@ public:
   void compute_segment_correction_factors();
   void prepare_fixed_sources();
   void prepare_fixed_sources_adjoint(vector<double>& forward_flux);
-  void simulate();
+  void simulate(bool td = false);
   void reduce_simulation_statistics();
   void output_simulation_results() const;
   void instability_check(

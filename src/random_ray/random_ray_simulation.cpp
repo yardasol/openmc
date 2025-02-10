@@ -90,6 +90,7 @@ void openmc_run_random_ray(bool initial_condition)
     // simulation
     if (initial_condition) {
       criticality_scalar_flux = forward_flux;
+      // This is fine for now, but we should really calculate this using the forward flux!
       criticality_source = sim.domain()->source_;
     }
   }
@@ -193,16 +194,15 @@ void openmc_run_random_ray_time_dependent()
     openmc_simulation_init();
 
     RandomRaySimulation sim_td;
-    //sim_td.k_eff_ = k_eff_0;
-    //sim_td.domain()->bdf_order_ = bdf_order;
+    sim_td.k_eff_ = k_eff_0;
+    sim_td.domain()->bdf_order_ = bdf_order;
     // TODO: Determine it defining the domain variables as pointers will cause
     // issues with parallelization
     // Define domain pointers to global BDF vectors
-    //sim_td.domain()->scalar_flux_bdf_ = &scalar_flux_bdf;
-    //sim_td.domain()->source_bdf_ = &source_bdf;
-    //sim_td.domain()->precursors_bdf_ = &precursors_bdf;
-    //sim_td.domain()->set_initial_condition(k_eff_0); 
-    
+    sim_td.domain()->scalar_flux_bdf_ = &scalar_flux_bdf;
+    sim_td.domain()->source_bdf_ = &source_bdf;
+    sim_td.domain()->precursors_bdf_ = &precursors_bdf;
+    sim_td.domain()->set_initial_condition(k_eff_0); 
     // Update time dependent cross section based on the density
     //sim_td.domain()->update_material_density(i); 
 
@@ -213,7 +213,7 @@ void openmc_run_random_ray_time_dependent()
     //increment_bdf_vectors(n_source_elements, n_delay_elements, &scalar_flux_bdf, &source_bdf, &precursors_bdf);
 
     // Execute random ray simulation
-    sim_td.simulate();
+    sim_td.simulate(true);
 
     // End main simulation timer
     simulation::time_total.stop();
@@ -231,23 +231,22 @@ void openmc_run_random_ray_time_dependent()
     rename_statepoint_file(i + 1);
 
     // Normalize and save the final forward flux
-    //double source_normalization_factor =
-    //  sim_td.domain()->compute_fixed_source_normalization_factor() /
-    //  (settings::n_batches - settings::n_inactive);
+    double source_normalization_factor =
+      sim_td.domain()->compute_fixed_source_normalization_factor() /
+      (settings::n_batches - settings::n_inactive);
 
     // Alias for convenience
-    //vector<double> &final_flux = sim_td.domain()->scalar_flux_final_;
-//#pragma omp parallel for
-    //for (uint64_t i = 0; i < final_flux.size(); i++) {
-    //  final_flux[i] *= source_normalization_factor;
-    //}
+    vector<double> &final_flux = sim_td.domain()->scalar_flux_final_;
+#pragma omp parallel for
+    for (uint64_t i = 0; i < final_flux.size(); i++)
+      final_flux[i] *= source_normalization_factor;
     //sim_td.domain()->compute_precursors(k_eff_0, sim_td.domain()->scalar_flux_final_);
     
 
     // Store final solutions in BDF vectors
-    //update_bdf_vector(&scalar_flux_bdf, sim_td.domain()->scalar_flux_final_, false);
-    //update_bdf_vector(&source_bdf, sim_td.domain()->source_, false);
-    //update_bdf_vector(&precursors_bdf, sim_td.domain()->precursors_, false);
+    update_bdf_vector(&scalar_flux_bdf, sim_td.domain()->scalar_flux_final_, false);
+    update_bdf_vector(&source_bdf, sim_td.domain()->source_, false);
+    update_bdf_vector(&precursors_bdf, sim_td.domain()->precursors_, false);
 
     // Increment BDF order up to the maximum allowed by the user
     if (i < RandomRaySimulation::bdf_order_max_) {
@@ -526,7 +525,7 @@ void RandomRaySimulation::prepare_fixed_sources_adjoint(
   }
 }
 
-void RandomRaySimulation::simulate()
+void RandomRaySimulation::simulate(bool td)
 {
   // Random ray power iteration loop
   while (simulation::current_batch < settings::n_batches) {
@@ -573,6 +572,7 @@ void RandomRaySimulation::simulate()
 
     //if (settings::run_mode == RunMode::EIGENVALUE) {
       // Compute random ray k-eff
+    //if (!td)
     k_eff_ = domain_->compute_k_eff(k_eff_);
     //}
 
