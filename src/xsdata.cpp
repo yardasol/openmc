@@ -56,6 +56,10 @@ XsData::XsData(bool fissionable, AngleDistributionType scatter_format,
     // allocate delayed_nu_fission; [temperature][angle][delay group][in group]
     delayed_nu_fission = xt::zeros<double>(shape);
 
+    // chi; [temperature][angle][in group][out group]
+    shape = {n_ang, n_g_, n_g_};
+    chi = xt::zeros<double>(shape);
+
     // chi_prompt; [temperature][angle][in group][out group]
     shape = {n_ang, n_g_, n_g_};
     chi_prompt = xt::zeros<double>(shape);
