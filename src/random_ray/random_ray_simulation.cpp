@@ -162,7 +162,7 @@ void openmc_run_random_ray_time_dependent()
   double k_eff_0 = simulation::keff;
 
   // Settings for timestepping loop
-  //settings::run_mode = RunMode::TIME_DEPENDENT;
+  settings::run_mode = RunMode::TIME_DEPENDENT;
   settings::statepoint_batch.erase(settings::n_batches);
   settings::n_batches = settings::n_timestep_batches;
   settings::n_inactive = settings::n_timestep_inactive;
@@ -539,8 +539,8 @@ void RandomRaySimulation::simulate(bool td)
 
     // Update source term (scattering + fission)
     domain_->update_neutron_source(k_eff_);
-    if (settings::run_mode == RunMode::TIME_DEPENDENT)
-       update_bdf_vector(&source_bdf, domain_->source_, false);
+    //if (settings::run_mode == RunMode::TIME_DEPENDENT)
+    //   update_bdf_vector(&source_bdf, domain_->source_, false);
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
