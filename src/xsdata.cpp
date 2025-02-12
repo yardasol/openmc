@@ -543,6 +543,9 @@ void XsData::combine(
       kappa_fission += scalar * that->kappa_fission;
       fission += scalar * that->fission;
       delayed_nu_fission += scalar * that->delayed_nu_fission;
+      // This will probaly throw an error in some cases. Need a check for if chi
+      // exists!!
+      chi += scalar * that->chi;
       chi_prompt += scalar *
                     xt::view(xt::sum(that->prompt_nu_fission, {1}), xt::all(),
                       xt::newaxis(), xt::newaxis()) *
@@ -557,6 +560,8 @@ void XsData::combine(
 
   // Ensure the chi_prompt and chi_delayed are normalized to 1 for each
   // azimuthal angle and delayed group (for chi_delayed)
+  chi /=
+    xt::view(xt::sum(chi, {2}), xt::all(), xt::all(), xt::newaxis());
   chi_prompt /=
     xt::view(xt::sum(chi_prompt, {2}), xt::all(), xt::all(), xt::newaxis());
   chi_delayed /= xt::view(
