@@ -139,7 +139,6 @@ void XsData::fission_vector_beta_from_hdf5(
 
   // Now every incoming group in prompt_chi and delayed_chi is the normalized
   // chi we just made
-  chi = xt::view(temp_chi, xt::all(), xt::newaxis(), xt::all());
   chi_prompt = xt::view(temp_chi, xt::all(), xt::newaxis(), xt::all());
   chi_delayed =
     xt::view(temp_chi, xt::all(), xt::newaxis(), xt::newaxis(), xt::all());
@@ -183,31 +182,36 @@ void XsData::fission_vector_no_beta_from_hdf5(hid_t xsdata_grp, size_t n_ang)
 {
   // Data is provided separately as prompt + delayed nu-fission and chi
 
-  // Get chi
-  xt::xtensor<double, 2> temp_chi({n_ang, n_g_}, 0.);
-  read_nd_vector(xsdata_grp, "chi", temp_chi, true);
+  // If chi is included in this dataset, we should store it!
+  if (object_exists(xsdata_grp, "chi")) {
+      // Get chi
+      xt::xtensor<double, 2> temp_chi({n_ang, n_g_}, 0.);
+      read_nd_vector(xsdata_grp, "chi", temp_chi, true);
 
-  // Normalize chi by summing over the outgoing groups for each incoming angle
-  temp_chi /= xt::view(xt::sum(temp_chi, {1}), xt::all(), xt::newaxis());
+      // Normalize chi by summing over the outgoing groups for each incoming angle
+      temp_chi /= xt::view(xt::sum(temp_chi, {1}), xt::all(), xt::newaxis());
+
+      // Now every incoming group in self.chi is the normalized chi we just made
+      chi = xt::view(temp_chi, xt::all(), xt::newaxis(), xt::all());
+  }
 
   // Get chi-prompt
   xt::xtensor<double, 2> temp_chi_p({n_ang, n_g_}, 0.);
   read_nd_vector(xsdata_grp, "chi-prompt", temp_chi_p, true);
 
-  // Normalize chi by summing over the outgoing groups for each incoming angle
+  // Normalize prompt chi by summing over the outgoing groups for each incoming angle
   temp_chi_p /= xt::view(xt::sum(temp_chi_p, {1}), xt::all(), xt::newaxis());
 
   // Get chi-delayed
   xt::xtensor<double, 3> temp_chi_d({n_ang, n_dg_, n_g_}, 0.);
   read_nd_vector(xsdata_grp, "chi-delayed", temp_chi_d, true);
 
-  // Normalize chi by summing over the outgoing groups for each incoming angle
+  // Normalize delayed chi by summing over the outgoing groups for each incoming angle
   temp_chi_d /=
     xt::view(xt::sum(temp_chi_d, {2}), xt::all(), xt::all(), xt::newaxis());
 
   // Now assign the prompt and delayed chis by replicating for each incoming
   // group
-  chi = xt::view(temp_chi, xt::all(), xt::newaxis(), xt::all());
   chi_prompt = xt::view(temp_chi_p, xt::all(), xt::newaxis(), xt::all());
   chi_delayed =
     xt::view(temp_chi_d, xt::all(), xt::all(), xt::newaxis(), xt::all());
