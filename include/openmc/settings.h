@@ -157,6 +157,11 @@ extern int trigger_batch_interval; //!< Batch interval for triggers
 extern "C" int verbosity;          //!< How verbose to make output
 extern double weight_cutoff;       //!< Weight cutoff for Russian roulette
 extern double weight_survive;      //!< Survival weight after Russian roulette
+                                   //
+// Time-dependent variables
+extern int n_timesteps;      //!< number of timesteps
+extern double dt;            //!< fixed timestep size
+extern int current_timestep; //!< current timestep index
 
 } // namespace settings
 

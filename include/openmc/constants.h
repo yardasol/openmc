@@ -335,6 +335,7 @@ enum class RunMode {
   UNSET, // default value, OpenMC throws error if left to this
   FIXED_SOURCE,
   EIGENVALUE,
+  TIME_DEPENDENT,
   PLOTTING,
   PARTICLE,
   VOLUME
@@ -344,6 +345,7 @@ enum class SolverType { MONTE_CARLO, RANDOM_RAY };
 
 enum class RandomRayVolumeEstimator { NAIVE, SIMULATION_AVERAGED, HYBRID };
 enum class RandomRaySourceShape { FLAT, LINEAR, LINEAR_XY };
+enum class RandomRayTimeMode { TI, SDP };
 
 //==============================================================================
 // Geometry Constants

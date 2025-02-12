@@ -42,6 +42,16 @@ int main(int argc, char* argv[])
       break;
     }
     break;
+  case RunMode::TIME_DEPENDENT:
+    switch (settings::solver_type) {
+    case SolverType::MONTE_CARLO:
+      fatal_error("Time-dependent monte-carlo not yet implemented.");
+      break;
+    case SolverType::RANDOM_RAY:
+      fatal_error("Time-dependent random-ray not yet implemented.");
+      break;
+    }
+    break;
   case RunMode::PLOTTING:
     err = openmc_plot_geometry();
     break;

@@ -65,6 +65,8 @@ public:
   int64_t n_external_source_regions_ {0}; // Total number of source regions with
                                           // non-zero external source terms
 
+  int bd_order_ {1}; // Order of backwards difference approximation for SDP
+                     // time derivatives
   // 1D array representing source region starting offset for each OpenMC Cell
   // in model::cells
   vector<int64_t> source_region_offsets_;

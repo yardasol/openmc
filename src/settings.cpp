@@ -25,6 +25,7 @@
 #include "openmc/plot.h"
 #include "openmc/random_lcg.h"
 #include "openmc/random_ray/random_ray.h"
+#include "openmc/random_ray/random_ray_simulation.h"
 #include "openmc/simulation.h"
 #include "openmc/source.h"
 #include "openmc/string_utils.h"
@@ -136,6 +137,11 @@ int verbosity {7};
 double weight_cutoff {0.25};
 double weight_survive {1.0};
 
+// Time-dependent variables
+int n_timesteps;
+double dt;
+int current_timestep;
+
 } // namespace settings
 
 //==============================================================================
@@ -195,7 +201,7 @@ void get_run_parameters(pugi::xml_node node_base)
   }
 
   // Get number of inactive batches
-  if (run_mode == RunMode::EIGENVALUE ||
+  if (run_mode == RunMode::EIGENVALUE || run_mode == RunMode::TIME_DEPENDENT ||
       solver_type == SolverType::RANDOM_RAY) {
     if (check_for_node(node_base, "inactive")) {
       n_inactive = std::stoi(get_node_value(node_base, "inactive"));
@@ -212,6 +218,8 @@ void get_run_parameters(pugi::xml_node node_base)
 
     // Get the trigger information for keff
     if (check_for_node(node_base, "keff_trigger")) {
+      if (run_mode == RunMode::TIME_DEPENDENT)
+        warning("keff triggers are untested with time-dependent mode");
       xml_node node_keff_trigger = node_base.child("keff_trigger");
 
       if (check_for_node(node_keff_trigger, "type")) {
@@ -238,6 +246,37 @@ void get_run_parameters(pugi::xml_node node_base)
       } else {
         fatal_error("Specify keff trigger threshold in settings XML");
       }
+    }
+  }
+
+  // Get parameters for time-dependent simulations
+  if (run_mode == RunMode::TIME_DEPENDENT) {
+    xml_node td_node = node_base.child("time_dependent");
+    if (check_for_node(td_node, "n_timesteps")) {
+      n_timesteps = std::stoi(get_node_value(td_node, "n_timesteps"));
+    } else {
+      fatal_error("Specify number of timesteps in settings XML");
+    }
+    if (check_for_node(td_node, "timestep_units")) {
+      std::string units = get_node_value(td_node, "timestep_units");
+      if (check_for_node(td_node, "dt")) {
+        dt = std::stod(get_node_value(td_node, "dt"));
+        double factor_to_seconds;
+        if (units == "ms") {
+          factor_to_seconds = 1e-3;
+        } else if (units == "s") {
+          factor_to_seconds = 1.0;
+        } else if (units == "min") {
+          factor_to_seconds = 1 / 60;
+        } else {
+          fatal_error("Invalid timestep unit, " + units);
+        }
+        dt *= factor_to_seconds;
+      } else {
+        fatal_error("Specify dt in settings XML");
+      }
+    } else {
+      fatal_error("Specify timestep units in settings XML");
     }
   }
 
@@ -305,6 +344,30 @@ void get_run_parameters(pugi::xml_node node_base)
     if (check_for_node(random_ray_node, "adjoint")) {
       FlatSourceDomain::adjoint_ =
         get_node_value_bool(random_ray_node, "adjoint");
+    }
+    if (run_mode == RunMode::TIME_DEPENDENT) {
+      if (check_for_node(random_ray_node, "bd_order")) {
+        static int n = std::stod(get_node_value(random_ray_node, "bd_order"));
+        if (n < 1 || n > 6) {
+          fatal_error("Specified BD order of " + std::to_string(n) +
+                      ". BD order must be between 1 and 6");
+        } else {
+          RandomRaySimulation::bd_order_max_ = n;
+        }
+      } else {
+        fatal_error("Specify BD approximation order in settings XML");
+      }
+      if (check_for_node(random_ray_node, "time_mode")) {
+        std::string temp_str =
+          get_node_value(random_ray_node, "time_mode", true, true);
+        if (temp_str == "ti") {
+          RandomRay::time_mode_ = RandomRayTimeMode::TI;
+        } else if (temp_str == "sdp") {
+          RandomRay::time_mode_ = RandomRayTimeMode::SDP;
+        } else {
+          fatal_error("Unrecognized time mode: " + temp_str);
+        }
+      }
     }
   }
 }
@@ -433,6 +496,8 @@ void read_settings_xml(pugi::xml_node root)
         run_mode = RunMode::EIGENVALUE;
       } else if (temp_str == "fixed source") {
         run_mode = RunMode::FIXED_SOURCE;
+      } else if (temp_str == "time dependent") {
+        run_mode = RunMode::TIME_DEPENDENT;
       } else if (temp_str == "plot") {
         run_mode = RunMode::PLOTTING;
       } else if (temp_str == "particle restart") {
@@ -448,7 +513,8 @@ void read_settings_xml(pugi::xml_node root)
     } else {
       warning("<run_mode> should be specified.");
 
-      // Make sure that either eigenvalue or fixed source was specified
+      // Make sure that either eigenvalue, fixed source, or time dependent was
+      // specified
       node_mode = root.child("eigenvalue");
       if (node_mode) {
         run_mode = RunMode::EIGENVALUE;
@@ -457,7 +523,13 @@ void read_settings_xml(pugi::xml_node root)
         if (node_mode) {
           run_mode = RunMode::FIXED_SOURCE;
         } else {
-          fatal_error("<eigenvalue> or <fixed_source> not specified.");
+          node_mode = root.child("time_dependent");
+          if (node_mode) {
+            run_mode = RunMode::TIME_DEPENDENT;
+          } else {
+            fatal_error("<eigenvalue>,  <fixed_source>, or <time_dependent> "
+                        "not specified.");
+          }
         }
       }
     }
@@ -471,7 +543,8 @@ void read_settings_xml(pugi::xml_node root)
                   "when using the random ray solver.");
   }
 
-  if (run_mode == RunMode::EIGENVALUE || run_mode == RunMode::FIXED_SOURCE) {
+  if (run_mode == RunMode::EIGENVALUE || run_mode == RunMode::FIXED_SOURCE ||
+      run_mode == RunMode::TIME_DEPENDENT) {
     // Read run parameters
     get_run_parameters(node_mode);
 

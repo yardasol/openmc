@@ -35,15 +35,21 @@ public:
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
 
+  //---------------------------------------------------------------------------
+  // Data members
+
+  // Maximum order for BD approximation.
+  static int bd_order_max_;
+
+  // Random ray eigenvalue
+  double k_eff_ {1.0};
+
 private:
   //----------------------------------------------------------------------------
   // Data members
 
   // Contains all flat source region data
   unique_ptr<FlatSourceDomain> domain_;
-
-  // Random ray eigenvalue
-  double k_eff_ {1.0};
 
   // Tracks the average FSR miss rate for analysis and reporting
   double avg_miss_rate_ {0.0};

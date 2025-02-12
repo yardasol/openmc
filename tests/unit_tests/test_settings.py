@@ -1,9 +1,15 @@
 import openmc
 import openmc.stats
 
+import pytest
 
-def test_export_to_xml(run_in_tmpdir):
-    s = openmc.Settings(run_mode='fixed source', batches=1000, seed=17)
+@pytest.mark.parametrize("time_dependent", [True, False])
+def test_export_to_xml(run_in_tmpdir, time_dependent):
+    if time_dependent:
+        mode = 'time dependent'
+    else:
+        mode = 'fixed source'
+    s = openmc.Settings(run_mode=mode, batches=1000, seed=17)
     s.generations_per_batch = 10
     s.inactive = 100
     s.particles = 1000000
@@ -66,14 +72,24 @@ def test_export_to_xml(run_in_tmpdir):
         )
     }
 
+    if time_dependent:
+        s.random_ray['bd_order'] = 3
+        s.random_ray['time_mode'] = 'ti'
+
     s.max_particle_events = 100
+
+    s.time_dependent = {
+        'dt': 0.1,
+        'n_timesteps': 41,
+        'timestep_units': 's',
+    }
 
     # Make sure exporting XML works
     s.export_to_xml()
 
     # Generate settings from XML
     s = openmc.Settings.from_xml()
-    assert s.run_mode == 'fixed source'
+    assert s.run_mode == mode
     assert s.batches == 1000
     assert s.generations_per_batch == 10
     assert s.inactive == 100
@@ -142,3 +158,9 @@ def test_export_to_xml(run_in_tmpdir):
     assert s.random_ray['distance_active'] == 100.0
     assert s.random_ray['ray_source'].space.lower_left == [-1., -1., -1.]
     assert s.random_ray['ray_source'].space.upper_right == [1., 1., 1.]
+    if time_dependent:
+        assert s.random_ray['bd_order'] == 3
+        assert s.random_ray['time_mode'] == 'ti'
+    assert s.time_dependent['dt'] == 0.1
+    assert s.time_dependent['n_timesteps'] == 41
+    assert s.time_dependent['timestep_units'] == 's'
