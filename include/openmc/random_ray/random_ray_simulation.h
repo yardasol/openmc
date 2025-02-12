@@ -67,8 +67,22 @@ private:
 //! Non-member functions
 //============================================================================
 
-void openmc_run_random_ray();
+void openmc_run_random_ray(bool initial_condition = false);
 void validate_random_ray_inputs();
+
+void openmc_run_random_ray_time_dependent();
+void rename_statepoint_file(int i);
+
+//==============================================================================
+// Time-dependent global variables
+//==============================================================================
+extern vector<double> scalar_flux_bdf;
+extern vector<float> source_bdf;
+extern vector<double> precursors_bdf;
+
+extern double criticality_k_eff;
+extern vector<double> criticality_scalar_flux;
+extern vector<float> criticality_source;
 
 } // namespace openmc
 

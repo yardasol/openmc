@@ -13,11 +13,15 @@ SourceRegion::SourceRegion(int negroups, bool is_linear)
   if (settings::run_mode == RunMode::EIGENVALUE) {
     // If in eigenvalue mode, set starting flux to guess of 1
     scalar_flux_old_.assign(negroups, 1.0);
-  } else {
+  } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
     // If in fixed source mode, set starting flux to guess of zero
     // and initialize external source arrays
     scalar_flux_old_.assign(negroups, 0.0);
     external_source_.assign(negroups, 0.0);
+  } else {
+    // If in time dependent mode, set starting flux to guess of 1
+    // TODO: try to incorporate criticality/previous final flux here
+    scalar_flux_old_.assign(negroups, 1.0);
   }
 
   scalar_flux_new_.assign(negroups, 0.0);

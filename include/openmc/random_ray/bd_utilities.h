@@ -31,6 +31,13 @@ const std::map<int, vector<float>> bd_coefficients_second_order_ = {
   {5, {4.511111, -17.4, 29.25, -28.222222, 16.5, -5.4, 0.761111}},
   {6, {5.211111, -22.3, 43.95, -52.722222, 41.0, -20.1, 5.661111, -0.7}}};
 
+void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
+  int bd_order_max, vector<double>* scalar_flux_bd,
+  vector<double>* precursors_bd, vector<double>* criticality_scalar_flux);
+
+void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
+  vector<double>* scalar_flux_bd, vector<double>* precursors_bd);
+
 // bd vector funtions
 template<typename T>
 T bd_time_derivative(int index, vector<T>* bd_vector, int bd_order, double dt,

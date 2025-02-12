@@ -49,6 +49,10 @@ public:
   void serialize_final_fluxes(vector<double>& flux);
 
   //----------------------------------------------------------------------------
+  // Time dependent methods
+  void set_initial_condition();
+
+  //----------------------------------------------------------------------------
   // Static Data members
   static bool volume_normalized_flux_tallies_;
   static bool adjoint_; // If the user wants outputs based on the adjoint flux
@@ -85,6 +89,12 @@ public:
 
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;
+
+  // Pointers to BDF vectors
+  // TODO: integrate this into source regions?
+  vector<double>* scalar_flux_bd_;
+  // vector<float>* source_bd_;
+  vector<double>* precursors_bd_;
 
 protected:
   //----------------------------------------------------------------------------

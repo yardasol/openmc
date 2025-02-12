@@ -1,4 +1,5 @@
 #include "openmc/random_ray/random_ray_simulation.h"
+#include "openmc/random_ray/bd_utilities.h"
 
 #include "openmc/eigenvalue.h"
 #include "openmc/geometry.h"
@@ -21,7 +22,7 @@ namespace openmc {
 // Non-member functions
 //==============================================================================
 
-void openmc_run_random_ray()
+void openmc_run_random_ray(bool initial_condition)
 {
   //////////////////////////////////////////////////////////
   // Run forward simulation
@@ -85,6 +86,23 @@ void openmc_run_random_ray()
 
     // Output all simulation results
     sim.output_simulation_results();
+
+    // Extract flux and source for initial condition for time-dependent
+    // simulation
+    if (initial_condition) {
+      criticality_scalar_flux = forward_flux;
+      criticality_k_eff = simulation::keff;
+      // if (RandomRay::time_mode_ == RandomRayTimeMode::SDP){
+      //  Set scalar_flux_old to criticality flux
+      //    for (int se = 0; se < sim.domain()->n_source_element; se++)
+      //      sim.domain()->source_regions_.scalar_flux_old(se) =
+      //      criticality_scalar_flux[se];
+
+      // Calculate source using criticality flux
+      //    sim.domain()->update_neutron_source(simulation::keff)
+      //    for (int sr = 0; sr < sim.domain()->n_source_regions; sr++)
+      //      criticality_source.push_back(sim.domain()
+    }
   }
 
   //////////////////////////////////////////////////////////
@@ -133,6 +151,128 @@ void openmc_run_random_ray()
     // Output all simulation results
     adjoint_sim.output_simulation_results();
   }
+}
+
+//==============================================================================
+// Time-dependent global variables
+//==============================================================================
+vector<double> scalar_flux_bd;
+// vector<float> source_bd;
+vector<double> precursors_bd;
+
+double criticality_k_eff;
+vector<double> criticality_scalar_flux;
+// vector<double> criticality_source;
+
+void openmc_run_random_ray_time_dependent()
+{
+  // Criticality solve to get initial condition
+  settings::run_mode = RunMode::EIGENVALUE;
+  openmc_run_random_ray(true);
+  rename_statepoint_file(0);
+
+  // Settings for timestepping loop
+  // settings::run_mode = RunMode::TIME_DEPENDENT;
+  int bd_order = 1;
+  int64_t n_source_elements = criticality_scalar_flux.size();
+  int64_t n_delay_elements = n_source_elements / data::mg.num_energy_groups_ *
+                             data::mg.num_delayed_groups_;
+
+  initialize_bd_vectors(n_source_elements, n_delay_elements,
+    RandomRaySimulation::bd_order_max_, &scalar_flux_bd, &precursors_bd,
+    &criticality_scalar_flux);
+  // TODO: initialize_bdf_vectors for SDP
+
+  // Timestepping loop
+  for (int i = 0; i < settings::n_timesteps; i++) {
+    settings::current_timestep = i;
+
+    // Print simulation information
+    if (mpi::master) {
+      // Offset to resolve steady state
+      std::string message = fmt::format("TIME DEPENDENT SOLVE {0}", i + 1);
+      const char* msg = message.c_str();
+      header(msg, 3);
+    }
+
+    reset_timers();
+
+    // Initialize OpenMC general data structures
+    openmc_simulation_init();
+
+    RandomRaySimulation sim_td;
+    sim_td.domain()->set_initial_condition();
+    sim_td.k_eff_ = criticality_k_eff;
+    sim_td.domain()->bd_order_ = bd_order;
+    // TODO: Determine it defining the domain variables as pointers will cause
+    // issues with parallelization
+    // TODO: Define domain pointers to global BD vectors for SDP
+    // Update time dependent cross section based on the density
+    // sim_td.domain()->update_material_density(i);
+
+    // Begin main simulation timer
+    simulation::time_total.start();
+
+    // Increment BD vectors to a zero-valued solution to be filled in.
+    increment_bd_vectors(
+      n_source_elements, n_delay_elements, &scalar_flux_bd, &precursors_bd);
+    // TODO: increment_bd_vectors for SDP
+
+    // Execute random ray simulation
+    sim_td.simulate();
+
+    // End main simulation timer
+    simulation::time_total.stop();
+
+    // Finalize OpenMC
+    openmc_simulation_finalize();
+
+    // Reduce variables across MPI ranks
+    sim_td.reduce_simulation_statistics();
+
+    // Output all simulation results
+    sim_td.output_simulation_results();
+
+    // Rename statepoint file
+    rename_statepoint_file(i + 1);
+
+    // Normalize and save the final forward flux
+    double source_normalization_factor =
+      sim_td.domain()->compute_fixed_source_normalization_factor() /
+      (settings::n_batches - settings::n_inactive);
+
+    // Alias for convenience
+    vector<double> forward_flux;
+    sim_td.domain()->serialize_final_fluxes(forward_flux);
+#pragma omp parallel for
+    for (uint64_t i = 0; i < forward_flux.size(); i++)
+      forward_flux[i] *= source_normalization_factor;
+    // sim_td.domain()->compute_precursors(k_eff_0,
+    // sim_td.domain()->scalar_flux_final_);
+
+    // Store final solutions in BD vectors
+    update_bd_vector(&scalar_flux_bd, forward_flux, false);
+    // update_bd_vector(&source_bdf, sim_td.domain()->source_, false);
+    // update_bd_vector(&precursors_bd, sim_td.domain()->precursors_, false);
+
+    // Increment BDF order up to the maximum allowed by the user
+    if (i < RandomRaySimulation::bd_order_max_) {
+      bd_order++;
+    }
+  }
+}
+
+void rename_statepoint_file(int i)
+{
+  // Rename statepoint file
+  std::string old_filename_ = fmt::format(
+    "{0}statepoint.{1}.h5", settings::path_output, settings::n_batches);
+  std::string new_filename_ =
+    fmt::format("{0}openmc_td_simulation_{1}.h5", settings::path_output, i);
+
+  const char* old_fname = old_filename_.c_str();
+  const char* new_fname = new_filename_.c_str();
+  std::rename(old_fname, new_fname);
 }
 
 // Enforces restrictions on inputs in random ray mode.  While there are
@@ -407,7 +547,8 @@ void RandomRaySimulation::simulate()
     // Add source to scalar flux, compute number of FSR hits
     int64_t n_hits = domain_->add_source_to_scalar_flux();
 
-    if (settings::run_mode == RunMode::EIGENVALUE) {
+    if (settings::run_mode == RunMode::EIGENVALUE ||
+        settings::run_mode == RunMode::TIME_DEPENDENT) {
       // Compute random ray k-eff
       k_eff_ = domain_->compute_k_eff(k_eff_);
 
