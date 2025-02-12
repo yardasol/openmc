@@ -160,12 +160,14 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         double sigma_s =
           sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
         double nu_sigma_f;
+        double chi;
         //if (settings::run_mode != RunMode::TIME_DEPENDENT) {
         nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+        chi = chi_[material * negroups_ + g_out];
         //} else {
         //nu_sigma_f = nu_p_sigma_f_[material * negroups_ + g_in];
+        //chi = chi_p_[material * negroups_ + g_out];
         //}
-        double chi = chi_[material * negroups_ + g_out];
 
         scatter_source += sigma_s * scalar_flux;
         fission_source += nu_sigma_f * scalar_flux * chi;
@@ -1081,11 +1083,15 @@ void FlatSourceDomain::flatten_xs()
         //  for (int dg = 0; dg < ndgroups_; dg++) {
         //     double nu_d_Sigma_f =
         //       m.get_xs(MgxsType::DELAYED_NU_FISSION, g_out, NULL, NULL, &dg, t, a);
-        //     nu_d_sigma_f_.push_back(nu_d_Sigma_f);
+        //     nu_d_sigma_f_.push_back(nu_d_Sigma_f); 
         //     double chi_d =
         //       m.get_xs(MgxsType::CHI_DELAYED, g_out, &g_out, NULL, &dg, t, a);
         //     chi_d_.push_back(chi_d);
         //  }
+
+        //  double chi_p =
+        //    m.get_xs(MgxsType::CHI_PROMPT, g_out, &g_out, NULL, NULL, t, a);
+        //  chi_p_.push_back(chi);
 
         //  double inverse_vbar =
         //    m.get_xs(MgxsType::INVERSE_VELOCITY, g_out, NULL, NULL, NULL, t, a);
@@ -1108,7 +1114,7 @@ void FlatSourceDomain::flatten_xs()
         sigma_f_.push_back(sigma_f);
 
         double chi =
-          m.get_xs(MgxsType::CHI_PROMPT, g_out, &g_out, NULL, NULL, t, a);
+          m.get_xs(MgxsType::CHI, g_out, &g_out, NULL, NULL, t, a);
         chi_.push_back(chi);
 
         for (int g_in = 0; g_in < negroups_; g_in++) {
@@ -1122,6 +1128,7 @@ void FlatSourceDomain::flatten_xs()
         //    nu_d_sigma_f_.push_back(0);
         //    chi_d_.push_back(0);
         //  }
+        //  chi_p_.push_back(0);
         //  inverse_vbar_.push_back(0);
         //  nu_p_sigma_f_.push_back(0);
         //}

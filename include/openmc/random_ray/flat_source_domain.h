@@ -209,6 +209,7 @@ public:
   vector<double> sigma_f_;
   vector<double> chi_;
   vector<double> nu_p_sigma_f_;
+  vector<double> chi_p_;
   vector<double> inverse_vbar_;
 
   // 2D arrays stored in 1D representing values for all materials x
