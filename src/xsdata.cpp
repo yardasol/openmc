@@ -184,7 +184,7 @@ void XsData::fission_vector_no_beta_from_hdf5(hid_t xsdata_grp, size_t n_ang)
   // Data is provided separately as prompt + delayed nu-fission and chi
 
   // If chi is included in this dataset, we should store it!
-  if (object_exists(xsdata_grp, "chi"))
+  if (object_exists(xsdata_grp, "chi")) {
     xt::xtensor<double, 2> temp_chi({n_ang, n_g_}, 0.);
     read_nd_vector(xsdata_grp, "chi", temp_chi, true);
           
@@ -193,6 +193,7 @@ void XsData::fission_vector_no_beta_from_hdf5(hid_t xsdata_grp, size_t n_ang)
           
     // Now every incoming group in self.chi is the normalized chi we just made
     chi = xt::view(temp_chi, xt::all(), xt::newaxis(), xt::all());
+  }
 
   // Get chi-prompt
   xt::xtensor<double, 2> temp_chi_p({n_ang, n_g_}, 0.);
