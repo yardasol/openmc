@@ -555,7 +555,13 @@ void RandomRaySimulation::simulate()
     simulation::total_weight = 1.0;
 
     // Update source term (scattering + fission)
-    domain_->update_neutron_source(k_eff_);
+    double k_eff;
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      k_eff = k_eff_;
+    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      k_eff = criticality_k_eff;
+    }
+    domain_->update_neutron_source(k_eff);
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
