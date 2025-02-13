@@ -205,7 +205,7 @@ void openmc_run_random_ray_time_dependent()
   rename_statepoint_file(0);
 
   // Settings for timestepping loop
-  // settings::run_mode = RunMode::TIME_DEPENDENT;
+  settings::run_mode = RunMode::TIME_DEPENDENT;
   int bd_order = 1;
   int64_t n_source_elements = criticality_scalar_flux.size();
   int64_t n_delay_elements = n_source_elements / data::mg.num_energy_groups_ *

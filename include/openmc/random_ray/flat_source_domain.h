@@ -82,10 +82,22 @@ public:
   vector<double> nu_sigma_f_;
   vector<double> sigma_f_;
   vector<double> chi_;
+  vector<double> nu_p_sigma_f_;
+  vector<double> chi_p_;
+  vector<double> inverse_vbar_;
+
+  // 2D arrays stored in 1D representing values for all materials x
+  // delay_groups
+  vector<double> lambda_;
 
   // 3D arrays stored in 1D representing values for all materials x energy
   // groups x energy groups
   vector<double> sigma_s_;
+
+  // 3D arrays stored in 1D representing values for all materials x energy
+  // groups x delay groups
+  vector<double> nu_d_sigma_f_;
+  vector<double> chi_d_;
 
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;
@@ -113,8 +125,11 @@ protected:
   //----------------------------------------------------------------------------
   // Private data members
   int negroups_;                  // Number of energy groups in simulation
+  int ndgroups_;                  // Number of delay groups in simulation
   int64_t n_source_elements_ {0}; // Total number of source regions in the model
                                   // times the number of energy groups
+  int64_t n_delay_elements_ {0};  // Total number of source regions in the model
+                                  // times the number of delay groups
 
   double
     simulation_volume_; // Total physical volume of the simulation domain, as

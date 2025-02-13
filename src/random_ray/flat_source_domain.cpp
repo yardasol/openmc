@@ -29,7 +29,9 @@ RandomRayVolumeEstimator FlatSourceDomain::volume_estimator_ {
 bool FlatSourceDomain::volume_normalized_flux_tallies_ {false};
 bool FlatSourceDomain::adjoint_ {false};
 
-FlatSourceDomain::FlatSourceDomain() : negroups_(data::mg.num_energy_groups_)
+FlatSourceDomain::FlatSourceDomain()
+  : negroups_(data::mg.num_energy_groups_),
+    ndgroups_(data::mg.num_delayed_groups_)
 {
   // Count the number of source regions, compute the cell offset
   // indices, and store the material type The reason for the offsets is that
@@ -42,6 +44,7 @@ FlatSourceDomain::FlatSourceDomain() : negroups_(data::mg.num_energy_groups_)
       source_region_offsets_.push_back(n_source_regions_);
       n_source_regions_ += c->n_instances_;
       n_source_elements_ += c->n_instances_ * negroups_;
+      n_delay_elements_ += c->n_instances_ * ndgroups_;
     }
   }
 
@@ -132,8 +135,15 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         double scalar_flux = source_regions_.scalar_flux_old(sr, g_in);
         double sigma_s =
           sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
-        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
-        double chi = chi_[material * negroups_ + g_out];
+        double nu_sigma_f;
+        double chi;
+        if (settings::run_mode != RunMode::TIME_DEPENDENT) {
+          nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+          chi = chi_[material * negroups_ + g_out];
+        } else {
+          nu_sigma_f = nu_p_sigma_f_[material * negroups_ + g_in];
+          chi = chi_p_[material * negroups_ + g_out];
+        }
 
         scatter_source += sigma_s * scalar_flux;
         fission_source += nu_sigma_f * scalar_flux * chi;
@@ -952,8 +962,41 @@ void FlatSourceDomain::flatten_xs()
 
   n_materials_ = data::mg.macro_xs_.size();
   for (auto& m : data::mg.macro_xs_) {
+    if (m.exists_in_model) {
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        for (int dg = 0; dg < ndgroups_; dg++) {
+          double lambda =
+            m.get_xs(MgxsType::DECAY_RATE, 0, NULL, NULL, &dg, t, a);
+          lambda_.push_back(lambda);
+        }
+      } else {
+        lambda_.push_back(0);
+      }
+    }
     for (int g_out = 0; g_out < negroups_; g_out++) {
       if (m.exists_in_model) {
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+            double nu_d_Sigma_f = m.get_xs(
+              MgxsType::DELAYED_NU_FISSION, g_out, NULL, NULL, &dg, t, a);
+            nu_d_sigma_f_.push_back(nu_d_Sigma_f);
+            double chi_d =
+              m.get_xs(MgxsType::CHI_DELAYED, g_out, &g_out, NULL, &dg, t, a);
+            chi_d_.push_back(chi_d);
+          }
+
+          double chi_p =
+            m.get_xs(MgxsType::CHI_PROMPT, g_out, &g_out, NULL, NULL, t, a);
+          chi_p_.push_back(chi_p);
+
+          double inverse_vbar =
+            m.get_xs(MgxsType::INVERSE_VELOCITY, g_out, NULL, NULL, NULL, t, a);
+          inverse_vbar_.push_back(inverse_vbar);
+
+          double nu_p_Sigma_f = m.get_xs(
+            MgxsType::PROMPT_NU_FISSION, g_out, NULL, NULL, NULL, t, a);
+          nu_p_sigma_f_.push_back(nu_p_Sigma_f);
+        }
         double sigma_t =
           m.get_xs(MgxsType::TOTAL, g_out, NULL, NULL, NULL, t, a);
         sigma_t_.push_back(sigma_t);
@@ -975,6 +1018,15 @@ void FlatSourceDomain::flatten_xs()
           sigma_s_.push_back(sigma_s);
         }
       } else {
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+            nu_d_sigma_f_.push_back(0);
+            chi_d_.push_back(0);
+          }
+          chi_p_.push_back(0);
+          inverse_vbar_.push_back(0);
+          nu_p_sigma_f_.push_back(0);
+        }
         sigma_t_.push_back(0);
         nu_sigma_f_.push_back(0);
         sigma_f_.push_back(0);
