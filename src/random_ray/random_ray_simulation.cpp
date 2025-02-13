@@ -237,10 +237,14 @@ void openmc_run_random_ray_time_dependent()
     sim_td.k_eff_ = criticality_k_eff;
     sim_td.domain()->bd_order_ = bd_order;
     sim_td.domain()->scalar_flux_bd_ = &scalar_flux_bd;
+    sim_td.domain()->precursors_bd_ = &precursors_bd;
+    if (settings::current_timestep == 0)
+      sim_td.domain()->compute_criticality_precursors(
+        criticality_k_eff, criticality_scalar_flux);
     sim_td.domain()->set_initial_condition();
-    // TODO: Determine it defining the domain variables as pointers will cause
+    // TODO: Determine if defining the domain variables as pointers will cause
     // issues with parallelization
-    // TODO: Define domain pointers to global BD vectors for SDP
+
     // Update time dependent cross section based on the density
     // sim_td.domain()->update_material_density(i);
 

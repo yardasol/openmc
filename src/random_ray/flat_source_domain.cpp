@@ -1,4 +1,5 @@
 #include "openmc/random_ray/flat_source_domain.h"
+#include "openmc/random_ray/bd_utilities.h"
 
 #include "openmc/cell.h"
 #include "openmc/eigenvalue.h"
@@ -50,8 +51,9 @@ FlatSourceDomain::FlatSourceDomain()
 
   // Initialize cell-wise arrays
   bool is_linear = RandomRay::source_shape_ != RandomRaySourceShape::FLAT;
-  source_regions_ = SourceRegionContainer(negroups_, is_linear);
-  source_regions_.assign(n_source_regions_, SourceRegion(negroups_, is_linear));
+  source_regions_ = SourceRegionContainer(negroups_, ndgroups_, is_linear);
+  source_regions_.assign(
+    n_source_regions_, SourceRegion(negroups_, ndgroups_, is_linear));
 
   // Initialize materials
   int64_t source_region_id = 0;
@@ -137,6 +139,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
           sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
         double nu_sigma_f;
         double chi;
+        // Use prompt cross section data if in time dependent mode
         if (settings::run_mode != RunMode::TIME_DEPENDENT) {
           nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
           chi = chi_[material * negroups_ + g_out];
@@ -150,6 +153,19 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
       }
       source_regions_.source(sr, g_out) =
         (scatter_source + fission_source * inverse_k_eff) / sigma_t;
+
+      // Add delayed source if in time dependent mode
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        double delayed_source = 0.0f;
+        for (int dg = 0; dg < ndgroups_; dg++) {
+          double chi_d =
+            chi_d_[material * negroups_ * ndgroups_ + g_out * ndgroups_ + dg];
+          double lambda = lambda_[material * ndgroups_ + dg];
+          double precursors = source_regions_.precursors(sr, dg);
+          delayed_source += chi_d * precursors * lambda;
+        }
+        source_regions_.source(sr, g_out) += delayed_source;
+      }
     }
   }
 
@@ -310,12 +326,28 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
     double sr_fission_source_old = 0;
     double sr_fission_source_new = 0;
 
-    for (int g = 0; g < negroups_; g++) {
-      double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
-      sr_fission_source_old +=
-        nu_sigma_f * source_regions_.scalar_flux_old(sr, g);
-      sr_fission_source_new +=
-        nu_sigma_f * source_regions_.scalar_flux_new(sr, g);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      for (int g = 0; g < negroups_; g++) {
+        // TODO: Add machinery for changing cross sections
+        double nu_p_sigma_f = nu_p_sigma_f_[material * negroups_ + g];
+        sr_fission_source_old +=
+          nu_p_sigma_f * source_regions_.scalar_flux_old(sr, g);
+        sr_fission_source_new +=
+          nu_p_sigma_f * source_regions_.scalar_flux_new(sr, g);
+      }
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        double lambda = lambda_[material * ndgroups_ + dg];
+        sr_fission_source_old += lambda * source_regions_.precursors(sr, dg);
+        sr_fission_source_new += lambda * source_regions_.precursors(sr, dg);
+      }
+    } else {
+      for (int g = 0; g < negroups_; g++) {
+        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
+        sr_fission_source_old +=
+          nu_sigma_f * source_regions_.scalar_flux_old(sr, g);
+        sr_fission_source_new +=
+          nu_sigma_f * source_regions_.scalar_flux_new(sr, g);
+      }
     }
 
     // Compute total fission rates in FSR
@@ -1097,10 +1129,70 @@ void FlatSourceDomain::set_initial_condition()
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++)
     source_regions_.scalar_flux_old(se) = (*scalar_flux_bd_)[se];
-  // I'd rather do this in the main timestepping loop, but I need delayed cross
-  // section data from FlatSourceDomain to compute the precursors
-  // if (settings::current_timestep == 0)
-  //  compute_criticality_precursors(k_eff_0);
+
+#pragma omp parallel for
+  for (int64_t de = 0; de < n_delay_elements_; de++)
+    source_regions_.precursors(de) = (*precursors_bd_)[de];
+}
+
+void FlatSourceDomain::compute_criticality_precursors(
+  double criticality_k_eff, vector<double>& criticality_scalar_flux)
+{
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions_; sr++) {
+    int mat = source_regions_.material(sr);
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      double lambda = lambda_[mat * ndgroups_ + dg];
+      double precursors = 0.0;
+      if (lambda != 0.0) {
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          double nu_d_sigma_f =
+            nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
+          precursors +=
+            criticality_scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
+        }
+        precursors /= lambda * criticality_k_eff;
+      }
+      // Store the criticality precursors in the BD vector
+      (*precursors_bd_)[sr * ndgroups_ + dg] = precursors;
+    }
+  }
+}
+
+void FlatSourceDomain::compute_precursors(
+  double criticality_k_eff, vector<double>& scalar_flux)
+{
+#pragma omp parallel for
+  for (int sr = 0; sr < n_source_regions_; sr++) {
+    int mat = source_regions_.material(sr);
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      double lambda = lambda_[mat * ndgroups_ + dg];
+      if (lambda == 0.0) {
+        source_regions_.precursors(sr, dg) = 0.0;
+      } else {
+        double delayed_fission_source = 0.0;
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          double nu_d_sigma_f =
+            nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
+          delayed_fission_source +=
+            scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
+        }
+        delayed_fission_source /= criticality_k_eff;
+
+        const vector<float> bd_coeffs =
+          bd_coefficients_first_order_.at(bd_order_);
+        float A0 = bd_coeffs[0] / settings::dt;
+
+        int idx = sr * ndgroups_ + dg;
+        double precursor_rhs_bd = rhs_backwards_difference(
+          precursors_bd_, n_delay_elements_, idx, bd_coeffs, settings::dt);
+
+        source_regions_.precursors(sr, dg) =
+          delayed_fission_source - precursor_rhs_bd;
+        source_regions_.precursors(sr, dg) /= A0 + lambda;
+      }
+    }
+  }
 }
 
 } // namespace openmc

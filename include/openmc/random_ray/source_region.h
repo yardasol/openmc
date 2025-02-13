@@ -85,7 +85,7 @@ class SourceRegion {
 public:
   //----------------------------------------------------------------------------
   // Constructors
-  SourceRegion(int negroups, bool is_linear);
+  SourceRegion(int negroups, int ndgroups, bool is_linear);
   SourceRegion() = default;
 
   //----------------------------------------------------------------------------
@@ -122,6 +122,9 @@ public:
   vector<MomentArray> flux_moments_new_;
   vector<MomentArray> flux_moments_t_;
 
+  // Delay group-wise 1D arrays
+  vector<double> precursors_;
+
   // 2D array representing values for all energy groups x tally
   // tasks. Each group may have a different number of tally tasks
   // associated with it, necessitating the use of a jagged array.
@@ -133,8 +136,8 @@ class SourceRegionContainer {
 public:
   //----------------------------------------------------------------------------
   // Constructors
-  SourceRegionContainer(int negroups, bool is_linear)
-    : negroups_(negroups), is_linear_(is_linear)
+  SourceRegionContainer(int negroups, int ndgroups, bool is_linear)
+    : negroups_(negroups), ndgroups_(ndgroups), is_linear_(is_linear)
   {}
   SourceRegionContainer() = default;
 
@@ -297,6 +300,14 @@ public:
   float& source(int64_t se) { return source_[se]; }
   const float& source(int64_t se) const { return source_[se]; }
 
+  double& precursors(int64_t sr, int dg) { return precursors_[dindex(sr, dg)]; }
+  const double& precursors(int64_t sr, int dg) const
+  {
+    return precursors_[dindex(sr, dg)];
+  }
+  double& precursors(int64_t de) { return precursors_[de]; }
+  const double& precursors(int64_t de) const { return precursors_[de]; }
+
   float& external_source(int64_t sr, int g)
   {
     return external_source_[index(sr, g)];
@@ -348,6 +359,7 @@ private:
   // Private Data Members
   int64_t n_source_regions_ {0};
   int negroups_ {0};
+  int ndgroups_ {0};
   bool is_linear_ {false};
 
   // SoA storage for scalar fields (one item per source region)
@@ -381,6 +393,9 @@ private:
   vector<MomentArray> flux_moments_new_;
   vector<MomentArray> flux_moments_t_;
 
+  // SoA delay group-wise 2D arrays flattened to 1D
+  vector<double> precursors_;
+
   // SoA 3D array representing values for all source regions x energy groups x
   // tally tasks. The outer two dimensions (source regions and energy groups)
   // are flattened to 1D. Each group may have a different number of tally tasks
@@ -393,6 +408,7 @@ private:
 
   // Helper function for indexing
   inline int index(int64_t sr, int g) const { return sr * negroups_ + g; }
+  inline int dindex(int64_t sr, int dg) const { return sr * ndgroups_ + dg; }
 };
 
 } // namespace openmc

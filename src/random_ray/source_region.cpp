@@ -8,7 +8,7 @@ namespace openmc {
 //==============================================================================
 // SourceRegion implementation
 //==============================================================================
-SourceRegion::SourceRegion(int negroups, bool is_linear)
+SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 {
   if (settings::run_mode == RunMode::EIGENVALUE) {
     // If in eigenvalue mode, set starting flux to guess of 1
@@ -22,6 +22,7 @@ SourceRegion::SourceRegion(int negroups, bool is_linear)
     // If in time dependent mode, set starting flux to guess of 1
     // TODO: try to incorporate criticality/previous final flux here
     scalar_flux_old_.assign(negroups, 1.0);
+    precursors_.assign(ndgroups, 0.0);
   }
 
   scalar_flux_new_.assign(negroups, 0.0);
@@ -85,6 +86,12 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
 
     // Tally tasks
     tally_task_.emplace_back(sr.tally_task_[g]);
+  }
+
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      precursors_.push_back(sr.precursors_[dg]);
+    }
   }
 }
 

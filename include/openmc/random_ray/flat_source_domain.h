@@ -51,6 +51,9 @@ public:
   //----------------------------------------------------------------------------
   // Time dependent methods
   void set_initial_condition();
+  void compute_criticality_precursors(
+    double criticality_k_eff, vector<double>& criticality_flux);
+  void compute_precursors(double criticality_k_eff, vector<double>& flux);
 
   //----------------------------------------------------------------------------
   // Static Data members
