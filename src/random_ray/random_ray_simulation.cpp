@@ -164,6 +164,39 @@ double criticality_k_eff;
 vector<double> criticality_scalar_flux;
 // vector<double> criticality_source;
 
+void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
+  int bd_order_max, vector<double>* scalar_flux_bd,
+  vector<double>* precursors_bd, vector<double>* criticality_scalar_flux)
+{
+  // We need bd_order_max + 2 solutions to take 2nd-order derivatives.
+  (*scalar_flux_bd).assign(n_source_elements * (bd_order_max + 2), 0.0);
+  //(*source_bd).assign(n_source_elements * (bd_order_max + 1), 0.0);
+
+  // Store criticality solutions to the bd vectors
+#pragma omp parallel for
+  for (int i = 0; i < n_source_elements; i++) {
+    (*scalar_flux_bd)[i] = (*criticality_scalar_flux)[i];
+    //(*source_bd)[i] = (*criticality_source)[i];
+  }
+  (*precursors_bd).assign(n_delay_elements * (bd_order_max + 1), 0.0);
+}
+
+void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
+  vector<double>* scalar_flux_bd, vector<double>* precursors_bd)
+{
+  vector<double> scalar_flux_blank;
+  // vector<float> source_blank;
+  vector<double> precursors_blank;
+
+  scalar_flux_blank.assign(n_source_elements, 0.0);
+  // source_blank.assign(n_source_elements, 0.0);
+  precursors_blank.assign(n_delay_elements, 0.0);
+
+  update_bd_vector(scalar_flux_bd, scalar_flux_blank, true);
+  // update_bdf_vector(source_bdf, source_blank, true);
+  update_bd_vector(precursors_bd, precursors_blank, true);
+}
+
 void openmc_run_random_ray_time_dependent()
 {
   // Criticality solve to get initial condition

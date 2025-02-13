@@ -73,6 +73,13 @@ void validate_random_ray_inputs();
 void openmc_run_random_ray_time_dependent();
 void rename_statepoint_file(int i);
 
+void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
+  int bd_order_max, vector<double>* scalar_flux_bd,
+  vector<double>* precursors_bd, vector<double>* criticality_scalar_flux);
+
+void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
+  vector<double>* scalar_flux_bd, vector<double>* precursors_bd);
+
 //==============================================================================
 // Time-dependent global variables
 //==============================================================================
