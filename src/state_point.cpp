@@ -99,6 +99,9 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     case RunMode::EIGENVALUE:
       write_dataset(file_id, "run_mode", "eigenvalue");
       break;
+    case RunMode::TIME_DEPENDENT:
+      write_dataset(file_id, "run_mode", "time dependent");
+      break;
     default:
       break;
     }
@@ -113,7 +116,8 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     write_attribute(file_id, "source_present", write_source_);
 
     // Write out information for eigenvalue run
-    if (settings::run_mode == RunMode::EIGENVALUE)
+    if (settings::run_mode == RunMode::EIGENVALUE ||
+        settings::run_mode == RunMode::TIME_DEPENDENT)
       write_eigenvalue_hdf5(file_id);
 
     hid_t tallies_group = create_group(file_id, "tallies");
@@ -300,7 +304,8 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     write_dataset(runtime_group, "simulation",
       time_inactive.elapsed() + time_active.elapsed());
     write_dataset(runtime_group, "transport", time_transport.elapsed());
-    if (settings::run_mode == RunMode::EIGENVALUE) {
+    if (settings::run_mode == RunMode::EIGENVALUE ||
+        settings::run_mode == RunMode::TIME_DEPENDENT) {
       write_dataset(runtime_group, "inactive batches", time_inactive.elapsed());
     }
     write_dataset(runtime_group, "active batches", time_active.elapsed());
