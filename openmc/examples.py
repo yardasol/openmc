@@ -899,7 +899,7 @@ def _generate_random_ray_pin_cell(uo2, water) -> openmc.Universe:
         azimuthal_cells.append(azimuthal_cell)
 
     # Create a geometry with the azimuthal universes
-    pincell = openmc.Universe(cells=azimuthal_cells, name='pin cell')
+    pincell = openmc.Universe(cells=azimuthal_cells, name='pincell')
 
     return pincell
 
@@ -935,7 +935,7 @@ def random_ray_pin_cell(time_dependent=False) -> openmc.Model:
     box = openmc.model.RectangularPrism(
         PINCELL_PITCH, PINCELL_PITCH, boundary_type='reflective')
 
-    pincell = openmc.Cell(fill=pincell, region=-box, name='pin cell')
+    pincell = openmc.Cell(fill=pincell, region=-box, name='pincell')
 
     # Create a geometry with the top-level cell
     geometry = openmc.Geometry([pincell])

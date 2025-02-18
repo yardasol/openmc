@@ -101,6 +101,7 @@ void FlatSourceDomain::batch_reset()
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     source_regions_.volume(sr) = 0.0;
+    source_regions_.volume_sq(sr) = 0.0;
   }
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
@@ -132,11 +133,20 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
 
   double inverse_k_eff = 1.0 / k_eff;
 
+// Reset all source regions to zero (important for void regions)
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    source_regions_.source(se) = 0.0;
+  }
+
   // Add scattering + fission source
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     int material = source_regions_.material(sr);
 
+    if (material == MATERIAL_VOID) {
+      continue;
+    }
     // TODO: Consider splitting up this for loop into smaller, testable
     // functions
     for (int g_out = 0; g_out < negroups_; g_out++) {
@@ -158,6 +168,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
     }
   }
 
+  // TODO: Add control flow for adjoint
   // Add external source if in fixed source mode
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
 #pragma omp parallel for
@@ -167,6 +178,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
   }
   // Set souce_td to source for IC calculation
   if (settings::is_initial_condition) {
+#pragma omp parallel for
     for (int64_t se = 0; se < n_source_elements_; se++)
       source_regions_.source_td(se) += source_regions_.source(se);
   }
@@ -196,8 +208,12 @@ void FlatSourceDomain::normalize_scalar_flux_and_volumes(
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     source_regions_.volume_t(sr) += source_regions_.volume(sr);
+    source_regions_.volume_sq_t(sr) += source_regions_.volume_sq(sr);
     source_regions_.volume_naive(sr) =
       source_regions_.volume(sr) * normalization_factor;
+    source_regions_.volume_sq(sr) =
+      (source_regions_.volume_sq_t(sr) / source_regions_.volume_t(sr)) *
+      volume_normalization_factor;
     source_regions_.volume(sr) =
       source_regions_.volume_t(sr) * volume_normalization_factor;
   }
@@ -206,23 +222,35 @@ void FlatSourceDomain::normalize_scalar_flux_and_volumes(
 void FlatSourceDomain::set_flux_to_flux_plus_source(
   int64_t sr, double volume, int g)
 {
-  double sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
-  source_regions_.scalar_flux_new(sr, g) /= (sigma_t * volume);
-  source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g) / sigma_t;
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    double sigma_t_td = sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
-    source_regions_.scalar_flux_td_new(sr, g) /= (sigma_t_td * volume);
-    source_regions_.scalar_flux_td_new(sr, g) += source_regions_.source_td(sr, g) / sigma_t_td;
-    if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
-      double inverse_vbar =
-        inverse_vbar_[source_regions_.material(sr) * negroups_ + g];
-      double scalar_flux_rhs_bd = source_regions_.scalar_flux_rhs_bd(sr, g);
-      double A0 = (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] /
-                  settings::dt;
-      source_regions_.scalar_flux_td_new(sr, g) -=
-        scalar_flux_rhs_bd * inverse_vbar / sigma_t_td;
-      source_regions_.scalar_flux_td_new(sr, g) /=
-        1 + A0 * inverse_vbar / sigma_t_td;
+  int material = source_regions_.material(sr);
+  // TODO: Implement support for time-dependent voids!
+  if (material == MATERIAL_VOID) {
+    source_regions_.scalar_flux_new(sr, g) /= volume;
+    source_regions_.scalar_flux_new(sr, g) +=
+      0.5 * source_regions_.external_source(sr, g) *
+      source_regions_.volume_sq(sr);
+  } else {
+    double sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
+    source_regions_.scalar_flux_new(sr, g) /= (sigma_t * volume);
+    source_regions_.scalar_flux_new(sr, g) +=
+      source_regions_.source(sr, g) / sigma_t;
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      double sigma_t_td =
+        sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
+      source_regions_.scalar_flux_td_new(sr, g) /= (sigma_t_td * volume);
+      source_regions_.scalar_flux_td_new(sr, g) +=
+        source_regions_.source_td(sr, g) / sigma_t_td;
+      if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
+        double inverse_vbar =
+          inverse_vbar_[source_regions_.material(sr) * negroups_ + g];
+        double scalar_flux_rhs_bd = source_regions_.scalar_flux_rhs_bd(sr, g);
+        double A0 = (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] /
+                    settings::dt;
+        source_regions_.scalar_flux_td_new(sr, g) -=
+          scalar_flux_rhs_bd * inverse_vbar / sigma_t_td;
+        source_regions_.scalar_flux_td_new(sr, g) /=
+          1 + A0 * inverse_vbar / sigma_t_td;
+      }
     }
   }
 }
@@ -349,6 +377,9 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
     }
 
     int material = source_regions_.material(sr);
+    if (material == MATERIAL_VOID) {
+      continue;
+    }
 
     double sr_fission_source_old = 0;
     double sr_fission_source_new = 0;
@@ -680,19 +711,19 @@ void FlatSourceDomain::random_ray_tally()
 
       // Determine numerical score value
       for (auto& task : source_regions_.tally_task(sr, g)) {
-        double score;
-        double sigma_t;
-        double sigma_f;
-        double nu_sigma_f;
-        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+          double score = 0.0;
+          double sigma_t;
+          double sigma_f;
+          double nu_sigma_f;
+          if (settings::run_mode == RunMode::TIME_DEPENDENT) {
           sigma_t = sigma_t_td_[material * negroups_ + g];
           sigma_f = sigma_f_td_[material * negroups_ + g];
           nu_sigma_f = nu_sigma_f_td_[material * negroups_ + g];
-        } else { 
+          } else {
           sigma_t = sigma_t_[material * negroups_ + g];
           sigma_f = sigma_f_[material * negroups_ + g];
           nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
-        }
+          }
         switch (task.score_type) {
 
         case SCORE_FLUX:
@@ -700,15 +731,21 @@ void FlatSourceDomain::random_ray_tally()
           break;
 
         case SCORE_TOTAL:
-          score = flux * volume * sigma_t;
+          if (material != MATERIAL_VOID) {
+            score = flux * volume * sigma_t;
+          }
           break;
 
         case SCORE_FISSION:
-          score = flux * volume * sigma_f;
+          if (material != MATERIAL_VOID) {
+            score = flux * volume * sigma_f;
+          }
           break;
 
         case SCORE_NU_FISSION:
-          score = flux * volume * nu_sigma_f;
+          if (material != MATERIAL_VOID) {
+            score = flux * volume * nu_sigma_f;
+          }
           break;
 
         case SCORE_EVENTS:
@@ -718,12 +755,13 @@ void FlatSourceDomain::random_ray_tally()
         case SCORE_DELAYED_NU_FISSION:
           if (settings::run_mode == RunMode::TIME_DEPENDENT ||
               settings::is_initial_condition) {
-            score = 0.0;
-            for (int dg = 0; dg < ndgroups_; dg++) {
-              double nu_d_sigma_f =
-                nu_d_sigma_f_[material * negroups_ * ndgroups_ + dg * negroups_ +
-                              g];
-              score += nu_d_sigma_f * flux * volume;
+            if (material != MATERIAL_VOID) {
+              for (int dg = 0; dg < ndgroups_; dg++) {
+                double nu_d_sigma_f =
+                  nu_d_sigma_f_[material * negroups_ * ndgroups_ +
+                                dg * negroups_ + g];
+                score += nu_d_sigma_f * flux * volume;
+              }
             }
             break;
           } else {
@@ -737,7 +775,9 @@ void FlatSourceDomain::random_ray_tally()
         case SCORE_PROMPT_NU_FISSION:
           if (settings::run_mode == RunMode::TIME_DEPENDENT ||
               settings::is_initial_condition) {
-            score = flux * volume * nu_p_sigma_f_[material * negroups_ + g];
+            if (material != MATERIAL_VOID) {
+              score = flux * volume * nu_p_sigma_f_[material * negroups_ + g];
+            }
           } else {
             fatal_error(
               "Invalid score specified in tallies.xml. Prompt nu-fission "
@@ -792,6 +832,7 @@ void FlatSourceDomain::random_ray_tally()
             break;
 
           case SCORE_PRECURSORS:
+            // TODO: void material if statement?
             score = source_regions_.precursors_new(sr, dg) *
                     source_normalization_factor * volume;
             break;
@@ -1015,21 +1056,37 @@ void FlatSourceDomain::output_to_vtk() const
     }
 
     // Plot fission source
-    std::fprintf(plot, "SCALARS total_fission_source float\n");
-    std::fprintf(plot, "LOOKUP_TABLE default\n");
-    for (int i = 0; i < Nx * Ny * Nz; i++) {
-      int64_t fsr = voxel_indices[i];
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      std::fprintf(plot, "SCALARS total_fission_source float\n");
+      std::fprintf(plot, "LOOKUP_TABLE default\n");
+      for (int i = 0; i < Nx * Ny * Nz; i++) {
+        int64_t fsr = voxel_indices[i];
 
-      float total_fission = 0.0;
-      int mat = source_regions_.material(fsr);
-      for (int g = 0; g < negroups_; g++) {
-        int64_t source_element = fsr * negroups_ + g;
-        float flux = evaluate_flux_at_point(voxel_positions[i], fsr, g);
-        double sigma_f = sigma_f_[mat * negroups_ + g];
-        total_fission += sigma_f * flux;
+        float total_fission = 0.0;
+        int mat = source_regions_.material(fsr);
+        if (mat != MATERIAL_VOID) {
+          for (int g = 0; g < negroups_; g++) {
+            int64_t source_element = fsr * negroups_ + g;
+            float flux = evaluate_flux_at_point(voxel_positions[i], fsr, g);
+            double sigma_f = sigma_f_[mat * negroups_ + g];
+            total_fission += sigma_f * flux;
+          }
+        }
+        total_fission = convert_to_big_endian<float>(total_fission);
+        std::fwrite(&total_fission, sizeof(float), 1, plot);
       }
-      total_fission = convert_to_big_endian<float>(total_fission);
-      std::fwrite(&total_fission, sizeof(float), 1, plot);
+    } else {
+      std::fprintf(plot, "SCALARS external_source float\n");
+      std::fprintf(plot, "LOOKUP_TABLE default\n");
+      for (int i = 0; i < Nx * Ny * Nz; i++) {
+        int64_t fsr = voxel_indices[i];
+        float total_external = 0.0f;
+        for (int g = 0; g < negroups_; g++) {
+          total_external += source_regions_.external_source(fsr, g);
+        }
+        total_external = convert_to_big_endian<float>(total_external);
+        std::fwrite(&total_external, sizeof(float), 1, plot);
+      }
     }
 
     std::fclose(plot);
@@ -1062,7 +1119,12 @@ void FlatSourceDomain::apply_external_source_to_cell_instances(int32_t i_cell,
 
   for (int j : instances) {
     int cell_material_idx = cell.material(j);
-    int cell_material_id = model::materials[cell_material_idx]->id();
+    int cell_material_id;
+    if (cell_material_idx == MATERIAL_VOID) {
+      cell_material_id = MATERIAL_VOID;
+    } else {
+      cell_material_id = model::materials[cell_material_idx]->id();
+    }
     if (target_material_id == C_NONE ||
         cell_material_id == target_material_id) {
       int64_t source_region = source_region_offsets_[i_cell] + j;
@@ -1328,10 +1390,21 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
 
   double inverse_k_eff = 1.0 / k_eff;
 
+  // Reset all time-dependent source regions to zero (important for
+  // time-dependent void regions)
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    source_regions_.source_td(se) = 0.0;
+  }
+
   // Add scattering + fission source
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     int material = source_regions_.material(sr);
+
+    if (material == MATERIAL_VOID) {
+      continue;
+    }
 
     // TODO: Consider splitting up this for loop into smaller, testable
     // functions
@@ -1380,7 +1453,7 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
     }
   }
 
-  // TODO: Time-dependent external source?
+  // TODO: Time-dependent external source (DO THIS NOW)
   simulation::time_update_src_td.stop();
 }
 

@@ -48,6 +48,8 @@ extern const RegularMesh* ufs_mesh;
 extern vector<double> k_generation;
 extern vector<int64_t> work_index;
 
+extern double current_time; //!< current time for time-dependent simulations
+
 } // namespace simulation
 
 //==============================================================================

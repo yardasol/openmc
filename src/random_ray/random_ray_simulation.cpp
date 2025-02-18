@@ -152,6 +152,9 @@ unique_ptr<FlatSourceDomain> source_domain;
 
 void openmc_run_random_ray_time_dependent()
 {
+  warning("Time-dependent explicit void treatment has not yet been "
+          "implemented. Use caution when interpreting results from models with "
+          "voids, as they may contain large inaccuracies.");
   // Criticality solve to get initial condition
   settings::run_mode = RunMode::EIGENVALUE;
   openmc_run_random_ray();
@@ -236,6 +239,9 @@ void openmc_run_random_ray_time_dependent()
     // Normalize and store final quantities for next time step
     sim_td.domain()->normalize_final_quantities();
     sim_td.domain()->store_time_step_quantities();
+
+    // Advance time
+    simulation::current_time += settings::dt;
   }
 }
 
@@ -244,6 +250,8 @@ void set_time_dependent_settings()
   // Reset flags
   settings::run_mode = RunMode::TIME_DEPENDENT;
   settings::is_initial_condition = false;
+
+  simulation::current_time = settings::dt;
 }
 
 void rename_statepoint_file(int i)
@@ -357,6 +365,23 @@ void validate_random_ray_inputs()
     if (material.get_xsdata().size() > 1) {
       fatal_error("Non-isothermal MGXS detected. Only isothermal XS data sets "
                   "supported in random ray mode.");
+    }
+    for (int g = 0; g < data::mg.num_energy_groups_; g++) {
+      if (material.exists_in_model) {
+        // Temperature and angle indices, if using multiple temperature
+        // data sets and/or anisotropic data sets.
+        // TODO: Currently assumes we are only using single temp/single angle
+        // data.
+        const int t = 0;
+        const int a = 0;
+        double sigma_t =
+          material.get_xs(MgxsType::TOTAL, g, NULL, NULL, NULL, t, a);
+        if (sigma_t <= 0.0) {
+          fatal_error("No zero or negative total macroscopic cross sections "
+                      "allowed in random ray mode. If the intention is to make "
+                      "a void material, use a cell fill of 'None' instead.");
+        }
+      }
     }
   }
 
