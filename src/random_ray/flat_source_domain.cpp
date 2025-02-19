@@ -1407,6 +1407,7 @@ void FlatSourceDomain::set_adjoint_sources()
       if (flux > 0.0) {
         source_regions_.external_source_present(sr) = 1;
       }
+      source_regions_.scalar_flux_final(sr, g) = 0.0;
     }
   }
 }

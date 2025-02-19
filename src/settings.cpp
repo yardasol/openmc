@@ -347,28 +347,15 @@ void get_run_parameters(pugi::xml_node node_base)
       FlatSourceDomain::adjoint_ =
         get_node_value_bool(random_ray_node, "adjoint");
     }
-    if (run_mode == RunMode::TIME_DEPENDENT) {
-      if (check_for_node(random_ray_node, "bd_order")) {
-        static int n = std::stod(get_node_value(random_ray_node, "bd_order"));
-        if (n < 1 || n > 6) {
-          fatal_error("Specified BD order of " + std::to_string(n) +
-                      ". BD order must be between 1 and 6");
-        } else {
-          RandomRay::bd_order_ = n;
-        }
+    if (check_for_node(random_ray_node, "sample_method")) {
+      std::string temp_str =
+        get_node_value(random_ray_node, "sample_method", true, true);
+      if (temp_str == "prng") {
+        RandomRay::sample_method_ = RandomRaySampleMethod::PRNG;
+      } else if (temp_str == "halton") {
+        RandomRay::sample_method_ = RandomRaySampleMethod::HALTON;
       } else {
-        fatal_error("Specify BD approximation order in settings XML");
-      }
-      if (check_for_node(random_ray_node, "time_method")) {
-        std::string temp_str =
-          get_node_value(random_ray_node, "time_method", true, true);
-        if (temp_str == "ti") {
-          RandomRay::time_method_ = RandomRayTimeMethod::TI;
-        } else if (temp_str == "sdp") {
-          RandomRay::time_method_ = RandomRayTimeMethod::SDP;
-        } else {
-          fatal_error("Unrecognized time method: " + temp_str);
-        }
+        fatal_error("Unrecognized sample method: " + temp_str);
       }
     }
     if (check_for_node(random_ray_node, "source_region_meshes")) {
@@ -393,6 +380,30 @@ void get_run_parameters(pugi::xml_node node_base)
           FlatSourceDomain::mesh_domain_map_[mesh_id].emplace_back(
             type, domain_id);
           RandomRay::mesh_subdivision_enabled_ = true;
+        }
+      }
+    }
+    if (run_mode == RunMode::TIME_DEPENDENT) {
+      if (check_for_node(random_ray_node, "bd_order")) {
+        static int n = std::stod(get_node_value(random_ray_node, "bd_order"));
+        if (n < 1 || n > 6) {
+          fatal_error("Specified BD order of " + std::to_string(n) +
+                      ". BD order must be between 1 and 6");
+        } else {
+          RandomRay::bd_order_ = n;
+        }
+      } else {
+        fatal_error("Specify BD approximation order in settings XML");
+      }
+      if (check_for_node(random_ray_node, "time_method")) {
+        std::string temp_str =
+          get_node_value(random_ray_node, "time_method", true, true);
+        if (temp_str == "ti") {
+          RandomRay::time_method_ = RandomRayTimeMethod::TI;
+        } else if (temp_str == "sdp") {
+          RandomRay::time_method_ = RandomRayTimeMethod::SDP;
+        } else {
+          fatal_error("Unrecognized time method: " + temp_str);
         }
       }
     }

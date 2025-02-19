@@ -124,7 +124,7 @@ void openmc_run_random_ray()
   sim.k_eff_ = 1.0;
 
   // Initialize adjoint fixed sources, if present
-  sim.prepare_fixed_sources_adjoint(forward_flux,
+  sim.prepare_fixed_sources_adjoint(
     forward_source_regions, forward_base_source_regions,
     forward_source_region_map);
 
@@ -644,7 +644,6 @@ void RandomRaySimulation::prepare_fixed_sources_adjoint(SourceRegionContainer& f
   std::unordered_map<SourceRegionKey, int64_t, SourceRegionKey::HashFunctor>&
     forward_source_region_map)
 {
-  domain_->source_regions_.adjoint_reset();
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
     if (RandomRay::mesh_subdivision_enabled_) {
       domain_->source_regions_ = forward_source_regions;

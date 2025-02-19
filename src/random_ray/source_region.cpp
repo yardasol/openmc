@@ -404,7 +404,7 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
     handle.precursors_bd_ = &precursors_bd(sr, 0);
     handle.precursors_rhs_bd_ = &precursors_rhs_bd(sr, 0);
  
-    handle.tally_delay_task_ = &tally_delay_task(sr, 0;
+    handle.tally_delay_task_ = &tally_delay_task(sr, 0);
   }
 
   if (handle.is_linear_) {
@@ -441,17 +441,14 @@ void SourceRegionContainer::adjoint_reset()
     MomentMatrix {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
   std::fill(mom_matrix_t_.begin(), mom_matrix_t_.end(),
     MomentMatrix {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
-
   for (auto& task_set : volume_task_) {
     task_set.clear();
   }
-
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
     std::fill(scalar_flux_old_.begin(), scalar_flux_old_.end(), 0.0);
   } else {
     std::fill(scalar_flux_old_.begin(), scalar_flux_old_.end(), 1.0);
   }
-  std::fill(scalar_flux_old_.begin(), scalar_flux_old_.end(), 0.0);
   std::fill(scalar_flux_new_.begin(), scalar_flux_new_.end(), 0.0);
   std::fill(source_.begin(), source_.end(), 0.0);
   std::fill(external_source_.begin(), external_source_.end(), 0.0);

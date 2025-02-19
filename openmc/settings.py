@@ -2156,7 +2156,6 @@ class Settings:
         self._create_max_tracks_subelement(element)
         self._create_random_ray_subelement(element, mesh_memo)
         self._create_time_dependent_subelement(element)
-        self._create_use_decay_photons_subelement(element)
 
         # Clean the indentation in the file to be user-readable
         clean_indentation(element)
