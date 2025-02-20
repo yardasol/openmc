@@ -141,7 +141,6 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         double chi;
         // Use prompt cross section data if in time dependent mode
         if (settings::run_mode != RunMode::TIME_DEPENDENT) {
-          // if (1 != 0) {
           nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
           chi = chi_[material * negroups_ + g_out];
         } else {
@@ -156,8 +155,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         (scatter_source + fission_source * inverse_k_eff) / sigma_t;
 
       // Add delayed source if in time dependent mode
-      // if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      if (1 == 0) {
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         double delayed_source = 0.0f;
         for (int dg = 0; dg < ndgroups_; dg++) {
           double chi_d =
@@ -337,11 +335,11 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
         sr_fission_source_new +=
           nu_p_sigma_f * source_regions_.scalar_flux_new(sr, g);
       }
-      // for (int dg = 0; dg < ndgroups_; dg++) {
-      //   double lambda = lambda_[material * ndgroups_ + dg];
-      //   sr_fission_source_old += lambda * source_regions_.precursors(sr, dg);
-      //   sr_fission_source_new += lambda * source_regions_.precursors(sr, dg);
-      // }
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        double lambda = lambda_[material * ndgroups_ + dg];
+        sr_fission_source_old += lambda * source_regions_.precursors(sr, dg);
+        sr_fission_source_new += lambda * source_regions_.precursors(sr, dg);
+      }
     } else {
       for (int g = 0; g < negroups_; g++) {
         double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
