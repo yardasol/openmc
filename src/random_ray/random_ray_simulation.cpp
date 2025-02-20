@@ -238,9 +238,20 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->bd_order_ = bd_order;
     sim_td.domain()->scalar_flux_bd_ = &scalar_flux_bd;
     sim_td.domain()->precursors_bd_ = &precursors_bd;
-    if (settings::current_timestep == 0)
+    if (settings::current_timestep == 0) {
       sim_td.domain()->compute_criticality_precursors(
         criticality_k_eff, criticality_scalar_flux);
+
+      // Serialize criticality precursors
+      vector<double> criticality_precursors;
+      sim_td.domain()->serialize_precursors(criticality_precursors);
+
+      // Store criticality precursors in the BD vector
+#pragma omp parallel for
+      for (int64_t de = 0; de < n_delay_elements; de++)
+        precursors_bd[de] = criticality_precursors[de];
+    }
+
     sim_td.domain()->set_initial_condition();
     // TODO: Determine if defining the domain variables as pointers will cause
     // issues with parallelization

@@ -1143,18 +1143,16 @@ void FlatSourceDomain::compute_criticality_precursors(
     int mat = source_regions_.material(sr);
     for (int dg = 0; dg < ndgroups_; dg++) {
       double lambda = lambda_[mat * ndgroups_ + dg];
-      double precursors = 0.0;
+      source_regions_.precursors(sr, dg) = 0.0;
       if (lambda != 0.0) {
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
-          precursors +=
+          source_regions_.precursors(sr, dg) +=
             criticality_scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
         }
-        precursors /= lambda * criticality_k_eff;
+        source_regions_.precursors(sr, dg) /= lambda * criticality_k_eff;
       }
-      // Store the criticality precursors in the BD vector
-      (*precursors_bd_)[sr * ndgroups_ + dg] = precursors;
     }
   }
 }
