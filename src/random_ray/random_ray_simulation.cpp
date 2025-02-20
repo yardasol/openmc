@@ -570,10 +570,10 @@ void RandomRaySimulation::simulate()
 
     // Update source term (scattering + fission)
     double k_eff;
-    if (settings::run_mode == RunMode::EIGENVALUE) {
-      k_eff = k_eff_;
-    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       k_eff = criticality_k_eff;
+    } else {
+      k_eff = k_eff_;
     }
     domain_->update_neutron_source(k_eff);
 
