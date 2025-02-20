@@ -1195,4 +1195,15 @@ void FlatSourceDomain::compute_precursors(
   }
 }
 
+void FlatSourceDomain::serialize_precursors(vector<double>& precursors)
+{
+  // Ensure array is correct size
+  precursors.resize(n_source_regions_ * ndgroups_);
+// Serialize the precursors for output
+#pragma omp parallel for
+  for (int64_t de = 0; de < n_delay_elements_; de++) {
+    precursors[de] = source_regions_.precursors(de);
+  }
+}
+
 } // namespace openmc

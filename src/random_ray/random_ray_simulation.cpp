@@ -285,13 +285,14 @@ void openmc_run_random_ray_time_dependent()
 #pragma omp parallel for
     for (uint64_t i = 0; i < forward_flux.size(); i++)
       forward_flux[i] *= source_normalization_factor;
-    // sim_td.domain()->compute_precursors(k_eff_0,
-    // sim_td.domain()->scalar_flux_final_);
+    sim_td.domain()->compute_precursors(criticality_k_eff, forward_flux);
 
+    vector<double> precursors;
+    sim_td.domain()->serialize_precursors(precursors);
     // Store final solutions in BD vectors
     update_bd_vector(&scalar_flux_bd, forward_flux, false);
     // update_bd_vector(&source_bdf, sim_td.domain()->source_, false);
-    // update_bd_vector(&precursors_bd, sim_td.domain()->precursors_, false);
+    update_bd_vector(&precursors_bd, precursors, false);
 
     // Increment BDF order up to the maximum allowed by the user
     if (i < RandomRaySimulation::bd_order_max_) {

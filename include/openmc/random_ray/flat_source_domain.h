@@ -54,6 +54,7 @@ public:
   void compute_criticality_precursors(
     double criticality_k_eff, vector<double>& criticality_flux);
   void compute_precursors(double criticality_k_eff, vector<double>& flux);
+  void serialize_precursors(vector<double>& precursors);
 
   //----------------------------------------------------------------------------
   // Static Data members
