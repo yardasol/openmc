@@ -123,7 +123,9 @@ public:
   vector<MomentArray> flux_moments_t_;
 
   // Delay group-wise 1D arrays
-  vector<double> precursors_;
+  vector<double> precursors_old_;
+  vector<double> precursors_new_;
+  vector<double> precursors_final_;
 
   // 2D array representing values for all energy groups x tally
   // tasks. Each group may have a different number of tally tasks
@@ -300,13 +302,41 @@ public:
   float& source(int64_t se) { return source_[se]; }
   const float& source(int64_t se) const { return source_[se]; }
 
-  double& precursors(int64_t sr, int dg) { return precursors_[dindex(sr, dg)]; }
-  const double& precursors(int64_t sr, int dg) const
+  double& precursors_old(int64_t sr, int dg)
   {
-    return precursors_[dindex(sr, dg)];
+    return precursors_old_[dindex(sr, dg)];
   }
-  double& precursors(int64_t de) { return precursors_[de]; }
-  const double& precursors(int64_t de) const { return precursors_[de]; }
+  const double& precursors_old(int64_t sr, int dg) const
+  {
+    return precursors_old_[dindex(sr, dg)];
+  }
+  double& precursors_old(int64_t de) { return precursors_old_[de]; }
+  const double& precursors_old(int64_t de) const { return precursors_old_[de]; }
+
+  double& precursors_new(int64_t sr, int dg)
+  {
+    return precursors_new_[dindex(sr, dg)];
+  }
+  const double& precursors_new(int64_t sr, int dg) const
+  {
+    return precursors_new_[dindex(sr, dg)];
+  }
+  double& precursors_new(int64_t de) { return precursors_new_[de]; }
+  const double& precursors_new(int64_t de) const { return precursors_new_[de]; }
+
+  double& precursors_final(int64_t sr, int dg)
+  {
+    return precursors_final_[dindex(sr, dg)];
+  }
+  const double& precursors_final(int64_t sr, int dg) const
+  {
+    return precursors_final_[dindex(sr, dg)];
+  }
+  double& precursors_final(int64_t de) { return precursors_final_[de]; }
+  const double& precursors_final(int64_t de) const
+  {
+    return precursors_final_[de];
+  }
 
   float& external_source(int64_t sr, int g)
   {
@@ -354,6 +384,9 @@ public:
   void flux_swap();
   void mpi_sync_ranks(bool reduce_position);
 
+  // Time-dependent methods
+  void precursors_swap();
+
 private:
   //----------------------------------------------------------------------------
   // Private Data Members
@@ -394,7 +427,9 @@ private:
   vector<MomentArray> flux_moments_t_;
 
   // SoA delay group-wise 2D arrays flattened to 1D
-  vector<double> precursors_;
+  vector<double> precursors_old_;
+  vector<double> precursors_new_;
+  vector<double> precursors_final_;
 
   // SoA 3D array representing values for all source regions x energy groups x
   // tally tasks. The outer two dimensions (source regions and energy groups)
