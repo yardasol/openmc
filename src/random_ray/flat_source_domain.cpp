@@ -325,34 +325,26 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
 
     double sr_fission_source_old = 0;
     double sr_fission_source_new = 0;
-
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      for (int g = 0; g < negroups_; g++) {
-        // TODO: Add machinery for changing cross sections
-        double nu_p_sigma_f = nu_p_sigma_f_[material * negroups_ + g];
-        sr_fission_source_old +=
-          nu_p_sigma_f * source_regions_.scalar_flux_old(sr, g);
-        sr_fission_source_new +=
-          nu_p_sigma_f * source_regions_.scalar_flux_new(sr, g);
-      }
-      for (int dg = 0; dg < ndgroups_; dg++) {
-        double lambda = lambda_[material * ndgroups_ + dg];
-        sr_fission_source_old += lambda * source_regions_.precursors(sr, dg);
-        sr_fission_source_new += lambda * source_regions_.precursors(sr, dg);
-      }
-    } else {
-      for (int g = 0; g < negroups_; g++) {
-        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
-        sr_fission_source_old +=
-          nu_sigma_f * source_regions_.scalar_flux_old(sr, g);
-        sr_fission_source_new +=
-          nu_sigma_f * source_regions_.scalar_flux_new(sr, g);
-      }
+    for (int g = 0; g < negroups_; g++) {
+      double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
+      sr_fission_source_old +=
+        nu_sigma_f * source_regions_.scalar_flux_old(sr, g);
+      sr_fission_source_new +=
+        nu_sigma_f * source_regions_.scalar_flux_new(sr, g);
     }
 
     // Compute total fission rates in FSR
     sr_fission_source_old *= volume;
     sr_fission_source_new *= volume;
+
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        double lambda = lambda_[material * ndgroups_ + dg];
+        // TODO: Multiply by dt
+        sr_fission_source_old += lambda * source_regions_.precursors(sr, dg);
+        sr_fission_source_new += lambda * source_regions_.precursors(sr, dg);
+      }
+    }
 
     // Accumulate totals
     fission_rate_old += sr_fission_source_old;
