@@ -20,10 +20,13 @@ public:
   //----------------------------------------------------------------------------
   // Methods
   void compute_segment_correction_factors();
-  void prepare_fixed_sources();
-  void prepare_fixed_sources_adjoint();
+  void apply_fixed_sources_and_mesh_domains();
+  void prepare_fixed_sources_adjoint(
+    SourceRegionContainer& forward_source_regions,
+    SourceRegionContainer& forward_base_source_regions,
+    std::unordered_map<SourceRegionKey, int64_t, SourceRegionKey::HashFunctor>&
+      forward_source_region_map);
   void simulate();
-  void reduce_simulation_statistics();
   void output_simulation_results() const;
   void instability_check(
     int64_t n_hits, double k_eff, double& avg_miss_rate) const;
@@ -71,6 +74,7 @@ private:
 
 void openmc_run_random_ray();
 void validate_random_ray_inputs();
+void openmc_reset_random_ray();
 
 //! Write data related to randaom ray to statepoint
 //! \param[in] group HDF5 group
