@@ -164,7 +164,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
           double precursors = source_regions_.precursors(sr, dg);
           delayed_source += chi_d * precursors * lambda;
         }
-        source_regions_.source(sr, g_out) += delayed_source;
+        source_regions_.source(sr, g_out) += delayed_source / sigma_t;
       }
     }
   }
@@ -341,8 +341,8 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
       for (int dg = 0; dg < ndgroups_; dg++) {
         double lambda = lambda_[material * ndgroups_ + dg];
         // TODO: Multiply by dt
-        sr_fission_source_old += lambda * source_regions_.precursors(sr, dg);
-        sr_fission_source_new += lambda * source_regions_.precursors(sr, dg);
+        sr_fission_source_old += settings::dt * lambda * source_regions_.precursors(sr, dg);
+        sr_fission_source_new += settings::dt * lambda * source_regions_.precursors(sr, dg);
       }
     }
 
