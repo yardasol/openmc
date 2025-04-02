@@ -724,6 +724,9 @@ void RandomRaySimulation::simulate()
       // Add source to scalar flux, compute number of FSR hits
       int64_t n_hits = domain_->add_source_to_scalar_flux(); 
 
+      // Apply transport stabilization factors
+      domain_->apply_transport_stabilization();
+
       if (settings::run_mode == RunMode::EIGENVALUE ||
           settings::run_mode == RunMode::TIME_DEPENDENT) {
         // Compute random ray k-eff
@@ -836,21 +839,23 @@ void RandomRaySimulation::print_results_random_ray() const
     header("Simulation Statistics", 4);
     fmt::print(
       " Total Iterations                  = {}\n", settings::n_batches);
-    fmt::print(" Flat Source Regions (FSRs)        = {}\n",
-      RandomRay::n_source_regions_);
-    fmt::print(" FSRs Containing External Sources  = {}\n",
-      RandomRay::n_external_source_regions_);
+    fmt::print(
+      " Number of Rays per Iteration      = {}\n", settings::n_particles);
+    fmt::print(" Inactive Distance                 = {} cm\n",
+      RandomRay::distance_inactive_);
+    fmt::print(" Active Distance                   = {} cm\n",
+      RandomRay::distance_active_);
+    fmt::print(" Source Regions (SRs)              = {}\n", RandomRay::n_source_regions_);
+    fmt::print(
+      " SRs Containing External Sources   = {}\n", RandomRay::n_external_source_regions_);
     fmt::print(" Total Geometric Intersections     = {:.4e}\n",
       static_cast<double>(RandomRay::total_geometric_intersections_));
     fmt::print("   Avg per Iteration               = {:.4e}\n",
+      static_cast<double>(RandomRay::total_geometric_intersections_) / settings::n_batches);
+    fmt::print("   Avg per Iteration per SR        = {:.2f}\n",
       static_cast<double>(RandomRay::total_geometric_intersections_) /
-        settings::n_batches);
-    fmt::print("   Avg per Iteration per FSR       = {:.2f}\n",
-      static_cast<double>(RandomRay::total_geometric_intersections_) /
-        static_cast<double>(settings::n_batches) /
-        RandomRay::n_source_regions_);
-    fmt::print(" Avg FSR Miss Rate per Iteration   = {:.4f}%\n",
-      RandomRay::avg_miss_rate_);
+        static_cast<double>(settings::n_batches) / RandomRay::n_source_regions_);
+    fmt::print(" Avg SR Miss Rate per Iteration    = {:.4f}%\n", RandomRay::avg_miss_rate_);
     fmt::print(" Energy Groups                     = {}\n", negroups_);
     if (settings::run_mode == RunMode::TIME_DEPENDENT ||
         settings::is_initial_condition)
@@ -879,6 +884,32 @@ void RandomRaySimulation::print_results_random_ray() const
     std::string adjoint_true = (FlatSourceDomain::adjoint_) ? "ON" : "OFF";
     fmt::print(" Adjoint Flux Mode                 = {}\n", adjoint_true);
 
+    std::string shape;
+    switch (RandomRay::source_shape_) {
+    case RandomRaySourceShape::FLAT:
+      shape = "Flat";
+      break;
+    case RandomRaySourceShape::LINEAR:
+      shape = "Linear";
+      break;
+    case RandomRaySourceShape::LINEAR_XY:
+      shape = "Linear XY";
+      break;
+    default:
+      fatal_error("Invalid random ray source shape");
+    }
+    fmt::print(" Source Shape                      = {}\n", shape);
+    std::string sample_method =
+      (RandomRay::sample_method_ == RandomRaySampleMethod::PRNG) ? "PRNG"
+                                                                 : "Halton";
+    fmt::print(" Sample Method                     = {}\n", sample_method);
+
+    if (domain_->is_transport_stabilization_needed_) {
+      fmt::print(" Transport XS Stabilization Used   = YES (rho = {:.3f})\n",
+        FlatSourceDomain::diagonal_stabilization_rho_);
+    } else {
+      fmt::print(" Transport XS Stabilization Used   = NO\n");
+    }
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       std::string time_method =
         (RandomRay::time_method_ == RandomRayTimeMethod::TI) ? "TI" : "SDP";
@@ -923,8 +954,5 @@ void RandomRaySimulation::print_results_random_ray() const
       simulation::keff, simulation::keff_std);
   }
 }
-
-//------------------------------------------------------------------------------
-// Time Dependent Methods
 
 } // namespace openmc
