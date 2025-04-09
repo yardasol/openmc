@@ -208,13 +208,12 @@ void openmc_run_random_ray_time_dependent()
   settings::run_mode = RunMode::TIME_DEPENDENT;
   int bd_order = 1;
   int64_t n_source_elements = criticality_scalar_flux.size();
-  int64_t n_delay_elements = n_source_elements / data::mg.num_energy_groups_ *
+  int64_t n_delay_elements = (n_source_elements / data::mg.num_energy_groups_) *
                              data::mg.num_delayed_groups_;
 
   initialize_bd_vectors(n_source_elements, n_delay_elements,
     RandomRaySimulation::bd_order_max_, &scalar_flux_bd, &precursors_bd,
     &criticality_scalar_flux);
-  // TODO: initialize_bdf_vectors for SDP
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
@@ -262,6 +261,8 @@ void openmc_run_random_ray_time_dependent()
     // Begin main simulation timer
     simulation::time_total.start();
 
+    // TODO: Consider using the same time-ordering for this vector instead of
+    // rotating it!!! V
     // Increment BD vectors to a zero-valued solution to be filled in.
     increment_bd_vectors(
       n_source_elements, n_delay_elements, &scalar_flux_bd, &precursors_bd);

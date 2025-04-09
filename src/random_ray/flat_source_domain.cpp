@@ -128,6 +128,8 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     int material = source_regions_.material(sr);
 
+    // TODO: Consider splitting up this for loop into smaller, testable
+    // functions
     for (int g_out = 0; g_out < negroups_; g_out++) {
       double sigma_t = sigma_t_[material * negroups_ + g_out];
       double scatter_source = 0.0;
@@ -140,6 +142,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         double nu_sigma_f;
         double chi;
         // Use prompt cross section data if in time dependent mode
+        // TODO: Consider testing index here against the actual mgxs.h5 file
         if (settings::run_mode != RunMode::TIME_DEPENDENT) {
           nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
           chi = chi_[material * negroups_ + g_out];
@@ -1138,6 +1141,7 @@ void FlatSourceDomain::compute_criticality_precursors(
       source_regions_.precursors(sr, dg) = 0.0;
       if (lambda != 0.0) {
         for (int g_in = 0; g_in < negroups_; g_in++) {
+          //TODO: check if the indexing right here
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
           source_regions_.precursors(sr, dg) +=
