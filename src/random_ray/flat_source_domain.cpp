@@ -156,8 +156,10 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
 
         scatter_source += sigma_s * scalar_flux;
         fission_source += nu_sigma_f * scalar_flux * chi;
-        scatter_source_tot += scatter_source;
-        fission_source_tot += fission_source * inverse_k_eff;
+        if (material == 0) {
+          scatter_source_tot += scatter_source;
+          fission_source_tot += fission_source * inverse_k_eff;
+        }
       }
       source_regions_.source(sr, g_out) =
         (scatter_source + fission_source * inverse_k_eff) / sigma_t;
@@ -172,7 +174,8 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
           double precursors = source_regions_.precursors(sr, dg);
           delayed_source += chi_d * precursors * lambda;
         }
-        delayed_source_tot += delayed_source;
+        if (material == 0)
+          delayed_source_tot += delayed_source;
         source_regions_.source(sr, g_out) += delayed_source / sigma_t;
       }
     }
