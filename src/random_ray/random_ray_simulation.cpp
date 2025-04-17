@@ -297,10 +297,10 @@ void openmc_run_random_ray_time_dependent()
 #pragma omp parallel for
     for (uint64_t i = 0; i < forward_flux.size(); i++)
       forward_flux[i] *= source_normalization_factor;
-    sim_td.domain()->compute_precursors(
-       criticality_k_eff, forward_flux);
-    // sim_td.domain()->compute_criticality_precursors(
-    //  criticality_k_eff, forward_flux);
+    //sim_td.domain()->compute_precursors(
+    //   criticality_k_eff, forward_flux);
+    sim_td.domain()->compute_criticality_precursors(
+      criticality_k_eff, forward_flux);
 
     vector<double> precursors;
     sim_td.domain()->serialize_precursors(precursors);

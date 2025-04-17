@@ -1147,7 +1147,7 @@ void FlatSourceDomain::compute_criticality_precursors(
           source_regions_.precursors(sr, dg) +=
             criticality_scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
         }
-        source_regions_.precursors(sr, dg) /= lambda * criticality_k_eff;
+        source_regions_.precursors(sr, dg) /= lambda;// * criticality_k_eff;
       }
     }
   }
@@ -1171,7 +1171,7 @@ void FlatSourceDomain::compute_precursors(
           delayed_fission_source +=
             scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
         }
-        delayed_fission_source /= criticality_k_eff;
+        //delayed_fission_source /= criticality_k_eff;
 
         const vector<float> bd_coeffs =
           bd_coefficients_first_order_.at(bd_order_);
