@@ -77,7 +77,7 @@ void openmc_run_random_ray(bool initial_condition)
     for (uint64_t i = 0; i < forward_flux.size(); i++) {
       forward_flux[i] *= source_normalization_factor;
     }
-
+ 
     // Finalize OpenMC
     openmc_simulation_finalize();
 
@@ -92,6 +92,12 @@ void openmc_run_random_ray(bool initial_condition)
     if (initial_condition) {
       criticality_scalar_flux = forward_flux;
       criticality_k_eff = simulation::keff;
+
+      // Debugging
+      // Compute neutron source with final normalized flux to check source
+      sim.domain()->set_flux_to_old_flux(forward_flux);
+      sim.domain()->update_neutron_source(simulation::keff);
+
       // if (RandomRay::time_mode_ == RandomRayTimeMode::SDP){
       //  Set scalar_flux_old to criticality flux
       //    for (int se = 0; se < sim.domain()->n_source_element; se++)
@@ -297,8 +303,13 @@ void openmc_run_random_ray_time_dependent()
 #pragma omp parallel for
     for (uint64_t i = 0; i < forward_flux.size(); i++)
       forward_flux[i] *= source_normalization_factor;
+    
+    // Compute neutron source with final normalized flux to check source
+    sim_td.domain()->set_flux_to_old_flux(forward_flux);
+    sim_td.domain()->update_neutron_source(criticality_k_eff);
+
     //sim_td.domain()->compute_precursors(
-    //   criticality_k_eff, forward_flux);
+    //  criticality_k_eff, forward_flux);
     sim_td.domain()->compute_criticality_precursors(
       criticality_k_eff, forward_flux);
 
