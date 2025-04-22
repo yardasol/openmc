@@ -308,10 +308,10 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->set_flux_to_old_flux(forward_flux);
     sim_td.domain()->update_neutron_source(criticality_k_eff);
 
-    //sim_td.domain()->compute_precursors(
-    //  criticality_k_eff, forward_flux);
-    sim_td.domain()->compute_criticality_precursors(
+    sim_td.domain()->compute_precursors(
       criticality_k_eff, forward_flux);
+    //sim_td.domain()->compute_criticality_precursors(
+    //  criticality_k_eff, forward_flux);
 
     vector<double> precursors;
     sim_td.domain()->serialize_precursors(precursors);
@@ -321,7 +321,7 @@ void openmc_run_random_ray_time_dependent()
     update_bd_vector(&precursors_bd, precursors, false);
 
     // Increment BDF order up to the maximum allowed by the user
-    if (i < RandomRaySimulation::bd_order_max_) {
+    if (i < RandomRaySimulation::bd_order_max_ - 1) {
       bd_order++;
     }
   }
