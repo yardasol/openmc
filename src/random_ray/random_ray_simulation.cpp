@@ -193,7 +193,7 @@ void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
   precursors_blank.assign(n_delay_elements, 0.0);
 
   update_bd_vector(scalar_flux_bd, scalar_flux_blank, true);
-  // update_bdf_vector(source_bdf, source_blank, true);
+  // update_bd_vector(source_bd, source_blank, true);
   update_bd_vector(precursors_bd, precursors_blank, true);
 }
 
@@ -262,11 +262,10 @@ void openmc_run_random_ray_time_dependent()
     simulation::time_total.start();
 
     // TODO: Consider using the same time-ordering for this vector instead of
-    // rotating it!!! V
+    // rotating it!!!
     // Increment BD vectors to a zero-valued solution to be filled in.
     increment_bd_vectors(
       n_source_elements, n_delay_elements, &scalar_flux_bd, &precursors_bd);
-    // TODO: increment_bd_vectors for SDP
 
     // Execute random ray simulation
     sim_td.simulate();
@@ -297,22 +296,19 @@ void openmc_run_random_ray_time_dependent()
 #pragma omp parallel for
     for (uint64_t i = 0; i < forward_flux.size(); i++)
       forward_flux[i] *= source_normalization_factor;
-    //sim_td.domain()->compute_precursors(
-    //   criticality_k_eff, forward_flux);
-    sim_td.domain()->compute_criticality_precursors(
-      criticality_k_eff, forward_flux);
-    //sim_td.domain()->compute_criticality_precursors(
-    //  criticality_k_eff, forward_flux);
+
+    sim_td.domain()->compute_precursors(
+       criticality_k_eff, forward_flux);
 
     vector<double> precursors;
     sim_td.domain()->serialize_precursors(precursors);
     // Store final solutions in BD vectors
     update_bd_vector(&scalar_flux_bd, forward_flux, false);
-    // update_bd_vector(&source_bdf, sim_td.domain()->source_, false);
+    // update_bd_vector(&source_bd, sim_td.domain()->source_, false);
     update_bd_vector(&precursors_bd, precursors, false);
 
-    // Increment BDF order up to the maximum allowed by the user
-    if (i < RandomRaySimulation::bd_order_max_ - 1) {
+    // Increment BD order up to the maximum allowed by the user
+    if (bd_order < RandomRaySimulation::bd_order_max_) {
       bd_order++;
     }
   }
