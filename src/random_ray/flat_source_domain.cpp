@@ -1153,6 +1153,13 @@ void FlatSourceDomain::set_initial_condition()
 void FlatSourceDomain::compute_criticality_precursors(
   double criticality_k_eff, vector<double>& criticality_scalar_flux)
 {
+  double delayed_fiss_tot = 0.0;
+  double delayed_fiss_0 = 0.0;
+  double delayed_fiss_1 = 0.0;
+  double delayed_fiss_2 = 0.0;
+  double delayed_fiss_3 = 0.0;
+  double delayed_fiss_4 = 0.0;
+  double delayed_fiss_5 = 0.0;
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1167,15 +1174,39 @@ void FlatSourceDomain::compute_criticality_precursors(
           source_regions_.precursors(sr, dg) +=
             criticality_scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
         }
+        // THESE CANT JUST BE ADDED by delay group!! 
+        // WE NEED TO TRACK THEM BY DELAY GROUP
+        if (mat == 0) {
+          if (dg == 0)
+            delayed_fiss_0 += source_regions_.precursors(sr, dg) / criticality_k_eff;
+          else if (dg == 1)
+            delayed_fiss_1 += source_regions_.precursors(sr, dg) / criticality_k_eff;
+          else if (dg == 2)
+            delayed_fiss_2 += source_regions_.precursors(sr, dg) / criticality_k_eff;
+          else if (dg == 3)
+            delayed_fiss_3 += source_regions_.precursors(sr, dg) / criticality_k_eff;
+          else if (dg == 4)
+            delayed_fiss_4 += source_regions_.precursors(sr, dg) / criticality_k_eff;
+          else (dg == 5)
+            delayed_fiss_5 += source_regions_.precursors(sr, dg) / criticality_k_eff;
+        }
         source_regions_.precursors(sr, dg) /= lambda * criticality_k_eff;
       }
     }
   }
+  double dft = delayed_fiss_tot;
 }
 
 void FlatSourceDomain::compute_precursors(
   double criticality_k_eff, vector<double>& scalar_flux)
 {
+  double delayed_fiss_tot = 0.0;
+  double delayed_fiss_0 = 0.0;
+  double delayed_fiss_1 = 0.0;
+  double delayed_fiss_2 = 0.0;
+  double delayed_fiss_3 = 0.0;
+  double delayed_fiss_4 = 0.0;
+  double delayed_fiss_5 = 0.0;
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1192,6 +1223,20 @@ void FlatSourceDomain::compute_precursors(
             scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
         }
         delayed_fission_source /= criticality_k_eff;
+        if (mat == 0) {
+          if (dg == 0)
+            delayed_fiss_0 += delayed_fission_source;
+          else if (dg == 1)
+            delayed_fiss_1 += delayed_fission_source;
+          else if (dg == 2)
+            delayed_fiss_2 += delayed_fission_source;
+          else if (dg == 3)
+            delayed_fiss_3 += delayed_fission_source;
+          else if (dg == 4)
+            delayed_fiss_4 += delayed_fission_source;
+          else 
+            delayed_fiss_5 += delayed_fission_source;
+        }
 
         const vector<float> bd_coeffs =
           bd_coefficients_first_order_.at(bd_order_);
@@ -1207,6 +1252,7 @@ void FlatSourceDomain::compute_precursors(
       }
     }
   }
+  double dft = delayed_fiss_tot;
 }
 
 void FlatSourceDomain::serialize_precursors(vector<double>& precursors)
