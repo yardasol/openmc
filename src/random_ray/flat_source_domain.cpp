@@ -1187,7 +1187,7 @@ void FlatSourceDomain::compute_criticality_precursors(
             delayed_fiss_3 += source_regions_.precursors(sr, dg) / criticality_k_eff;
           else if (dg == 4)
             delayed_fiss_4 += source_regions_.precursors(sr, dg) / criticality_k_eff;
-          else
+          else (dg == 5)
             delayed_fiss_5 += source_regions_.precursors(sr, dg) / criticality_k_eff;
         }
         source_regions_.precursors(sr, dg) /= lambda * criticality_k_eff;
@@ -1207,13 +1207,6 @@ void FlatSourceDomain::compute_precursors(
   double delayed_fiss_3 = 0.0;
   double delayed_fiss_4 = 0.0;
   double delayed_fiss_5 = 0.0;
-  double p_rhs_bd_0 = 0.0;
-  double p_rhs_bd_1 = 0.0;
-  double p_rhs_bd_2 = 0.0;
-  double p_rhs_bd_3 = 0.0;
-  double p_rhs_bd_4 = 0.0;
-  double p_rhs_bd_5 = 0.0;
-
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1253,20 +1246,6 @@ void FlatSourceDomain::compute_precursors(
         double precursor_rhs_bd = rhs_backwards_difference(
           precursors_bd_, n_delay_elements_, idx, bd_coeffs, settings::dt);
 
-        if (mat == 0) {
-          if (dg == 0)
-            p_rhs_bd_0 += precursor_rhs_bd;
-          else if (dg == 1)
-            p_rhs_bd_1 += precursor_rhs_bd;
-          else if (dg == 2)
-            p_rhs_bd_2 += precursor_rhs_bd;
-          else if (dg == 3)
-            p_rhs_bd_3 += precursor_rhs_bd;
-          else if (dg == 4)
-            p_rhs_bd_4 += precursor_rhs_bd;
-          else 
-            p_rhs_bd_5 += precursor_rhs_bd;
-        }
         source_regions_.precursors(sr, dg) =
           delayed_fission_source - precursor_rhs_bd;
         source_regions_.precursors(sr, dg) /= A0 + lambda;
