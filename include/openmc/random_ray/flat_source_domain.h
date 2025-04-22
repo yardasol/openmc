@@ -47,9 +47,6 @@ public:
   void flatten_xs();
   void transpose_scattering_matrix();
   void serialize_final_fluxes(vector<double>& flux);
-  // Debugging function
-  void set_flux_to_old_flux(vector<double>& flux);
-
 
   //----------------------------------------------------------------------------
   // Time dependent methods

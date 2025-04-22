@@ -124,9 +124,6 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
   double inverse_k_eff = 1.0 / k_eff;
 
   // Add scattering + fission source
-  double fission_source_tot = 0.0;
-  double scatter_source_tot = 0.0;
-  double delayed_source_tot = 0.0;
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     int material = source_regions_.material(sr);
@@ -156,8 +153,6 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
 
         scatter_source += sigma_s * scalar_flux;
         fission_source += nu_sigma_f * scalar_flux * chi;
-        scatter_source_tot += scatter_source;
-        fission_source_tot += fission_source * inverse_k_eff;
       }
       source_regions_.source(sr, g_out) =
         (scatter_source + fission_source * inverse_k_eff) / sigma_t;
@@ -172,7 +167,6 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
           double precursors = source_regions_.precursors(sr, dg);
           delayed_source += chi_d * precursors * lambda;
         }
-        delayed_source_tot += delayed_source;
         source_regions_.source(sr, g_out) += delayed_source / sigma_t;
       }
     }
@@ -1119,17 +1113,6 @@ void FlatSourceDomain::serialize_final_fluxes(vector<double>& flux)
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
     flux[se] = source_regions_.scalar_flux_final(se);
-  }
-}
-
-// Debugging function
-void FlatSourceDomain::set_flux_to_old_flux(vector<double>& flux)
-{
-  // Ensure array is correct size
-  flux.resize(n_source_regions_ * negroups_);
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements_; se++) {
-    source_regions_.scalar_flux_old(se) = flux[se];
   }
 }
 
