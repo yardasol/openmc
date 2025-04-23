@@ -22,7 +22,9 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     // If in time dependent mode, set starting flux to guess of 1
     // TODO: try to incorporate criticality/previous final flux here
     scalar_flux_old_.assign(negroups, 1.0);
-    precursors_.assign(ndgroups, 0.0);
+    precursors_old_.assign(ndgroups, 0.0);
+    precursors_new_.assign(ndgroups, 0.0);
+    precursors_final_.assign(ndgroups, 0.0);
   }
 
   scalar_flux_new_.assign(negroups, 0.0);
@@ -90,7 +92,9 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     for (int dg = 0; dg < ndgroups_; dg++) {
-      precursors_.push_back(sr.precursors_[dg]);
+      precursors_old_.push_back(sr.precursors_old_[dg]);
+      precursors_new_.push_back(sr.precursors_new_[dg]);
+      precursors_final_.push_back(sr.precursors_final_[dg]);
     }
   }
 }
@@ -242,6 +246,12 @@ void SourceRegionContainer::mpi_sync_ranks(bool reduce_position)
   }
 
 #endif
+}
+
+// Time-dependent methods
+void SourceRegionContainer::precursors_swap()
+{
+  precursors_old_.swap(precursors_new_);
 }
 
 } // namespace openmc

@@ -243,7 +243,8 @@ void openmc_run_random_ray_time_dependent()
 
       // Serialize criticality precursors
       vector<double> criticality_precursors;
-      sim_td.domain()->serialize_precursors(criticality_precursors);
+      sim_td.domain()->serialize_final_precursors(criticality_precursors, true);
+      sim_td.domain()->precursors_swap();
 
       // Store criticality precursors in the BD vector
 #pragma omp parallel for
@@ -300,8 +301,13 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->compute_precursors(
        criticality_k_eff, forward_flux);
 
+    // Normalize final precursors by number of active batches
     vector<double> precursors;
-    sim_td.domain()->serialize_precursors(precursors);
+    sim_td.domain()->serialize_final_precursors(precursors);
+#pragma omp parallel for
+    for (uint64_t i = 0; i < precursors.size(); i++)
+      precursors[i] *= source_normalization_factor;
+
     // Store final solutions in BD vectors
     update_bd_vector(&scalar_flux_bd, forward_flux, false);
     // update_bd_vector(&source_bd, sim_td.domain()->source_, false);
@@ -605,6 +611,13 @@ void RandomRaySimulation::simulate()
     // Add source to scalar flux, compute number of FSR hits
     int64_t n_hits = domain_->add_source_to_scalar_flux();
 
+    // Compute precursors
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      vector<double> scalar_flux_new;
+      domain_->serialize_final_fluxes(scalar_flux_new, true);
+      domain_->compute_precursors(k_eff, scalar_flux_new);
+    }
+
     if (settings::run_mode == RunMode::EIGENVALUE ||
         settings::run_mode == RunMode::TIME_DEPENDENT) {
       // Compute random ray k-eff
@@ -619,6 +632,8 @@ void RandomRaySimulation::simulate()
 
       // Add this iteration's scalar flux estimate to final accumulated estimate
       domain_->accumulate_iteration_flux();
+      if (settings::run_mode == RunMode::TIME_DEPENDENT)
+        domain_->accumulate_iteration_precursors();
 
       if (mpi::master) {
         // Generate mapping between source regions and tallies
@@ -633,6 +648,8 @@ void RandomRaySimulation::simulate()
 
     // Set phi_old = phi_new
     domain_->flux_swap();
+    if (settings::run_mode == RunMode::TIME_DEPENDENT)
+      domain_->precursors_swap();
 
     // Check for any obvious insabilities/nans/infs
     instability_check(n_hits, k_eff_, avg_miss_rate_);
