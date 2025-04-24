@@ -298,9 +298,6 @@ void openmc_run_random_ray_time_dependent()
     for (uint64_t i = 0; i < forward_flux.size(); i++)
       forward_flux[i] *= source_normalization_factor;
 
-    sim_td.domain()->compute_precursors(
-       criticality_k_eff, forward_flux);
-
     // Normalize final precursors by number of active batches
     vector<double> precursors;
     sim_td.domain()->serialize_final_precursors(precursors);
