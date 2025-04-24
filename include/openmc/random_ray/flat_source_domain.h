@@ -115,8 +115,8 @@ public:
   // vector<float>* source_bd_;
   vector<double>* precursors_bd_;
 
-  vector<double>& scalar_flux_rhs_bd_;
-  vector<double>& precursors_rhs_bd_;
+  vector<double>* scalar_flux_rhs_bd_;
+  vector<double>* precursors_rhs_bd_;
 
 protected:
   //----------------------------------------------------------------------------
