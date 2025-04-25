@@ -31,9 +31,9 @@ public:
 
   // Time dependent helper functions
   // TI method
-  float compute_psibar(float angular_flux_0, float exponential, float distance,
-    float sigma_t, float source, float inverse_vbar, float scalar_flux_rhs_bd,
-    float A0);
+  float compute_psibar(float angular_flux_0, float exponential,
+        float distance, float sigma_t, float source, float inverse_vbar,
+        float scalar_flux_rhs_bd, float A0);
 
   void initialize_ray(uint64_t ray_id, FlatSourceDomain* domain);
   uint64_t transport_history_based_single_ray();
