@@ -186,23 +186,27 @@ void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
   (*precursors_bd).assign(n_delay_elements * (bd_order_max + 1), 0.0);
 }
 
-void compute_rhs_backward_differences(int64_t n_source_elements, int64_t n_delay_elements, int bd_order,
+void compute_rhs_backward_differences(int64_t n_source_elements, int64_t n_delay_elements,
         vector<double>* scalar_flux_bd, vector<double>* precursors_bd, vector<double>& scalar_flux_rhs_bd, vector<double>& precursors_rhs_bd) {
-  const vector<float> bd_coeffs = bd_coefficients_first_order_.at(bd_order);
+  const vector<float> bd_coeffs = bd_coefficients_first_order_.at(bd_order_);
   float A0 = bd_coeffs[0] / settings::dt;
 
   scalar_flux_rhs_bd.assign(n_source_elements, 0.0);
   precursors_rhs_bd.assign(n_delay_elements, 0.0);
 #pragma omp parallel for
   for (int se = 0; se < n_source_elements; se++) {
-    scalar_flux_rhs_bd[se] = rhs_backwards_difference(
+    scalar_flux_rhs_bd[idx] = rhs_backwards_difference(
       scalar_flux_bd, n_source_elements, se, bd_coeffs, settings::dt);
   }
 
 #pragma omp parallel for
   for (int de = 0; de < n_delay_elements; de++) {
-    precursors_rhs_bd[de] = rhs_backwards_difference(
-      precursors_bd, n_delay_elements, de, bd_coeffs, settings::dt);
+    if (lambda == 0.0) {
+      precursors_rhs_bd[idx] = 0.0;
+    } else {
+      precursors_rhs_bd[idx] = rhs_backwards_difference(
+        precursors_bd, n_delay_elements, de, bd_coeffs, settings::dt);
+    }
   }
 }
 
@@ -294,10 +298,10 @@ void openmc_run_random_ray_time_dependent()
       n_source_elements, n_delay_elements, &scalar_flux_bd, &precursors_bd);
 
     // Compute RHS backward differences to be used later
-    compute_rhs_backward_differences(n_source_elements, n_delay_elements, bd_order,
+    compute_rhs_backward_differences(n_source_elements, n_delay_elements,
     &scalar_flux_bd, &precursors_bd, scalar_flux_rhs_bd, precursors_rhs_bd);
-    sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
-    sim_td.domain()->precursors_rhs_bd_ = &precursors_rhs_bd;
+    sim_td.domain()->scalar_flux_rhs_bd_ = scalar_flux_rhs_bd;
+    sim_td.domain()->precursors_rhs_bd_ = precursors_rhs_bd;
  
     // Execute random ray simulation
     sim_td.simulate();

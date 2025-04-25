@@ -1186,7 +1186,7 @@ void FlatSourceDomain::compute_precursors(
         delayed_fission_source /= criticality_k_eff;
 
         int idx = sr * ndgroups_ + dg;
-        double precursor_rhs_bd = (*precursors_rhs_bd_)[idx];
+        double precursor_rhs_bd = precursors_rhs_bd_[idx];
 
         source_regions_.precursors_new(sr, dg) =
           delayed_fission_source - precursor_rhs_bd;
