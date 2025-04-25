@@ -186,8 +186,11 @@ void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
   (*precursors_bd).assign(n_delay_elements * (bd_order_max + 1), 0.0);
 }
 
-void compute_rhs_backward_differences(int64_t n_source_elements, int64_t n_delay_elements, int bd_order,
-        vector<double>* scalar_flux_bd, vector<double>* precursors_bd, vector<double>& scalar_flux_rhs_bd, vector<double>& precursors_rhs_bd) {
+void compute_rhs_backward_differences(int64_t n_source_elements,
+  int64_t n_delay_elements, int bd_order, vector<double>* scalar_flux_bd,
+  vector<double>* precursors_bd, vector<double>& scalar_flux_rhs_bd,
+  vector<double>& precursors_rhs_bd)
+{
   const vector<float> bd_coeffs = bd_coefficients_first_order_.at(bd_order);
   float A0 = bd_coeffs[0] / settings::dt;
 
@@ -294,11 +297,12 @@ void openmc_run_random_ray_time_dependent()
       n_source_elements, n_delay_elements, &scalar_flux_bd, &precursors_bd);
 
     // Compute RHS backward differences to be used later
-    compute_rhs_backward_differences(n_source_elements, n_delay_elements, bd_order,
-    &scalar_flux_bd, &precursors_bd, scalar_flux_rhs_bd, precursors_rhs_bd);
+    compute_rhs_backward_differences(n_source_elements, n_delay_elements,
+      bd_order, &scalar_flux_bd, &precursors_bd, scalar_flux_rhs_bd,
+      precursors_rhs_bd);
     sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
     sim_td.domain()->precursors_rhs_bd_ = &precursors_rhs_bd;
- 
+
     // Execute random ray simulation
     sim_td.simulate();
 

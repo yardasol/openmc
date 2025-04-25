@@ -1,10 +1,10 @@
 #include "openmc/random_ray/random_ray.h"
 
-#include "openmc/random_ray/bd_utilities.h"
 #include "openmc/constants.h"
 #include "openmc/geometry.h"
 #include "openmc/message_passing.h"
 #include "openmc/mgxs_interface.h"
+#include "openmc/random_ray/bd_utilities.h"
 #include "openmc/random_ray/flat_source_domain.h"
 #include "openmc/random_ray/linear_source_domain.h"
 #include "openmc/search.h"
@@ -331,28 +331,29 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       float inverse_vbar = domain_->inverse_vbar_[g];
       switch (RandomRay::time_mode_) {
-        case RandomRayTimeMode::TI:
-          {
-          // Get A0 and RHS time derivative of scalar flux
-          float A0 = (bd_coefficients_first_order_.at(domain_->bd_order_))[0] / settings::dt;
-          float scalar_flux_rhs_bd = (*(domain_->scalar_flux_rhs_bd_))[sr * negroups_ + g] / (4 * PI);
+      case RandomRayTimeMode::TI: {
+        // Get A0 and RHS time derivative of scalar flux
+        float A0 = (bd_coefficients_first_order_.at(domain_->bd_order_))[0] /
+                   settings::dt;
+        float scalar_flux_rhs_bd =
+          (*(domain_->scalar_flux_rhs_bd_))[sr * negroups_ + g] / (4 * PI);
 
-          // Compute psibar
-          float psibar = compute_psibar(angular_flux_[g], exponential, distance,
-                  sigma_t, source, inverse_vbar, scalar_flux_rhs_bd, A0);
-          psibar_[g] = psibar;
+        // Compute psibar
+        float psibar = compute_psibar(angular_flux_[g], exponential, distance,
+          sigma_t, source, inverse_vbar, scalar_flux_rhs_bd, A0);
+        psibar_[g] = psibar;
 
-          // Compute contribution to delta psi
-          new_delta_psi += inverse_vbar * (A0 * psibar + scalar_flux_rhs_bd) * exponential / sigma_t; 
-          break;
-          }
-        case RandomRayTimeMode::SDP:
-          {
-          //not implemented
-          break;
-          }
-        default:
-          fatal_error("Invalid random ray time mode");
+        // Compute contribution to delta psi
+        new_delta_psi += inverse_vbar * (A0 * psibar + scalar_flux_rhs_bd) *
+                         exponential / sigma_t;
+        break;
+      }
+      case RandomRayTimeMode::SDP: {
+        // not implemented
+        break;
+      }
+      default:
+        fatal_error("Invalid random ray time mode");
       }
     }
     delta_psi_[g] = new_delta_psi;
@@ -373,22 +374,23 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         float inverse_vbar = domain_->inverse_vbar_[g];
         switch (RandomRay::time_mode_) {
-          case RandomRayTimeMode::TI:
-            {
-            // Get A0 and RHS time derivative of scalar flux
-            float A0 = (bd_coefficients_first_order_.at(domain_->bd_order_))[0] / settings::dt;
-            float psibar = psibar_[g];
-            float scalar_flux_rhs_bd = (*(domain_->scalar_flux_rhs_bd_))[sr * negroups_ + g] / (4 * PI);
-            domain_->source_regions_.scalar_flux_new(sr, g) -= distance * inverse_vbar * (A0 * psibar + scalar_flux_rhs_bd);
-            break;
-            }
-          case RandomRayTimeMode::SDP:
-            {
-            //not implemented
-            break;
-            }
-          default:
-            fatal_error("Invalid random ray time mode");
+        case RandomRayTimeMode::TI: {
+          // Get A0 and RHS time derivative of scalar flux
+          float A0 = (bd_coefficients_first_order_.at(domain_->bd_order_))[0] /
+                     settings::dt;
+          float psibar = psibar_[g];
+          float scalar_flux_rhs_bd =
+            (*(domain_->scalar_flux_rhs_bd_))[sr * negroups_ + g] / (4 * PI);
+          domain_->source_regions_.scalar_flux_new(sr, g) -=
+            distance * inverse_vbar * (A0 * psibar + scalar_flux_rhs_bd);
+          break;
+        }
+        case RandomRayTimeMode::SDP: {
+          // not implemented
+          break;
+        }
+        default:
+          fatal_error("Invalid random ray time mode");
         }
       }
     }
@@ -601,14 +603,15 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
 //==============================================================================
 
 float RandomRay::compute_psibar(float angular_flux_0, float exponential,
-        float distance, float sigma_t, float source, float inverse_vbar,
-        float scalar_flux_rhs_bd, float A0) {
+  float distance, float sigma_t, float source, float inverse_vbar,
+  float scalar_flux_rhs_bd, float A0)
+{
   float a = inverse_vbar / sigma_t;
   float F = exponential / (distance * sigma_t);
-  float num = angular_flux_0 * F + (source / sigma_t - scalar_flux_rhs_bd) * (1 - F); 
-  float den = A0 * a * (1 - F) + 1; 
+  float num =
+    angular_flux_0 * F + (source / sigma_t - scalar_flux_rhs_bd) * (1 - F);
+  float den = A0 * a * (1 - F) + 1;
   return num / den;
 }
-
 
 } // namespace openmc
