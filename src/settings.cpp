@@ -116,7 +116,6 @@ double res_scat_energy_min {0.01};
 double res_scat_energy_max {1000.0};
 vector<std::string> res_scat_nuclides;
 RunMode run_mode {RunMode::UNSET};
-bool is_initial_condition {false};
 SolverType solver_type {SolverType::MONTE_CARLO};
 std::unordered_set<int> sourcepoint_batch;
 std::unordered_set<int> statepoint_batch;
@@ -499,7 +498,6 @@ void read_settings_xml(pugi::xml_node root)
         run_mode = RunMode::FIXED_SOURCE;
       } else if (temp_str == "time dependent") {
         run_mode = RunMode::TIME_DEPENDENT;
-        is_initial_condition = true;
       } else if (temp_str == "plot") {
         run_mode = RunMode::PLOTTING;
       } else if (temp_str == "particle restart") {
@@ -528,7 +526,6 @@ void read_settings_xml(pugi::xml_node root)
           node_mode = root.child("time_dependent");
           if (node_mode) {
             run_mode = RunMode::TIME_DEPENDENT;
-            is_initial_condition = true;
           } else {
             fatal_error("<eigenvalue>,  <fixed_source>, or <time_dependent> "
                         "not specified.");

@@ -132,11 +132,6 @@ public:
   // associated with it, necessitating the use of a jagged array.
   vector<vector<TallyTask>> tally_task_;
 
-  // 2D array representing values for all delay groups x tally
-  // tasks. Each group may have a different number of tally tasks
-  // associated with it, necessitating the use of a jagged array.
-  vector<vector<TallyTask>> tally_delayed_task_;
-
 }; // class SourceRegion
 
 class SourceRegionContainer {
@@ -371,23 +366,6 @@ public:
     return tally_task_[se];
   }
 
-  vector<TallyTask>& tally_delayed_task(int64_t sr, int dg)
-  {
-    return tally_delayed_task_[dindex(sr, dg)];
-  }
-  const vector<TallyTask>& tally_delayed_task(int64_t sr, int dg) const
-  {
-    return tally_delayed_task_[dindex(sr, dg)];
-  }
-  vector<TallyTask>& tally_delayed_task(int64_t de)
-  {
-    return tally_delayed_task_[de];
-  }
-  const vector<TallyTask>& tally_delayed_task(int64_t de) const
-  {
-    return tally_delayed_task_[de];
-  }
-
   std::unordered_set<TallyTask, TallyTask::HashFunctor>& volume_task(int64_t sr)
   {
     return volume_task_[sr];
@@ -459,13 +437,6 @@ private:
   // associated with it, necessitating the use of a jagged array for the inner
   // dimension.
   vector<vector<TallyTask>> tally_task_;
-
-  // SoA 3D array representing values for all source regions x delay groups x
-  // tally tasks. The outer two dimensions (source regions and delay groups)
-  // are flattened to 1D. Each group may have a different number of tally tasks
-  // associated with it, necessitating the use of a jagged array for the inner
-  // dimension.
-  vector<vector<TallyTask>> tally_delayed_task_;
 
   //----------------------------------------------------------------------------
   // Private Methods

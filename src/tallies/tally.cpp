@@ -514,22 +514,6 @@ void Tally::set_scores(const vector<std::string>& scores)
         fatal_error("Cannot tally flux with an outgoing energy filter.");
       break;
 
-    case SCORE_PRECURSORS:
-      if (settings::run_mode != RunMode::TIME_DEPENDENT ||
-          settings::solver_type != SolverType::RANDOM_RAY)
-        fatal_error("Can only tally precursors in time-dependent random ray "
-                    "calculations.");
-      if (!nuclides_.empty())
-        if (!(nuclides_.size() == 1 && nuclides_[0] == -1))
-          fatal_error("Cannot tally precursors for an individual nuclide.");
-      if (energyout_present)
-        fatal_error("Cannot tally precursors with an outgoing energy filter.");
-      // TODO: make this more robust: allow for tallying
-      // in eigenvalue and fixed source calculations by detecting
-      // delayed fission, delayed chi, and lambda cross sections (mg and ce)
-      // Also enable support for monte carlo solves
-      break;
-
     case SCORE_TOTAL:
     case SCORE_ABSORPTION:
     case SCORE_FISSION:

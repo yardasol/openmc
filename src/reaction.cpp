@@ -156,7 +156,6 @@ double Reaction::collapse_rate(gsl::index i_temp,
 
 std::unordered_map<int, std::string> REACTION_NAME_MAP {
   {SCORE_FLUX, "flux"},
-  {SCORE_PRECURSORS, "precursors"},
   {SCORE_TOTAL, "total"},
   {SCORE_SCATTER, "scatter"},
   {SCORE_NU_SCATTER, "nu-scatter"},

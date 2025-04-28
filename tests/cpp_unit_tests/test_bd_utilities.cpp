@@ -90,7 +90,7 @@ TEST_CASE("Test initialize_bd_vectors")
 {
   vector<double> ref_scalar_flux_bd = {0.3, 0.4, 0.0, 0.0, 0.0, 0.0};
   // std::vector<float> ref_source_bd = {0.1, 0.2, 0.0, 0.0};
-  vector<double> ref_precursors_bd = {1.0, 2.0, 3.0, 0.0, 0.0, 0.0};
+  vector<double> ref_precursors_bd = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
   int bd_order_max = 1;
   int64_t n_source_elements = 2;
@@ -98,15 +98,13 @@ TEST_CASE("Test initialize_bd_vectors")
 
   vector<double> criticality_scalar_flux = {0.3, 0.4};
   // std::vector<float> criticality_source = {0.1, 0.2};
-  vector<double> criticality_precursors = {1.0, 2.0, 3.0};
 
   vector<double> scalar_flux_bd;
   // std::vector<float> source_bd;
   vector<double> precursors_bd;
 
   initialize_bd_vectors(n_source_elements, n_delay_elements, bd_order_max,
-    &scalar_flux_bd, &precursors_bd, &criticality_scalar_flux,
-    &criticality_precursors);
+    &scalar_flux_bd, &precursors_bd, &criticality_scalar_flux);
   REQUIRE_THAT(ref_scalar_flux_bd, Catch::Matchers::Equals(scalar_flux_bd));
   // REQUIRE_THAT(ref_source_bd, Catch::Matchers::Equals(source_bd));
   REQUIRE_THAT(ref_precursors_bd, Catch::Matchers::Equals(precursors_bd));

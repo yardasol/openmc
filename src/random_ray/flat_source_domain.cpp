@@ -502,62 +502,6 @@ void FlatSourceDomain::convert_source_regions_to_tallies()
       for (auto& match : p.filter_matches())
         match.bins_present_ = false;
     }
-
-    // Loop over delayed groups (so as to support tallying precursors)
-    if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-        settings::is_initial_condition) {
-      for (int dg = 0; dg < ndgroups_; dg++) {
-
-        // Set particle to the current energy
-        p.delayed_group() = dg;
-
-        int64_t delay_element = sr * ndgroups_ + dg;
-
-        // If this task has already been populated, we don't need to do
-        // it again.
-        if (source_regions_.tally_delayed_task(sr, dg).size() > 0) {
-          continue;
-        }
-
-        // Loop over all active tallies. This logic is essentially identical
-        // to what happens when scanning for applicable tallies during
-        // MC transport.
-        for (auto i_tally : model::active_tallies) {
-          Tally& tally {*model::tallies[i_tally]};
-
-          // Initialize an iterator over valid filter bin combinations.
-          // If there are no valid combinations, use a continue statement
-          // to ensure we skip the assume_separate break below.
-          auto filter_iter = FilterBinIter(tally, p);
-          auto end = FilterBinIter(tally, true, &p.filter_matches());
-          if (filter_iter == end)
-            continue;
-
-          // Loop over filter bins.
-          for (; filter_iter != end; ++filter_iter) {
-            auto filter_index = filter_iter.index_;
-            auto filter_weight = filter_iter.weight_;
-
-            // Loop over scores
-            for (auto score_index = 0; score_index < tally.scores_.size();
-                 score_index++) {
-              auto score_bin = tally.scores_[score_index];
-              // If a valid tally, filter, and score combination has been found,
-              // then add it to the list of tally tasks for this source element.
-              TallyTask task(i_tally, filter_index, score_index, score_bin);
-              source_regions_.tally_delayed_task(sr, dg).push_back(task);
-
-              // Also add this task to the list of volume tasks for this source
-              // region.
-              source_regions_.volume_task(sr).insert(task);
-            }
-          }
-        }
-        // Reset all the filter matches for the next tally event.
-        for (auto& match : p.filter_matches())
-          match.bins_present_ = false;
-      }
-    }
   }
   openmc::simulation::time_tallies.stop();
 
@@ -685,55 +629,10 @@ void FlatSourceDomain::random_ray_tally()
           score = 1.0;
           break;
 
-        case SCORE_DELAYED_NU_FISSION:
-          if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-              settings::is_initial_condition) {
-            score = 0.0;
-            for (int dg = 0; dg < ndgroups_; dg++) {
-              double nu_d_sigma_f =
-                nu_d_sigma_f_[material * negroups_ * ndgroups_ + g * ndgroups_ +
-                              dg];
-              score += nu_d_sigma_f * flux * volume;
-            }
-            break;
-          } else {
-            fatal_error(
-              "Invalid score specified in tallies.xml. Delayed nu-fission "
-              "is only supported in time-dependent random ray mode or during "
-              "an initial condition calculation for a time-dependent "
-              "simulation.");
-          }
-
-        case SCORE_PROMPT_NU_FISSION:
-          if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-              settings::is_initial_condition) {
-            score = flux * volume * nu_p_sigma_f_[material * negroups_ + g];
-          } else {
-            fatal_error(
-              "Invalid score specified in tallies.xml. Prompt nu-fission "
-              "is only supported in time-dependent random ray mode or during "
-              "an initial condition calculation for a time-dependent "
-              "simulation.");
-            break;
-          }
-
-        case SCORE_PRECURSORS:
-          if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-              settings::is_initial_condition) {
-            break;
-          } else {
-            fatal_error("Invalid score specified in tallies.xml. Precursors "
-                        "are only supported in time-dependent random ray mode "
-                        "or during an initial condition calculation for a "
-                        "time-dependent simulation.");
-          }
-
         default:
-          fatal_error(
-            "Invalid score specified in tallies.xml. Only flux, "
-            "total, fission, nu-fission, and events are supported in "
-            "random ray mode (prompt nu-fission, delayed nu-fission, "
-            "and precursors are supported in time-dependent random ray mode).");
+          fatal_error("Invalid score specified in tallies.xml. Only flux, "
+                      "total, fission, nu-fission, and events are supported in "
+                      "random ray mode.");
           break;
         }
 
@@ -742,46 +641,6 @@ void FlatSourceDomain::random_ray_tally()
 #pragma omp atomic
         tally.results_(task.filter_idx, task.score_idx, TallyResult::VALUE) +=
           score;
-      }
-    }
-
-    if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-        settings::is_initial_condition) {
-
-      for (int dg = 0; dg < ndgroups_; dg++) {
-        // Determine numerical score value
-        for (auto& task : source_regions_.tally_delayed_task(sr, dg)) {
-          double score;
-          switch (task.score_type) {
-
-          // skip over these
-          case SCORE_FLUX:
-          case SCORE_TOTAL:
-          case SCORE_FISSION:
-          case SCORE_NU_FISSION:
-          case SCORE_EVENTS:
-          case SCORE_PROMPT_NU_FISSION:
-          case SCORE_DELAYED_NU_FISSION:
-            break;
-
-          case SCORE_PRECURSORS:
-            score = source_regions_.precursors_new(sr, dg);
-            break;
-
-          default:
-            fatal_error("Invalid score specified in tallies.xml. In addition "
-                        "to flux, total, fission, nu-fission, and events, only "
-                        "delayed nu-fission, prompt nu-fission, and precursors "
-                        "are supported in time-dependent random ray mode.");
-            break;
-          }
-
-          // Apply score to the appropriate tally bin
-          Tally& tally {*model::tallies[task.tally_idx]};
-#pragma omp atomic
-          tally.results_(task.filter_idx, task.score_idx, TallyResult::VALUE) +=
-            score;
-        }
       }
     }
 
@@ -1139,8 +998,7 @@ void FlatSourceDomain::flatten_xs()
   n_materials_ = data::mg.macro_xs_.size();
   for (auto& m : data::mg.macro_xs_) {
     if (m.exists_in_model) {
-      if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-          settings::is_initial_condition) {
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         for (int dg = 0; dg < ndgroups_; dg++) {
           double lambda =
             m.get_xs(MgxsType::DECAY_RATE, 0, NULL, NULL, &dg, t, a);
@@ -1152,8 +1010,7 @@ void FlatSourceDomain::flatten_xs()
     }
     for (int g_out = 0; g_out < negroups_; g_out++) {
       if (m.exists_in_model) {
-        if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-            settings::is_initial_condition) {
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
           for (int dg = 0; dg < ndgroups_; dg++) {
             double nu_d_Sigma_f = m.get_xs(
               MgxsType::DELAYED_NU_FISSION, g_out, NULL, NULL, &dg, t, a);
@@ -1196,8 +1053,7 @@ void FlatSourceDomain::flatten_xs()
           sigma_s_.push_back(sigma_s);
         }
       } else {
-        if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-            settings::is_initial_condition) {
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
           for (int dg = 0; dg < ndgroups_; dg++) {
             nu_d_sigma_f_.push_back(0);
             chi_d_.push_back(0);
@@ -1257,14 +1113,19 @@ void FlatSourceDomain::transpose_scattering_matrix()
   }
 }
 
-void FlatSourceDomain::serialize_final_fluxes(vector<double>& flux)
+void FlatSourceDomain::serialize_final_fluxes(
+  vector<double>& flux, bool flux_new)
 {
   // Ensure array is correct size
   flux.resize(n_source_regions_ * negroups_);
 // Serialize the final fluxes for output
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
-    flux[se] = source_regions_.scalar_flux_final(se);
+    if (flux_new) {
+      flux[se] = source_regions_.scalar_flux_new(se);
+    } else {
+      flux[se] = source_regions_.scalar_flux_final(se);
+    }
   }
 }
 
@@ -1282,7 +1143,8 @@ void FlatSourceDomain::set_initial_condition()
     source_regions_.precursors_old(de) = (*precursors_bd_)[de];
 }
 
-void FlatSourceDomain::compute_criticality_precursors(double k_eff)
+void FlatSourceDomain::compute_criticality_precursors(
+  double criticality_k_eff, vector<double>& criticality_scalar_flux)
 {
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
@@ -1294,16 +1156,17 @@ void FlatSourceDomain::compute_criticality_precursors(double k_eff)
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
-          double flux = source_regions_.scalar_flux_new(sr, g_in);
-          source_regions_.precursors_new(sr, dg) += flux * nu_d_sigma_f;
+          source_regions_.precursors_new(sr, dg) +=
+            criticality_scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
         }
-        source_regions_.precursors_new(sr, dg) /= lambda * k_eff;
+        source_regions_.precursors_new(sr, dg) /= lambda * criticality_k_eff;
       }
     }
   }
 }
 
-void FlatSourceDomain::compute_precursors(double criticality_k_eff)
+void FlatSourceDomain::compute_precursors(
+  double criticality_k_eff, vector<double>& scalar_flux)
 {
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
@@ -1315,10 +1178,10 @@ void FlatSourceDomain::compute_precursors(double criticality_k_eff)
       } else {
         double delayed_fission_source = 0.0;
         for (int g_in = 0; g_in < negroups_; g_in++) {
-          double flux = source_regions_.scalar_flux_new(sr, g_in);
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
-          delayed_fission_source += flux * nu_d_sigma_f;
+          delayed_fission_source +=
+            scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
         }
         delayed_fission_source /= criticality_k_eff;
 
@@ -1334,14 +1197,19 @@ void FlatSourceDomain::compute_precursors(double criticality_k_eff)
     }
   }
 }
-void FlatSourceDomain::serialize_final_precursors(vector<double>& precursors)
+void FlatSourceDomain::serialize_final_precursors(
+  vector<double>& precursors, bool precursors_new)
 {
   // Ensure array is correct size
   precursors.resize(n_source_regions_ * ndgroups_);
 // Serialize the precursors for output
 #pragma omp parallel for
   for (int64_t de = 0; de < n_delay_elements_; de++) {
-    precursors[de] = source_regions_.precursors_final(de);
+    if (precursors_new) {
+      precursors[de] = source_regions_.precursors_new(de);
+    } else {
+      precursors[de] = source_regions_.precursors_final(de);
+    }
   }
 }
 

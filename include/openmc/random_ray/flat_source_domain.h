@@ -46,14 +46,16 @@ public:
   double compute_fixed_source_normalization_factor() const;
   void flatten_xs();
   void transpose_scattering_matrix();
-  void serialize_final_fluxes(vector<double>& flux);
+  void serialize_final_fluxes(vector<double>& flux, bool flux_new = false);
 
   //----------------------------------------------------------------------------
   // Time dependent methods
   void set_initial_condition();
-  void compute_criticality_precursors(double k_eff);
-  void compute_precursors(double criticality_k_eff);
-  void serialize_final_precursors(vector<double>& precursors);
+  void compute_criticality_precursors(
+    double criticality_k_eff, vector<double>& criticality_flux);
+  void compute_precursors(double criticality_k_eff, vector<double>& flux);
+  void serialize_final_precursors(
+    vector<double>& precursors, bool precursors_new = false);
   void precursors_swap();
   void accumulate_iteration_precursors();
 
