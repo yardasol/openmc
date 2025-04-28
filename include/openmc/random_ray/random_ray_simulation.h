@@ -77,11 +77,6 @@ void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
   int bd_order_max, vector<double>* scalar_flux_bd,
   vector<double>* precursors_bd, vector<double>* criticality_scalar_flux);
 
-void compute_rhs_backward_differences(int64_t n_source_elements,
-  int64_t n_delay_elements, int bd_order, vector<double>* scalar_flux_bd,
-  vector<double>* precursors_bd, vector<double>& scalar_flux_rhs_bd,
-  vector<double>& precursors_rhs_bd);
-
 void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
   vector<double>* scalar_flux_bd, vector<double>* precursors_bd);
 
@@ -91,9 +86,6 @@ void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
 extern vector<double> scalar_flux_bdf;
 extern vector<float> source_bdf;
 extern vector<double> precursors_bdf;
-
-extern vector<double> scalar_flux_rhs_bd;
-extern vector<double> precursors_rhs_bd;
 
 extern double criticality_k_eff;
 extern vector<double> criticality_scalar_flux;
