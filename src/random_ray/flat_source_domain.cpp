@@ -1185,13 +1185,16 @@ void FlatSourceDomain::compute_precursors(
         }
         delayed_fission_source /= criticality_k_eff;
 
+        const vector<float> bd_coeffs =
+          bd_coefficients_first_order_.at(bd_order_);
+        float A0 = bd_coeffs[0] / settings::dt;
+
         int idx = sr * ndgroups_ + dg;
-        double precursor_rhs_bd = (*precursors_rhs_bd_)[idx];
+        double precursor_rhs_bd = rhs_backwards_difference(
+          precursors_bd_, n_delay_elements_, idx, bd_coeffs, settings::dt);
 
         source_regions_.precursors_new(sr, dg) =
           delayed_fission_source - precursor_rhs_bd;
-
-        float A0 = (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
         source_regions_.precursors_new(sr, dg) /= A0 + lambda;
       }
     }
