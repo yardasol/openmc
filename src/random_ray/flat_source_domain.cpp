@@ -163,7 +163,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
           double chi_d =
             chi_d_[material * negroups_ * ndgroups_ + g_out * ndgroups_ + dg];
           double lambda = lambda_[material * ndgroups_ + dg];
-          double precursors = source_regions_.precursors_old(sr, dg);
+          double precursors = source_regions_.precursors(sr, dg);
           delayed_source += chi_d * precursors * lambda;
         }
         source_regions_.source(sr, g_out) += delayed_source / sigma_t;
@@ -327,22 +327,12 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
 
     double sr_fission_source_old = 0;
     double sr_fission_source_new = 0;
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      for (int g = 0; g < negroups_; g++) {
-        double nu_p_sigma_f = nu_p_sigma_f_[material * negroups_ + g];
-        sr_fission_source_old +=
-          nu_p_sigma_f * source_regions_.scalar_flux_old(sr, g);
-        sr_fission_source_new +=
-          nu_p_sigma_f * source_regions_.scalar_flux_new(sr, g);
-      }
-    } else {
-      for (int g = 0; g < negroups_; g++) {
-        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
-        sr_fission_source_old +=
-          nu_sigma_f * source_regions_.scalar_flux_old(sr, g);
-        sr_fission_source_new +=
-          nu_sigma_f * source_regions_.scalar_flux_new(sr, g);
-      }
+    for (int g = 0; g < negroups_; g++) {
+      double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
+      sr_fission_source_old +=
+        nu_sigma_f * source_regions_.scalar_flux_old(sr, g);
+      sr_fission_source_new +=
+        nu_sigma_f * source_regions_.scalar_flux_new(sr, g);
     }
 
     // Compute total fission rates in FSR
@@ -352,8 +342,8 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       for (int dg = 0; dg < ndgroups_; dg++) {
         double lambda = lambda_[material * ndgroups_ + dg];
-        sr_fission_source_old += settings::dt * lambda * source_regions_.precursors_old(sr, dg);
-        sr_fission_source_new += settings::dt * lambda * source_regions_.precursors_new(sr, dg);
+        sr_fission_source_old += settings::dt * lambda * source_regions_.precursors(sr, dg);
+        sr_fission_source_new += settings::dt * lambda * source_regions_.precursors(sr, dg);
       }
     }
 
@@ -1113,19 +1103,14 @@ void FlatSourceDomain::transpose_scattering_matrix()
   }
 }
 
-void FlatSourceDomain::serialize_final_fluxes(
-  vector<double>& flux, bool flux_new)
+void FlatSourceDomain::serialize_final_fluxes(vector<double>& flux)
 {
   // Ensure array is correct size
   flux.resize(n_source_regions_ * negroups_);
 // Serialize the final fluxes for output
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
-    if (flux_new) {
-      flux[se] = source_regions_.scalar_flux_new(se);
-    } else {
-      flux[se] = source_regions_.scalar_flux_final(se);
-    }
+    flux[se] = source_regions_.scalar_flux_final(se);
   }
 }
 
@@ -1140,7 +1125,7 @@ void FlatSourceDomain::set_initial_condition()
 
 #pragma omp parallel for
   for (int64_t de = 0; de < n_delay_elements_; de++)
-    source_regions_.precursors_old(de) = (*precursors_bd_)[de];
+    source_regions_.precursors(de) = (*precursors_bd_)[de];
 }
 
 void FlatSourceDomain::compute_criticality_precursors(
@@ -1151,15 +1136,15 @@ void FlatSourceDomain::compute_criticality_precursors(
     int mat = source_regions_.material(sr);
     for (int dg = 0; dg < ndgroups_; dg++) {
       double lambda = lambda_[mat * ndgroups_ + dg];
-      source_regions_.precursors_new(sr, dg) = 0.0;
+      source_regions_.precursors(sr, dg) = 0.0;
       if (lambda != 0.0) {
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
-          source_regions_.precursors_new(sr, dg) +=
+          source_regions_.precursors(sr, dg) +=
             criticality_scalar_flux[sr * negroups_ + g_in] * nu_d_sigma_f;
         }
-        source_regions_.precursors_new(sr, dg) /= lambda * criticality_k_eff;
+        source_regions_.precursors(sr, dg) /= lambda * criticality_k_eff;
       }
     }
   }
@@ -1174,7 +1159,7 @@ void FlatSourceDomain::compute_precursors(
     for (int dg = 0; dg < ndgroups_; dg++) {
       double lambda = lambda_[mat * ndgroups_ + dg];
       if (lambda == 0.0) {
-        source_regions_.precursors_new(sr, dg) = 0.0;
+        source_regions_.precursors(sr, dg) = 0.0;
       } else {
         double delayed_fission_source = 0.0;
         for (int g_in = 0; g_in < negroups_; g_in++) {
@@ -1188,41 +1173,23 @@ void FlatSourceDomain::compute_precursors(
         int idx = sr * ndgroups_ + dg;
         double precursor_rhs_bd = (*precursors_rhs_bd_)[idx];
 
-        source_regions_.precursors_new(sr, dg) =
+        source_regions_.precursors(sr, dg) =
           delayed_fission_source - precursor_rhs_bd;
-
         float A0 = (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
-        source_regions_.precursors_new(sr, dg) /= A0 + lambda;
+        source_regions_.precursors(sr, dg) /= A0 + lambda;
       }
     }
   }
 }
-void FlatSourceDomain::serialize_final_precursors(
-  vector<double>& precursors, bool precursors_new)
+
+void FlatSourceDomain::serialize_precursors(vector<double>& precursors)
 {
   // Ensure array is correct size
   precursors.resize(n_source_regions_ * ndgroups_);
 // Serialize the precursors for output
 #pragma omp parallel for
   for (int64_t de = 0; de < n_delay_elements_; de++) {
-    if (precursors_new) {
-      precursors[de] = source_regions_.precursors_new(de);
-    } else {
-      precursors[de] = source_regions_.precursors_final(de);
-    }
-  }
-}
-
-void FlatSourceDomain::precursors_swap()
-{
-  source_regions_.precursors_swap();
-}
-
-void FlatSourceDomain::accumulate_iteration_precursors()
-{
-#pragma omp parallel for
-  for (int64_t de = 0; de < n_delay_elements_; de++) {
-    source_regions_.precursors_final(de) += source_regions_.precursors_new(de);
+    precursors[de] = source_regions_.precursors(de);
   }
 }
 
