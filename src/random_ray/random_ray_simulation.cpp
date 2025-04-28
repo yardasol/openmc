@@ -156,9 +156,14 @@ void openmc_run_random_ray(bool initial_condition)
 //==============================================================================
 // Time-dependent global variables
 //==============================================================================
+// 2D time solution arrays
 vector<double> scalar_flux_bd;
 // vector<float> source_bd;
 vector<double> precursors_bd;
+
+// 1D RHS BD arrays
+vector<double> scalar_flux_rhs_bd;
+vector<double> precursors_rhs_bd;
 
 double criticality_k_eff;
 vector<double> criticality_scalar_flux;
@@ -179,6 +184,29 @@ void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
     //(*source_bd)[i] = (*criticality_source)[i];
   }
   (*precursors_bd).assign(n_delay_elements * (bd_order_max + 1), 0.0);
+}
+
+void compute_rhs_backward_differences(int64_t n_source_elements,
+  int64_t n_delay_elements, int bd_order, vector<double>* scalar_flux_bd,
+  vector<double>* precursors_bd, vector<double>& scalar_flux_rhs_bd,
+  vector<double>& precursors_rhs_bd)
+{
+  const vector<float> bd_coeffs = bd_coefficients_first_order_.at(bd_order);
+  float A0 = bd_coeffs[0] / settings::dt;
+
+  scalar_flux_rhs_bd.assign(n_source_elements, 0.0);
+  precursors_rhs_bd.assign(n_delay_elements, 0.0);
+#pragma omp parallel for
+  for (int se = 0; se < n_source_elements; se++) {
+    scalar_flux_rhs_bd[se] = rhs_backwards_difference(
+      scalar_flux_bd, n_source_elements, se, bd_coeffs, settings::dt);
+  }
+
+#pragma omp parallel for
+  for (int de = 0; de < n_delay_elements; de++) {
+    precursors_rhs_bd[de] = rhs_backwards_difference(
+      precursors_bd, n_delay_elements, de, bd_coeffs, settings::dt);
+  }
 }
 
 void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
@@ -243,7 +271,8 @@ void openmc_run_random_ray_time_dependent()
 
       // Serialize criticality precursors
       vector<double> criticality_precursors;
-      sim_td.domain()->serialize_precursors(criticality_precursors);
+      sim_td.domain()->serialize_final_precursors(criticality_precursors, true);
+      sim_td.domain()->precursors_swap();
 
       // Store criticality precursors in the BD vector
 #pragma omp parallel for
@@ -266,6 +295,13 @@ void openmc_run_random_ray_time_dependent()
     // Increment BD vectors to a zero-valued solution to be filled in.
     increment_bd_vectors(
       n_source_elements, n_delay_elements, &scalar_flux_bd, &precursors_bd);
+
+    // Compute RHS backward differences to be used later
+    compute_rhs_backward_differences(n_source_elements, n_delay_elements,
+      bd_order, &scalar_flux_bd, &precursors_bd, scalar_flux_rhs_bd,
+      precursors_rhs_bd);
+    sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
+    sim_td.domain()->precursors_rhs_bd_ = &precursors_rhs_bd;
 
     // Execute random ray simulation
     sim_td.simulate();
@@ -297,11 +333,13 @@ void openmc_run_random_ray_time_dependent()
     for (uint64_t i = 0; i < forward_flux.size(); i++)
       forward_flux[i] *= source_normalization_factor;
 
-    sim_td.domain()->compute_precursors(
-       criticality_k_eff, forward_flux);
-
+    // Normalize final precursors by number of active batches
     vector<double> precursors;
-    sim_td.domain()->serialize_precursors(precursors);
+    sim_td.domain()->serialize_final_precursors(precursors);
+#pragma omp parallel for
+    for (uint64_t i = 0; i < precursors.size(); i++)
+      precursors[i] *= source_normalization_factor;
+
     // Store final solutions in BD vectors
     update_bd_vector(&scalar_flux_bd, forward_flux, false);
     // update_bd_vector(&source_bd, sim_td.domain()->source_, false);
@@ -605,6 +643,13 @@ void RandomRaySimulation::simulate()
     // Add source to scalar flux, compute number of FSR hits
     int64_t n_hits = domain_->add_source_to_scalar_flux();
 
+    // Compute precursors
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      vector<double> scalar_flux_new;
+      domain_->serialize_final_fluxes(scalar_flux_new, true);
+      domain_->compute_precursors(k_eff, scalar_flux_new);
+    }
+
     if (settings::run_mode == RunMode::EIGENVALUE ||
         settings::run_mode == RunMode::TIME_DEPENDENT) {
       // Compute random ray k-eff
@@ -619,6 +664,8 @@ void RandomRaySimulation::simulate()
 
       // Add this iteration's scalar flux estimate to final accumulated estimate
       domain_->accumulate_iteration_flux();
+      if (settings::run_mode == RunMode::TIME_DEPENDENT)
+        domain_->accumulate_iteration_precursors();
 
       if (mpi::master) {
         // Generate mapping between source regions and tallies
@@ -633,6 +680,8 @@ void RandomRaySimulation::simulate()
 
     // Set phi_old = phi_new
     domain_->flux_swap();
+    if (settings::run_mode == RunMode::TIME_DEPENDENT)
+      domain_->precursors_swap();
 
     // Check for any obvious insabilities/nans/infs
     instability_check(n_hits, k_eff_, avg_miss_rate_);

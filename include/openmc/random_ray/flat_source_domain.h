@@ -46,7 +46,7 @@ public:
   double compute_fixed_source_normalization_factor() const;
   void flatten_xs();
   void transpose_scattering_matrix();
-  void serialize_final_fluxes(vector<double>& flux);
+  void serialize_final_fluxes(vector<double>& flux, bool flux_new = false);
 
   //----------------------------------------------------------------------------
   // Time dependent methods
@@ -54,7 +54,10 @@ public:
   void compute_criticality_precursors(
     double criticality_k_eff, vector<double>& criticality_flux);
   void compute_precursors(double criticality_k_eff, vector<double>& flux);
-  void serialize_precursors(vector<double>& precursors);
+  void serialize_final_precursors(
+    vector<double>& precursors, bool precursors_new = false);
+  void precursors_swap();
+  void accumulate_iteration_precursors();
 
   //----------------------------------------------------------------------------
   // Static Data members
@@ -111,6 +114,9 @@ public:
   vector<double>* scalar_flux_bd_;
   // vector<float>* source_bd_;
   vector<double>* precursors_bd_;
+
+  vector<double>* scalar_flux_rhs_bd_;
+  vector<double>* precursors_rhs_bd_;
 
 protected:
   //----------------------------------------------------------------------------
