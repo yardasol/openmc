@@ -585,6 +585,7 @@ void print_results()
 
 const std::unordered_map<int, const char*> score_names = {
   {SCORE_FLUX, "Flux"},
+  {SCORE_PRECURSORS, "Precursors"},
   {SCORE_TOTAL, "Total Reaction Rate"},
   {SCORE_SCATTER, "Scattering Rate"},
   {SCORE_NU_SCATTER, "Scattering Production Rate"},
