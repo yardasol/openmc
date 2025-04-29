@@ -141,6 +141,7 @@ double weight_survive {1.0};
 int n_timesteps;
 double dt;
 int current_timestep;
+bool is_initial_condition {false};
 
 } // namespace settings
 
@@ -498,6 +499,7 @@ void read_settings_xml(pugi::xml_node root)
         run_mode = RunMode::FIXED_SOURCE;
       } else if (temp_str == "time dependent") {
         run_mode = RunMode::TIME_DEPENDENT;
+        is_initial_condition = true;
       } else if (temp_str == "plot") {
         run_mode = RunMode::PLOTTING;
       } else if (temp_str == "particle restart") {
@@ -526,6 +528,7 @@ void read_settings_xml(pugi::xml_node root)
           node_mode = root.child("time_dependent");
           if (node_mode) {
             run_mode = RunMode::TIME_DEPENDENT;
+            is_initial_condition = true;
           } else {
             fatal_error("<eigenvalue>,  <fixed_source>, or <time_dependent> "
                         "not specified.");

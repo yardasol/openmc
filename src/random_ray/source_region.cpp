@@ -13,6 +13,12 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
   if (settings::run_mode == RunMode::EIGENVALUE) {
     // If in eigenvalue mode, set starting flux to guess of 1
     scalar_flux_old_.assign(negroups, 1.0);
+    if (settings::is_initial_condition) {
+      scalar_flux_old_.assign(negroups, 1.0);
+      precursors_old_.assign(ndgroups, 0.0);
+      precursors_new_.assign(ndgroups, 0.0);
+      precursors_final_.assign(ndgroups, 0.0);
+    }
   } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
     // If in fixed source mode, set starting flux to guess of zero
     // and initialize external source arrays
@@ -90,7 +96,8 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
     tally_task_.emplace_back(sr.tally_task_[g]);
   }
 
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
     for (int dg = 0; dg < ndgroups_; dg++) {
       precursors_old_.push_back(sr.precursors_old_[dg]);
       precursors_new_.push_back(sr.precursors_new_[dg]);
@@ -132,6 +139,13 @@ void SourceRegionContainer::assign(
     flux_moments_old_.clear();
     flux_moments_new_.clear();
     flux_moments_t_.clear();
+  }
+
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
+    precursors_old_.clear();
+    precursors_new_.clear();
+    precursors_final_.clear();
   }
 
   tally_task_.clear();
