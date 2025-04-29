@@ -381,10 +381,26 @@ void validate_random_ray_inputs()
       case SCORE_NU_FISSION:
       case SCORE_EVENTS:
         break;
+
+      case SCORE_PROMPT_NU_FISSION:
+      case SCORE_DELAYED_NU_FISSION:
+      case SCORE_PRECURSORS: {
+        if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+            settings::is_initial_condition) {
+          break;
+        } else {
+          fatal_error(
+            "Invalid score specified in tallies.xml. Time-dependent "
+            "random ray mode must be active to score prompt nu-fission, "
+            "delayed nu-fission, and precursors.");
+        }
+      }
       default:
         fatal_error(
           "Invalid score specified. Only flux, total, fission, nu-fission, and "
-          "event scores are supported in random ray mode.");
+          "event scores are supported in random ray mode. (prompt nu-fission, "
+          "delayed nu-fission, and precursors are supported in time-dependent "
+          "random ray mode).");
       }
     }
 
@@ -402,10 +418,21 @@ void validate_random_ray_inputs()
       case FilterType::UNIVERSE:
       case FilterType::PARTICLE:
         break;
+      case FilterType::DELAYED_GROUP:
+        if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+            settings::is_initial_condition) {
+          break;
+        } else {
+          fatal_error(
+            "Invalid score specified in tallies.xml. Time-dependent "
+            "random ray mode must be active to score prompt nu-fission, "
+            "delayed nu-fission, and precursors.");
+        }
       default:
         fatal_error("Invalid filter specified. Only cell, cell_instance, "
                     "distribcell, energy, material, mesh, and universe filters "
-                    "are supported in random ray mode.");
+                    "are supported in random ray mode (delayed_group is "
+                    "supported in time-dependent mode).");
       }
     }
   }

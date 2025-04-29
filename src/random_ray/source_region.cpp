@@ -18,6 +18,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
       precursors_old_.assign(ndgroups, 0.0);
       precursors_new_.assign(ndgroups, 0.0);
       precursors_final_.assign(ndgroups, 0.0);
+      tally_delay_task_.resize(ndgroups);
     }
   } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
     // If in fixed source mode, set starting flux to guess of zero
@@ -31,6 +32,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     precursors_old_.assign(ndgroups, 0.0);
     precursors_new_.assign(ndgroups, 0.0);
     precursors_final_.assign(ndgroups, 0.0);
+    tally_delay_task_.resize(ndgroups);
   }
 
   scalar_flux_new_.assign(negroups, 0.0);
@@ -102,6 +104,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       precursors_old_.push_back(sr.precursors_old_[dg]);
       precursors_new_.push_back(sr.precursors_new_[dg]);
       precursors_final_.push_back(sr.precursors_final_[dg]);
+      tally_delay_task_.emplace_back(sr.tally_delay_task_[dg]);
     }
   }
 }
@@ -146,6 +149,7 @@ void SourceRegionContainer::assign(
     precursors_old_.clear();
     precursors_new_.clear();
     precursors_final_.clear();
+    tally_delay_task_.clear();
   }
 
   tally_task_.clear();

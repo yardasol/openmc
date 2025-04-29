@@ -498,7 +498,8 @@ void Tally::set_scores(const vector<std::string>& scores)
   for (auto score_str : scores) {
     // Make sure a delayed group filter wasn't used with an incompatible score.
     if (delayedgroup_filter_ != C_NONE) {
-      if (score_str != "delayed-nu-fission" && score_str != "decay-rate")
+      if (score_str != "delayed-nu-fission" && score_str != "decay-rate" &&
+          score_str != "precursors")
         fatal_error("Cannot tally " + score_str + "with a delayedgroup filter");
     }
 
@@ -585,6 +586,22 @@ void Tally::set_scores(const vector<std::string>& scores)
         }
       }
 
+      break;
+
+    case SCORE_PRECURSORS:
+      if (settings::run_mode != RunMode::TIME_DEPENDENT ||
+          !settings::is_initial_condition)
+        fatal_error("Can only tally precursors in time-dependent random ray "
+                    "calculations.");
+      if (!nuclides_.empty())
+        if (!(nuclides_.size() == 1 && nuclides_[0] == -1))
+          fatal_error("Cannot tally precursors for an individual nuclide.");
+      if (energyout_present)
+        fatal_error("Cannot tally precursors with an outgoing energy filter.");
+      // TODO: make this more robust: allow for tallying
+      // in eigenvalue and fixed source calculations by detecting
+      // delayed fission, delayed chi, and lambda cross sections (mg and ce)
+      // Also enable support for monte carlo solves
       break;
     }
 
