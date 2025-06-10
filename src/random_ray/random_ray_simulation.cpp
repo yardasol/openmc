@@ -705,9 +705,6 @@ void RandomRaySimulation::simulate()
 
     // Set phi_old = phi_new
     domain_->flux_swap();
-    if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-        settings::is_initial_condition)
-      domain_->precursors_swap();
 
     // Check for any obvious insabilities/nans/infs
     instability_check(n_hits, k_eff_, avg_miss_rate_);
