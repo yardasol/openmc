@@ -80,7 +80,11 @@ class AngleEnergy(EqualityMixin, ABC):
         idx = location_dist + location_data - 1
 
         # Parse energy distribution data
-        if law == 2:
+        if law == 4:
+            distribution = openmc.data.UncorrelatedAngleEnergy()
+            distribution.energy = openmc.data.ContinuousTabular.equiprobable_from_ace(
+                ace, idx)
+        elif law == 2:
             distribution = openmc.data.UncorrelatedAngleEnergy()
             distribution.energy = openmc.data.DiscretePhoton.from_ace(ace, idx)
         elif law in (3, 33):

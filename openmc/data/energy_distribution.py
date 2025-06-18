@@ -1273,3 +1273,73 @@ class ContinuousTabular(EnergyDistribution):
             energy_out.append(eout_i)
 
         return cls(breakpoints, interpolation, energy, energy_out)
+
+    @classmethod
+    def equiprobable_from_ace(cls, ace, idx):
+        """Generate equiprobable energy distribution from ACE data. The
+        equiprobably energy distribution comes from LAW=1 energy distribution,
+        which is a special case of the LAW=4 energy distribution.
+
+        Parameters
+        ----------
+        ace : openmc.data.ace.Table
+            ACE table to read from
+        idx : int
+            Index in XSS array of the start of the energy distribution data
+            (LDIS + LOCC - 1)
+
+        Returns
+        -------
+        openmc.data.ContinuousTabular
+            Continuous tabular energy distribution
+
+        """
+        # Read number of interpolation regions and incoming energies
+        n_regions = int(ace.xss[idx])
+        n_energy_in = int(ace.xss[idx + 1 + 2*n_regions])
+
+        # Get interpolation information
+        idx += 1
+        if n_regions > 0:
+            breakpoints = ace.xss[idx:idx + n_regions].astype(int)
+            interpolation = ace.xss[idx + n_regions:idx + 2*n_regions].astype(int)
+        else:
+            breakpoints = np.array([n_energy_in])
+            interpolation = np.array([2])
+
+        # Incoming energies at which distributions exist
+        idx += 2*n_regions + 1
+        energy = ace.xss[idx:idx + n_energy_in]*EV_PER_MEV
+
+        # Number of outgoing_energies
+        idx += n_energy_in
+        n_energy_out = ace.xss[idx : idx + n_energy_in] * EV_PER_MEV
+        idx += 1
+
+        # Initialize variables
+        energy_out = []
+
+        # Read each outgoing energy distribution
+        for i in range(n_energy_in):
+            idx += i * n_energy_out
+
+            # intt = interpolation scheme (1=hist, 2=lin-lin)
+            intt = int(interpolation[0])
+            if intt not in (1, 2):
+                warn("Interpolation scheme for continuous tabular distribution "
+                     "is not histogram or linear-linear.")
+                intt = 2
+
+            data = ace.xss[idx : idx + n_energy_out].copy()
+            data *= EV_PER_MEV
+
+            # Create continuous distribution
+            eout_continuous = Tabular(data,
+                                      np.ones(len(data)) / len(data)
+                                      INTERPOLATION_SCHEME[intt])
+            eout_continuous.c = eout_continuout.p[0] * np.arange(1, len(data) + 1)
+
+            eout_i = eout_continuous
+            energy_out.append(eout_i)
+
+        return cls(breakpoints, interpolation, energy, energy_out)
