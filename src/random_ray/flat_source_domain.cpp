@@ -738,8 +738,7 @@ void FlatSourceDomain::random_ray_tally()
           fatal_error(
             "Invalid score specified in tallies.xml. Only flux, "
             "total, fission, nu-fission, and events are supported in "
-            "random ray mode (prompt nu-fission, delayed nu-fission, "
-            "and precursors are supported in time-dependent random ray mode).");
+            "random ray mode (precursors are supported in time-dependent random ray mode).");
           break;
         }
 
@@ -766,8 +765,6 @@ void FlatSourceDomain::random_ray_tally()
           case SCORE_FISSION:
           case SCORE_NU_FISSION:
           case SCORE_EVENTS:
-          case SCORE_PROMPT_NU_FISSION:
-          case SCORE_DELAYED_NU_FISSION:
             break;
 
           case SCORE_PRECURSORS:
@@ -777,15 +774,14 @@ void FlatSourceDomain::random_ray_tally()
           default:
             fatal_error("Invalid score specified in tallies.xml. In addition "
                         "to flux, total, fission, nu-fission, and events, only "
-                        "delayed nu-fission, prompt nu-fission, and precursors "
-                        "are supported in time-dependent random ray mode.");
+                        "precursors are supported in time-dependent random ray mode.");
             break;
           }
 
           // Apply score to the appropriate tally bin
           Tally& tally {*model::tallies[task.tally_idx]};
 #pragma omp atomic
-          tally.results_(task.filter_idx, task.score_idx, TallyResult::VALUE) +=
+          tally.results_(task.filter_idx + dg, task.score_idx, TallyResult::VALUE) +=
             score;
         }
       }
