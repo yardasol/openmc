@@ -338,7 +338,7 @@ void RandomRay::event_advance_ray()
 
   // Advance particle
   for (int j = 0; j < n_coord(); ++j) {
-    coord(j).r += distance * coord(j).u;
+    coord(j).r() += distance * coord(j).u();
   }
 }
 
@@ -838,7 +838,7 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
   this->from_source(&site);
 
   // Locate ray
-  if (lowest_coord().cell == C_NONE) {
+  if (lowest_coord().cell() == C_NONE) {
     if (!exhaustive_find_cell(*this)) {
       this->mark_as_lost(
         "Could not find the cell containing particle " + std::to_string(id()));
@@ -846,7 +846,7 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
 
     // Set birth cell attribute
     if (cell_born() == C_NONE)
-      cell_born() = lowest_coord().cell;
+      cell_born() = lowest_coord().cell();
   }
 
   SourceRegionKey sr_key = domain_->lookup_source_region_key(*this);
