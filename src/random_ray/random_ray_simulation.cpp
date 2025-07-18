@@ -719,7 +719,7 @@ void RandomRaySimulation::simulate()
 
       // Compute precursors
       if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-	  settings::is_initial_condition)
+          settings::is_initial_condition)
         domain_->compute_all_precursors();
 
       // Execute all tallying tasks, if the source is converged

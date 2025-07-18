@@ -577,7 +577,7 @@ void FlatSourceDomain::convert_source_regions_to_tallies(int64_t start_sr_id)
         // Loop over all active tallies. This logic is essentially identical
         // to what happens when scanning for applicable tallies during
         // MC transport.
-	// Loop over all active tallies. This logic is essentially identical
+        // Loop over all active tallies. This logic is essentially identical
         for (int i_tally = 0; i_tally < model::tallies.size(); i_tally++) {
           Tally& tally {*model::tallies[i_tally]};
 
@@ -1411,9 +1411,9 @@ void FlatSourceDomain::flatten_xs()
         if (m.exists_in_model) {
           double lambda =
             m.get_xs(MgxsType::DECAY_RATE, 0, NULL, NULL, &dg, t, a);
-            lambda_.push_back(lambda);
+          lambda_.push_back(lambda);
           for (int g_out = 0; g_out < negroups_; g_out++) {
-	    double nu_d_Sigma_f = m.get_xs(
+            double nu_d_Sigma_f = m.get_xs(
               MgxsType::DELAYED_NU_FISSION, g_out, NULL, NULL, &dg, t, a);
             nu_d_sigma_f_.push_back(nu_d_Sigma_f);
             double chi_d =
