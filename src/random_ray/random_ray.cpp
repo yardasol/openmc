@@ -188,7 +188,9 @@ RandomRayTimeMode RandomRay::time_mode_ {RandomRayTimeMode::TI};
 RandomRay::RandomRay()
   : angular_flux_(data::mg.num_energy_groups_),
     delta_psi_(data::mg.num_energy_groups_),
-    negroups_(data::mg.num_energy_groups_)
+    negroups_(data::mg.num_energy_groups_),
+    angular_flux_td_(data::mg.num_energy_groups_),
+    delta_psi_td_(data::mg.num_energy_groups_)
 {
   if (source_shape_ == RandomRaySourceShape::LINEAR ||
       source_shape_ == RandomRaySourceShape::LINEAR_XY) {
@@ -228,6 +230,7 @@ void RandomRay::event_advance_ray()
     return;
   }
 
+  bool td_transport = settings::run_mode == RunMode::TIME_DEPENDENT;
   if (is_active_) {
     // If the ray is in the active length, need to check if it has
     // reached its maximum termination distance. If so, reduce
@@ -239,7 +242,7 @@ void RandomRay::event_advance_ray()
     }
 
     distance_travelled_ += distance;
-    attenuate_flux(distance, true);
+    attenuate_flux(distance, true, td_transport);
   } else {
     // If the ray is still in the dead zone, need to check if it
     // has entered the active phase. If so, split into two segments (one
@@ -249,7 +252,7 @@ void RandomRay::event_advance_ray()
     if (distance_travelled_ + distance >= distance_inactive_) {
       is_active_ = true;
       double distance_dead = distance_inactive_ - distance_travelled_;
-      attenuate_flux(distance_dead, false);
+      attenuate_flux(distance_dead, false, td_transport);
 
       double distance_alive = distance - distance_dead;
 
@@ -259,11 +262,11 @@ void RandomRay::event_advance_ray()
         wgt() = 0.0;
       }
 
-      attenuate_flux(distance_alive, true);
+      attenuate_flux(distance_alive, true, td_transport);
       distance_travelled_ = distance_alive;
     } else {
       distance_travelled_ += distance;
-      attenuate_flux(distance, false);
+      attenuate_flux(distance, false, td_transport);
     }
   }
 
@@ -273,15 +276,20 @@ void RandomRay::event_advance_ray()
   }
 }
 
-void RandomRay::attenuate_flux(double distance, bool is_active)
+void RandomRay::attenuate_flux(double distance, bool is_active, bool td_transport)
 {
   switch (source_shape_) {
   case RandomRaySourceShape::FLAT:
-    attenuate_flux_flat_source(distance, is_active);
+    attenuate_flux_flat_source(distance, is_active, td_transport);
     break;
   case RandomRaySourceShape::LINEAR:
   case RandomRaySourceShape::LINEAR_XY:
-    attenuate_flux_linear_source(distance, is_active);
+    //TODO: implement td transport for linear sources
+    if (td_transport) {
+      fatal_error("LINEAR and LINEAR_XY source shapes unimplemented for time-dependent transport.");
+    } else {
+      attenuate_flux_linear_source(distance, is_active);
+    }
     break;
   default:
     fatal_error("Unknown source shape for random ray transport.");
@@ -301,7 +309,7 @@ void RandomRay::attenuate_flux(double distance, bool is_active)
 // than use of many atomic operations corresponding to each energy group
 // individually (at least on CPU). Several other bookkeeping tasks are also
 // performed when inside the lock.
-void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
+void RandomRay::attenuate_flux_flat_source(double distance, bool is_active, bool td_transport)
 {
   // The number of geometric intersections is counted for reporting purposes
   n_event()++;
@@ -324,6 +332,12 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
       (angular_flux_[g] - domain_->source_regions_.source(sr, g)) * exponential;
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
+    if (td_transport) {
+      float new_delta_psi_td =
+        (angular_flux_td_[g] - domain_->source_regions_.source_td(sr, g)) * exponential;
+      delta_psi_td_[g] = new_delta_psi_td;
+      angular_flux_td_[g] -= new_delta_psi_td;
+    }
   }
 
   // If ray is in the active phase (not in dead zone), make contributions to
@@ -337,6 +351,8 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active)
     // this iteration
     for (int g = 0; g < negroups_; g++) {
       domain_->source_regions_.scalar_flux_new(sr, g) += delta_psi_[g];
+      if (td_transport)
+        domain_->source_regions_.scalar_flux_td_new(sr, g) += delta_psi_td_[g];
     }
 
     // Accomulate volume (ray distance) into this iteration's estimate
@@ -539,6 +555,12 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
 
   for (int g = 0; g < negroups_; g++) {
     angular_flux_[g] = domain_->source_regions_.source(sr, g);
+  }
+
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    for (int g = 0; g < negroups_; g++) {
+      angular_flux_td_[g] = domain_->source_regions_.source_td(sr, g);
+    }
   }
 }
 
