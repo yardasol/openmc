@@ -324,11 +324,11 @@ void openmc_run_random_ray_time_dependent()
       (settings::n_batches - settings::n_inactive);
 
     // Alias for convenience
-    vector<double> forward_flux_td;
-    sim_td.domain()->serialize_final_td_fluxes(forward_flux_td);
+    vector<double> forward_flux;
+    sim_td.domain()->serialize_final_fluxes(forward_flux);
 #pragma omp parallel for
-    for (uint64_t i = 0; i < forward_flux_td.size(); i++)
-      forward_flux_td[i] *= source_normalization_factor;
+    for (uint64_t i = 0; i < forward_flux.size(); i++)
+      forward_flux[i] *= source_normalization_factor;
 
     // Normalize final precursors by number of active batches
     vector<double> precursors;
@@ -338,7 +338,7 @@ void openmc_run_random_ray_time_dependent()
       precursors[i] *= source_normalization_factor;
 
     // Store final solutions in BD vectors
-    update_bd_vector(&scalar_flux_bd, forward_flux_td, false);
+    update_bd_vector(&scalar_flux_bd, forward_flux, false);
     // update_bd_vector(&source_bd, sim_td.domain()->source_, false);
     update_bd_vector(&precursors_bd, precursors, false);
 
@@ -631,9 +631,13 @@ void RandomRaySimulation::simulate()
     simulation::total_weight = 1.0;
 
     // Update source term (scattering + fission)
-    domain_->update_neutron_source(k_eff_);
-    if (settings::run_mode == RunMode::TIME_DEPENDENT)
-      domain_->update_neutron_source_td(k_eff_);
+    double k_eff;
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      k_eff = criticality_k_eff;
+    } else {
+      k_eff = k_eff_;
+    }
+    domain_->update_neutron_source(k_eff);
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
@@ -642,8 +646,6 @@ void RandomRaySimulation::simulate()
     // Start timer for transport
     simulation::time_transport.start();
 
-    // This SHOULD be the same for each timestep in TD simulations, but I need
-    // to verify
 // Transport sweep over all random rays for the iteration
 #pragma omp parallel for schedule(dynamic)                                     \
   reduction(+ : total_geometric_intersections_)
@@ -667,9 +669,9 @@ void RandomRaySimulation::simulate()
 
     // Compute precursors
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      domain_->compute_precursors(k_eff_);
+      domain_->compute_precursors(k_eff);
     } else if (settings::is_initial_condition) {
-      domain_->compute_criticality_precursors(k_eff_);
+      domain_->compute_criticality_precursors(k_eff);
     }
 
     if (settings::run_mode == RunMode::EIGENVALUE ||
@@ -689,8 +691,6 @@ void RandomRaySimulation::simulate()
       if (settings::run_mode == RunMode::TIME_DEPENDENT ||
           settings::is_initial_condition)
         domain_->accumulate_iteration_precursors();
-      if (settings::run_mode == RunMode::TIME_DEPENDENT)
-        domain_->accumulate_iteration_flux_td();
 
       if (mpi::master) {
         // Generate mapping between source regions and tallies
@@ -705,8 +705,6 @@ void RandomRaySimulation::simulate()
 
     // Set phi_old = phi_new
     domain_->flux_swap();
-    if (settings::run_mode == RunMode::TIME_DEPENDENT)
-        domain_->flux_td_swap();
 
     // Check for any obvious insabilities/nans/infs
     instability_check(n_hits, k_eff_, avg_miss_rate_);

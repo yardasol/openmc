@@ -104,13 +104,6 @@ void FlatSourceDomain::batch_reset()
   for (int64_t se = 0; se < n_source_elements_; se++) {
     source_regions_.scalar_flux_new(se) = 0.0;
   }
-
-  if (settings::run_mode == RunMode::TIME_DEPENDENT){
-#pragma omp parallel for
-    for (int64_t se = 0; se < n_source_elements_; se++) {
-      source_regions_.scalar_flux_td_new(se) = 0.0;
-    }
-  }
 }
 
 void FlatSourceDomain::accumulate_iteration_flux()
@@ -146,14 +139,35 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         double scalar_flux = source_regions_.scalar_flux_old(sr, g_in);
         double sigma_s =
           sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
-        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
-        double chi = chi_[material * negroups_ + g_out];
+        double nu_sigma_f;
+        double chi;
+        // Use prompt cross section data if in time dependent mode
+        if (settings::run_mode != RunMode::TIME_DEPENDENT) {
+          nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+          chi = chi_[material * negroups_ + g_out];
+        } else {
+          nu_sigma_f = nu_p_sigma_f_[material * negroups_ + g_in];
+          chi = chi_p_[material * negroups_ + g_out];
+        }
 
         scatter_source += sigma_s * scalar_flux;
         fission_source += nu_sigma_f * scalar_flux * chi;
       }
       source_regions_.source(sr, g_out) =
         (scatter_source + fission_source * inverse_k_eff) / sigma_t;
+
+      // Add delayed source if in time dependent mode
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        double delayed_source = 0.0f;
+        for (int dg = 0; dg < ndgroups_; dg++) {
+          double chi_d =
+            chi_d_[material * negroups_ * ndgroups_ + g_out * ndgroups_ + dg];
+          double lambda = lambda_[material * ndgroups_ + dg];
+          double precursors = source_regions_.precursors_old(sr, dg);
+          delayed_source += chi_d * precursors * lambda;
+        }
+        source_regions_.source(sr, g_out) += delayed_source / sigma_t;
+      }
     }
   }
 
@@ -181,8 +195,6 @@ void FlatSourceDomain::normalize_scalar_flux_and_volumes(
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
     source_regions_.scalar_flux_new(se) *= normalization_factor;
-    if (settings::run_mode == RunMode::TIME_DEPENDENT)
-      source_regions_.scalar_flux_td_new(se) *= normalization_factor;
   }
 
 // Accumulate cell-wise ray length tallies collected this iteration, then
@@ -203,28 +215,17 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
   double sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
   source_regions_.scalar_flux_new(sr, g) /= (sigma_t * volume);
   source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g);
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    source_regions_.scalar_flux_td_new(sr, g) /= (sigma_t * volume);
-    source_regions_.scalar_flux_td_new(sr, g) += source_regions_.source_td(sr, g);
-  }
 }
 
 void FlatSourceDomain::set_flux_to_old_flux(int64_t sr, int g)
 {
   source_regions_.scalar_flux_new(sr, g) =
     source_regions_.scalar_flux_old(sr, g);
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    source_regions_.scalar_flux_td_new(sr, g) =
-      source_regions_.scalar_flux_td_old(sr, g);
-  }
 }
 
 void FlatSourceDomain::set_flux_to_source(int64_t sr, int g)
 {
   source_regions_.scalar_flux_new(sr, g) = source_regions_.source(sr, g);
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    source_regions_.scalar_flux_td_new(sr, g) = source_regions_.source_td(sr, g);
-  }
 }
 
 // Combine transport flux contributions and flat source contributions from the
@@ -326,17 +327,35 @@ double FlatSourceDomain::compute_k_eff(double k_eff_old) const
 
     double sr_fission_source_old = 0;
     double sr_fission_source_new = 0;
-    for (int g = 0; g < negroups_; g++) {
-      double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
-      sr_fission_source_old +=
-        nu_sigma_f * source_regions_.scalar_flux_old(sr, g);
-      sr_fission_source_new +=
-        nu_sigma_f * source_regions_.scalar_flux_new(sr, g);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      for (int g = 0; g < negroups_; g++) {
+        double nu_p_sigma_f = nu_p_sigma_f_[material * negroups_ + g];
+        sr_fission_source_old +=
+          nu_p_sigma_f * source_regions_.scalar_flux_old(sr, g);
+        sr_fission_source_new +=
+          nu_p_sigma_f * source_regions_.scalar_flux_new(sr, g);
+      }
+    } else {
+      for (int g = 0; g < negroups_; g++) {
+        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
+        sr_fission_source_old +=
+          nu_sigma_f * source_regions_.scalar_flux_old(sr, g);
+        sr_fission_source_new +=
+          nu_sigma_f * source_regions_.scalar_flux_new(sr, g);
+      }
     }
 
     // Compute total fission rates in FSR
     sr_fission_source_old *= volume;
     sr_fission_source_new *= volume;
+
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        double lambda = lambda_[material * ndgroups_ + dg];
+        sr_fission_source_old += settings::dt * lambda * source_regions_.precursors_old(sr, dg);
+        sr_fission_source_new += settings::dt * lambda * source_regions_.precursors_new(sr, dg);
+      }
+    }
 
     // Accumulate totals
     fission_rate_old += sr_fission_source_old;
@@ -644,14 +663,8 @@ void FlatSourceDomain::random_ray_tally()
 
     double material = source_regions_.material(sr);
     for (int g = 0; g < negroups_; g++) {
-        double flux;
-        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-          flux =
-            source_regions_.scalar_flux_td_new(sr, g) * source_normalization_factor;
-        } else {
-          flux =
-            source_regions_.scalar_flux_new(sr, g) * source_normalization_factor;
-        }
+      double flux =
+        source_regions_.scalar_flux_new(sr, g) * source_normalization_factor;
 
       // Determine numerical score value
       for (auto& task : source_regions_.tally_task(sr, g)) {
@@ -838,15 +851,12 @@ void FlatSourceDomain::all_reduce_replicated_source_regions()
 #endif
 }
 
-// TODO: Enable support for TD fluxes
 double FlatSourceDomain::evaluate_flux_at_point(
   Position r, int64_t sr, int g) const
 {
   return source_regions_.scalar_flux_final(sr, g) /
          (settings::n_batches - settings::n_inactive);
 }
-
-//TODO: Enable support for TD fluxes
 
 // Outputs all basic material, FSR ID, multigroup flux, and
 // fission source data to .vtk file that can be directly
@@ -1274,64 +1284,6 @@ void FlatSourceDomain::set_initial_condition()
     source_regions_.precursors_old(de) = (*precursors_bd_)[de];
 }
 
-// Generates new estimate of k_dynamic based on the fraction between this
-// timestep's estimate of neutron production and loss.
-// TODO: implement compute_k_dynamic
-//double FlatSourceDomain::compute_k_dynamic() const
-
-// Compute new estimate of scattering + fission sources in each source region
-// based on the flux estimate from the previous iteration.
-void FlatSourceDomain::update_neutron_source_td(double k_eff)
-{
-  //TODO: add variable for time_update_src_td
-  //simulation::time_update_src.start();
-
-  double inverse_k_eff = 1.0 / k_eff;
-
-  // Add scattering + fission source
-#pragma omp parallel for
-  for (int64_t sr = 0; sr < n_source_regions_; sr++) {
-    int material = source_regions_.material(sr);
-
-    // TODO: Consider splitting up this for loop into smaller, testable
-    // functions
-    for (int g_out = 0; g_out < negroups_; g_out++) {
-      double sigma_t = sigma_t_[material * negroups_ + g_out];
-      double scatter_source_td = 0.0;
-      double fission_source_td = 0.0;
-
-      for (int g_in = 0; g_in < negroups_; g_in++) {
-        double scalar_flux_td = source_regions_.scalar_flux_td_old(sr, g_in);
-        double sigma_s =
-          sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
-        // Use prompt cross section data if in time dependent mode
-        double nu_p_sigma_f = nu_p_sigma_f_[material * negroups_ + g_in];
-        double chi_p = chi_p_[material * negroups_ + g_out];
-
-        scatter_source_td += sigma_s * scalar_flux_td;
-        fission_source_td += nu_p_sigma_f * scalar_flux_td * chi_p;
-      }
-      source_regions_.source_td(sr, g_out) =
-        (scatter_source_td + fission_source_td * inverse_k_eff) / sigma_t;
-
-      // Add delayed source if in time dependent mode
-      double delayed_source = 0.0f;
-      for (int dg = 0; dg < ndgroups_; dg++) {
-        double chi_d =
-          chi_d_[material * negroups_ * ndgroups_ + g_out * ndgroups_ + dg];
-        double lambda = lambda_[material * ndgroups_ + dg];
-        double precursors = source_regions_.precursors_old(sr, dg);
-        delayed_source += chi_d * precursors * lambda;
-      }
-      source_regions_.source(sr, g_out) += delayed_source / sigma_t;
-    }
-  }
-
-  // TODO: Time-dependent external source?
-  // TODO: add variable for time_update_src_td
-  //simulation::time_update_src.stop();
-}
-
 void FlatSourceDomain::compute_criticality_precursors(double k_eff)
 {
 #pragma omp parallel for
@@ -1345,6 +1297,9 @@ void FlatSourceDomain::compute_criticality_precursors(double k_eff)
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
           double flux = source_regions_.scalar_flux_new(sr, g_in);
+          ;
+          ;
+          ;
           source_regions_.precursors_new(sr, dg) += flux * nu_d_sigma_f;
         }
         source_regions_.precursors_new(sr, dg) /= lambda * k_eff;
@@ -1353,7 +1308,7 @@ void FlatSourceDomain::compute_criticality_precursors(double k_eff)
   }
 }
 
-void FlatSourceDomain::compute_precursors(double k_eff)
+void FlatSourceDomain::compute_precursors(double criticality_k_eff)
 {
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
@@ -1367,10 +1322,10 @@ void FlatSourceDomain::compute_precursors(double k_eff)
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + g_in * ndgroups_ + dg];
-          double flux_td = source_regions_.scalar_flux_td_new(sr, g_in);
-          delayed_fission_source += flux_td * nu_d_sigma_f;
+          double flux = source_regions_.scalar_flux_new(sr, g_in);
+          delayed_fission_source += flux * nu_d_sigma_f;
         }
-        delayed_fission_source /= k_eff;
+        delayed_fission_source /= criticality_k_eff;
 
         double precursor_rhs_bd = (*precursors_rhs_bd_)[sr * ndgroups_ + dg];
 
@@ -1383,18 +1338,6 @@ void FlatSourceDomain::compute_precursors(double k_eff)
     }
   }
 }
-
-void FlatSourceDomain::serialize_final_td_fluxes(vector<double>& flux_td)
-{
-  // Ensure array is correct size
-  flux_td.resize(n_source_regions_ * negroups_);
-// Serialize the final fluxes for output
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements_; se++) {
-    flux_td[se] = source_regions_.scalar_flux_td_final(se);
-  }
-}
-
 void FlatSourceDomain::serialize_final_precursors(vector<double>& precursors)
 {
   // Ensure array is correct size
@@ -1406,23 +1349,9 @@ void FlatSourceDomain::serialize_final_precursors(vector<double>& precursors)
   }
 }
 
-void FlatSourceDomain::flux_td_swap()
-{
-  source_regions_.flux_td_swap();
-}
-
 void FlatSourceDomain::precursors_swap()
 {
   source_regions_.precursors_swap();
-}
-
-void FlatSourceDomain::accumulate_iteration_flux_td()
-{
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements_; se++) {
-    source_regions_.scalar_flux_td_final(se) +=
-      source_regions_.scalar_flux_td_new(se);
-  }
 }
 
 void FlatSourceDomain::accumulate_iteration_precursors()
