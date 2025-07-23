@@ -91,7 +91,7 @@ void openmc_run_random_ray()
     // simulation
     if (settings::is_initial_condition) {
       criticality_scalar_flux = forward_flux;
-      criticality_k_eff = sim.criticality_k_eff_;
+      criticality_k_eff = simulation::keff;
       sim.domain()->serialize_final_precursors(criticality_precursors);
 #pragma omp parallel for
       for (uint64_t i = 0; i < criticality_precursors.size(); i++) {
@@ -171,7 +171,7 @@ vector<double> precursors_bd;
 vector<double> scalar_flux_rhs_bd;
 vector<double> precursors_rhs_bd;
 
-vector<double> criticality_k_eff;
+double criticality_k_eff;
 vector<double> criticality_scalar_flux;
 // vector<double> criticality_source;
 vector<double> criticality_precursors;
@@ -272,7 +272,7 @@ void openmc_run_random_ray_time_dependent()
     openmc_simulation_init();
 
     RandomRaySimulation sim_td;
-    sim_td.criticality_k_eff_ = criticality_k_eff;
+    sim_td.k_eff_ = criticality_k_eff;
     sim_td.domain()->bd_order_ = bd_order;
     sim_td.domain()->scalar_flux_bd_ = &scalar_flux_bd;
     sim_td.domain()->precursors_bd_ = &precursors_bd;
@@ -584,10 +584,6 @@ RandomRaySimulation::RandomRaySimulation()
   // batch, so set the current gen to 1
   simulation::current_gen = 1;
 
-  // Initialize data structure to store batch k_eff_
-  if (settings::is_initial_condition)
-    criticality_k_eff_.assign(settings::n_batches, 0.0);
-
   switch (RandomRay::source_shape_) {
   case RandomRaySourceShape::FLAT:
     domain_ = make_unique<FlatSourceDomain>();
@@ -635,7 +631,13 @@ void RandomRaySimulation::simulate()
     simulation::total_weight = 1.0;
 
     // Update source term (scattering + fission)
-    domain_->update_neutron_source(k_eff_);
+    double k_eff;
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      k_eff = criticality_k_eff;
+    } else {
+      k_eff = k_eff_;
+    }
+    domain_->update_neutron_source(k_eff);
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
@@ -667,25 +669,19 @@ void RandomRaySimulation::simulate()
 
     // Compute precursors
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      domain_->compute_precursors(k_eff_);
+      domain_->compute_precursors(k_eff);
     } else if (settings::is_initial_condition) {
-      domain_->compute_criticality_precursors(k_eff_);
+      domain_->compute_criticality_precursors(k_eff);
     }
 
     if (settings::run_mode == RunMode::EIGENVALUE ||
         settings::run_mode == RunMode::TIME_DEPENDENT) {
       // Compute random ray k-eff
-      if (settings::run_mode == RunMode::EIGENVALUE)
-        k_eff_ = domain_->compute_k_eff(k_eff_);
-      else 
-        // This keff is only used for eliminating the keff bias from each batch
-        // in the time dependent simulation
-        k_eff_ = criticality_k_eff_[simulation::current_batch - 1];
+      k_eff_ = domain_->compute_k_eff(k_eff_);
+
       // Store random ray k-eff into OpenMC's native k-eff variable
       global_tally_tracklength = k_eff_;
     }
-    if (settings::is_initial_condition)
-      criticality_k_eff_[simulation::current_batch - 1] = k_eff_;
 
     // Execute all tallying tasks, if this is an active batch
     if (simulation::current_batch > settings::n_inactive) {
