@@ -14,7 +14,6 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     // If in eigenvalue mode, set starting flux to guess of 1
     scalar_flux_old_.assign(negroups, 1.0);
     if (settings::is_initial_condition) {
-      scalar_flux_old_.assign(negroups, 1.0);
       precursors_old_.assign(ndgroups, 0.0);
       precursors_new_.assign(ndgroups, 0.0);
       precursors_final_.assign(ndgroups, 0.0);
@@ -29,6 +28,12 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     // If in time dependent mode, set starting flux to guess of 1
     // TODO: try to incorporate criticality/previous final flux here
     scalar_flux_old_.assign(negroups, 1.0);
+
+    scalar_flux_td_old_.assign(negroups, 1.0);
+    scalar_flux_td_new_.assign(negroups, 0.0);
+    source_td_.resize(negroups);
+    scalar_flux_td_final_.assign(negroups, 0.0);
+
     precursors_old_.assign(ndgroups, 0.0);
     precursors_new_.assign(ndgroups, 0.0);
     precursors_final_.assign(ndgroups, 0.0);
@@ -84,6 +89,11 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
     source_.push_back(sr.source_[g]);
     if (settings::run_mode == RunMode::FIXED_SOURCE) {
       external_source_.push_back(sr.external_source_[g]);
+    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      scalar_flux_td_old_.push_back(sr.scalar_flux_td_old_[g]);
+      scalar_flux_td_new_.push_back(sr.scalar_flux_td_new_[g]);
+      scalar_flux_td_final_.push_back(sr.scalar_flux_td_final_[g]);
+      source_td_.push_back(sr.source_td_[g]);
     }
 
     // Only store these fields if is_linear_ is true
@@ -142,6 +152,13 @@ void SourceRegionContainer::assign(
     flux_moments_old_.clear();
     flux_moments_new_.clear();
     flux_moments_t_.clear();
+  }
+
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    scalar_flux_td_old_.clear();
+    scalar_flux_td_new_.clear();
+    scalar_flux_td_final_.clear();
+    source_td_.clear();
   }
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT ||
@@ -267,6 +284,12 @@ void SourceRegionContainer::mpi_sync_ranks(bool reduce_position)
 }
 
 // Time-dependent methods
+void SourceRegionContainer::flux_td_swap()
+{
+  scalar_flux_td_old_.swap(scalar_flux_td_new_);
+  // TODO: Add support for linear source regions
+}
+
 void SourceRegionContainer::precursors_swap()
 {
   precursors_old_.swap(precursors_new_);

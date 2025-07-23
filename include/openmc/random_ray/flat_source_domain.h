@@ -51,10 +51,15 @@ public:
   //----------------------------------------------------------------------------
   // Time dependent methods
   void set_initial_condition();
+  virtual void update_neutron_source_td(double k_dynamic);
+  double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);
-  void compute_precursors(double criticality_k_eff);
+  void compute_precursors(double k_eff);
+  void serialize_final_td_fluxes(vector<double>& flux_td);
   void serialize_final_precursors(vector<double>& precursors);
+  void flux_td_swap();
   void precursors_swap();
+  virtual void accumulate_iteration_flux_td();
   void accumulate_iteration_precursors();
 
   //----------------------------------------------------------------------------
