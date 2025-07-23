@@ -1267,7 +1267,7 @@ void FlatSourceDomain::set_initial_condition()
 {
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++)
-    source_regions_.scalar_flux_old(se) = (*scalar_flux_bd_)[se];
+    source_regions_.scalar_flux_td_old(se) = (*scalar_flux_bd_)[se];
 
 #pragma omp parallel for
   for (int64_t de = 0; de < n_delay_elements_; de++)
@@ -1323,7 +1323,7 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
         double precursors = source_regions_.precursors_old(sr, dg);
         delayed_source += chi_d * precursors * lambda;
       }
-      source_regions_.source(sr, g_out) += delayed_source / sigma_t;
+      source_regions_.source_td(sr, g_out) += delayed_source / sigma_t;
     }
   }
 

@@ -91,7 +91,6 @@ void openmc_run_random_ray()
     // simulation
     if (settings::is_initial_condition) {
       criticality_scalar_flux = forward_flux;
-      criticality_k_eff = simulation::keff;
       sim.domain()->serialize_final_precursors(criticality_precursors);
 #pragma omp parallel for
       for (uint64_t i = 0; i < criticality_precursors.size(); i++) {
@@ -171,7 +170,6 @@ vector<double> precursors_bd;
 vector<double> scalar_flux_rhs_bd;
 vector<double> precursors_rhs_bd;
 
-double criticality_k_eff;
 vector<double> criticality_scalar_flux;
 // vector<double> criticality_source;
 vector<double> criticality_precursors;
@@ -272,7 +270,6 @@ void openmc_run_random_ray_time_dependent()
     openmc_simulation_init();
 
     RandomRaySimulation sim_td;
-    sim_td.k_eff_ = criticality_k_eff;
     sim_td.domain()->bd_order_ = bd_order;
     sim_td.domain()->scalar_flux_bd_ = &scalar_flux_bd;
     sim_td.domain()->precursors_bd_ = &precursors_bd;
