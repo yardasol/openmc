@@ -1265,9 +1265,6 @@ void FlatSourceDomain::serialize_final_fluxes(vector<double>& flux)
 
 void FlatSourceDomain::set_initial_condition()
 {
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements_; se++)
-    source_regions_.scalar_flux_td_old(se) = (*scalar_flux_bd_)[se];
 
 #pragma omp parallel for
   for (int64_t de = 0; de < n_delay_elements_; de++)
