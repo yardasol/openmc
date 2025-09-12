@@ -296,3 +296,4 @@ void SourceRegionContainer::precursors_swap()
 }
 
 } // namespace openmc
+  

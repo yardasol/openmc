@@ -50,7 +50,6 @@ public:
 
   //----------------------------------------------------------------------------
   // Time dependent methods
-  void set_initial_condition();
   virtual void update_neutron_source_td(double k_dynamic);
   double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);

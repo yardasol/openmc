@@ -274,7 +274,6 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->scalar_flux_bd_ = &scalar_flux_bd;
     sim_td.domain()->precursors_bd_ = &precursors_bd;
 
-    sim_td.domain()->set_initial_condition();
     // TODO: Determine if defining the domain variables as pointers will cause
     // issues with parallelization
 
@@ -627,6 +626,13 @@ void RandomRaySimulation::simulate()
     // Reset total starting particle weight used for normalizing tallies
     simulation::total_weight = 1.0;
 
+    // Compute precursors
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      domain_->compute_precursors(k_eff_);
+    } else if (settings::is_initial_condition) {
+      domain_->compute_criticality_precursors(k_eff_);
+    }
+
     // Update source term (scattering + fission)
     domain_->update_neutron_source(k_eff_);
     if (settings::run_mode == RunMode::TIME_DEPENDENT)
@@ -660,14 +666,7 @@ void RandomRaySimulation::simulate()
       settings::n_particles * RandomRay::distance_active_);
 
     // Add source to scalar flux, compute number of FSR hits
-    int64_t n_hits = domain_->add_source_to_scalar_flux();
-
-    // Compute precursors
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      domain_->compute_precursors(k_eff_);
-    } else if (settings::is_initial_condition) {
-      domain_->compute_criticality_precursors(k_eff_);
-    }
+    int64_t n_hits = domain_->add_source_to_scalar_flux(); 
 
     if (settings::run_mode == RunMode::EIGENVALUE ||
         settings::run_mode == RunMode::TIME_DEPENDENT) {
@@ -703,7 +702,8 @@ void RandomRaySimulation::simulate()
     // Set phi_old = phi_new
     domain_->flux_swap();
     if (settings::run_mode == RunMode::TIME_DEPENDENT)
-        domain_->flux_td_swap();
+      domain_->flux_td_swap();
+
 
     // Check for any obvious insabilities/nans/infs
     instability_check(n_hits, k_eff_, avg_miss_rate_);
