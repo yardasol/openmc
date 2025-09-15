@@ -113,7 +113,7 @@ public:
   // Energy group-wise 1D arrays
   vector<double> scalar_flux_old_;
   vector<double> scalar_flux_new_;
-  vector<float> source_;
+  vector<double> source_;
   vector<float> external_source_;
   vector<double> scalar_flux_final_;
 
@@ -125,7 +125,7 @@ public:
   // Energy group-wise 1D time-dependnet arrrays
   vector<double> scalar_flux_td_old_;
   vector<double> scalar_flux_td_new_;
-  vector<float> source_td_;
+  vector<double> source_td_;
   vector<double> scalar_flux_td_final_;
 
 
@@ -309,10 +309,10 @@ public:
     return scalar_flux_final_[se];
   }
 
-  float& source(int64_t sr, int g) { return source_[index(sr, g)]; }
-  const float& source(int64_t sr, int g) const { return source_[index(sr, g)]; }
-  float& source(int64_t se) { return source_[se]; }
-  const float& source(int64_t se) const { return source_[se]; }
+  double& source(int64_t sr, int g) { return source_[index(sr, g)]; }
+  const double& source(int64_t sr, int g) const { return source_[index(sr, g)]; }
+  double& source(int64_t se) { return source_[se]; }
+  const double& source(int64_t se) const { return source_[se]; }
 
   double& scalar_flux_td_old(int64_t sr, int g)
   {
@@ -356,10 +356,10 @@ public:
     return scalar_flux_td_final_[se];
   }
 
-  float& source_td(int64_t sr, int g) { return source_td_[index(sr, g)]; }
-  const float& source_td(int64_t sr, int g) const { return source_td_[index(sr, g)]; }
-  float& source_td(int64_t se) { return source_td_[se]; }
-  const float& source_td(int64_t se) const { return source_td_[se]; }
+  double& source_td(int64_t sr, int g) { return source_td_[index(sr, g)]; }
+  const double& source_td(int64_t sr, int g) const { return source_td_[index(sr, g)]; }
+  double& source_td(int64_t se) { return source_td_[se]; }
+  const double& source_td(int64_t se) const { return source_td_[se]; }
 
   double& precursors_old(int64_t sr, int dg)
   {
@@ -495,7 +495,7 @@ private:
   vector<double> scalar_flux_old_;
   vector<double> scalar_flux_new_;
   vector<double> scalar_flux_final_;
-  vector<float> source_;
+  vector<double> source_;
   vector<float> external_source_;
 
   vector<MomentArray> source_gradients_;
@@ -507,7 +507,7 @@ private:
   vector<double> scalar_flux_td_old_;
   vector<double> scalar_flux_td_new_;
   vector<double> scalar_flux_td_final_;
-  vector<float> source_td_;
+  vector<double> source_td_;
 
   // SoA delay group-wise 2D arrays flattened to 1D
   vector<double> precursors_old_;

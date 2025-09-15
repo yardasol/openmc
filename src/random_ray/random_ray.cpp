@@ -329,12 +329,12 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active, bool
     float tau = sigma_t * distance;
     float exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
     float new_delta_psi =
-      (angular_flux_[g] - domain_->source_regions_.source(sr, g)) * exponential;
+      (angular_flux_[g] - (float)domain_->source_regions_.source(sr, g)) * exponential;
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
     if (td_transport) {
       float new_delta_psi_td =
-        (angular_flux_td_[g] - domain_->source_regions_.source_td(sr, g)) * exponential;
+        (angular_flux_td_[g] - (float)domain_->source_regions_.source_td(sr, g)) * exponential;
       delta_psi_td_[g] = new_delta_psi_td;
       angular_flux_td_[g] -= new_delta_psi_td;
     }
@@ -433,7 +433,7 @@ void RandomRay::attenuate_flux_linear_source(double distance, bool is_active)
     // calculated from the source gradients dot product with local centroid
     // and direction, respectively.
     float spatial_source =
-      domain_->source_regions_.source(sr, g) +
+      (float)domain_->source_regions_.source(sr, g) +
       rm_local.dot(domain_->source_regions_.source_gradients(sr, g));
     float dir_source =
       u().dot(domain_->source_regions_.source_gradients(sr, g));
@@ -554,12 +554,12 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
   int64_t sr = domain_->source_region_offsets_[i_cell] + cell_instance();
 
   for (int g = 0; g < negroups_; g++) {
-    angular_flux_[g] = domain_->source_regions_.source(sr, g);
+    angular_flux_[g] = (float)domain_->source_regions_.source(sr, g);
   }
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     for (int g = 0; g < negroups_; g++) {
-      angular_flux_td_[g] = domain_->source_regions_.source_td(sr, g);
+      angular_flux_td_[g] = (float)domain_->source_regions_.source_td(sr, g);
     }
   }
 }
