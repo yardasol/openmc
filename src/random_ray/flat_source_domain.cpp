@@ -1273,10 +1273,21 @@ void FlatSourceDomain::serialize_final_fluxes(vector<double>& flux)
   }
 }
 
+void FlatSourceDomain::serialize_old_fluxes(vector<double>& flux)
+{
+  // Ensure array is correct size
+  flux.resize(n_source_regions_ * negroups_);
+// Serialize the old fluxes for output
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    flux[se] = source_regions_.scalar_flux_old(se);
+  }
+}
+
 //------------------------------------------------------------------------------
 // Time Dependent Methods
 
-void FlatSourceDomain::set_initial_condition(vector<double>* previous_scalar_flux)
+void FlatSourceDomain::set_initial_condition(vector<double>* previous_scalar_flux, vector<double>* previous_scalar_flux_td)
 {
 
 #pragma omp parallel for
@@ -1285,7 +1296,7 @@ void FlatSourceDomain::set_initial_condition(vector<double>* previous_scalar_flu
 
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++)
-    source_regions_.scalar_flux_td_old(se) = (*scalar_flux_bd_)[se];
+    source_regions_.scalar_flux_td_old(se) = (*previous_scalar_flux_td)[se];
 }
 
 // Generates new estimate of k_dynamic based on the fraction between this
@@ -1407,6 +1418,17 @@ void FlatSourceDomain::serialize_final_td_fluxes(vector<double>& flux_td)
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
     flux_td[se] = source_regions_.scalar_flux_td_final(se);
+  }
+}
+
+void FlatSourceDomain::serialize_old_td_fluxes(vector<double>& flux_td)
+{
+  // Ensure array is correct size
+  flux_td.resize(n_source_regions_ * negroups_);
+// Serialize the old fluxes for output
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    flux_td[se] = source_regions_.scalar_flux_td_old(se);
   }
 }
 

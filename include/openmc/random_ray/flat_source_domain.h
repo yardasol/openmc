@@ -47,15 +47,17 @@ public:
   void flatten_xs();
   void transpose_scattering_matrix();
   void serialize_final_fluxes(vector<double>& flux);
+  void serialize_old_fluxes(vector<double>& flux);
 
   //----------------------------------------------------------------------------
   // Time dependent methods
-  void set_initial_condition(vector<double>* previous_scalar_flux);
+  void set_initial_condition(vector<double>* previous_scalar_flux, vector<double>* previous_scalar_flux_td);
   virtual void update_neutron_source_td(double k_dynamic);
   double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);
   void compute_precursors(double k_eff);
   void serialize_final_td_fluxes(vector<double>& flux_td);
+  void serialize_old_td_fluxes(vector<double>& flux_td);
   void serialize_final_precursors(vector<double>& precursors);
   void flux_td_swap();
   void precursors_swap();
