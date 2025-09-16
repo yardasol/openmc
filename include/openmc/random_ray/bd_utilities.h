@@ -15,28 +15,28 @@ namespace openmc {
 // DOI: 10.1090/S0025-5718-1988-0935077-0
 // Note that the signs are flipped compared to the citation, as the author was
 // formulating weights for a forward difference
-const std::map<int, vector<float>> bd_coefficients_first_order_ = {
+const std::map<int, vector<double>> bd_coefficients_first_order_ = {
   {1, {1.0, -1.0}}, {2, {1.5, -2.0, 0.5}},
-  {3, {1.833333, -3.0, 1.5, -0.333333}},
-  {4, {2.083333, -4.0, 3.0, -1.333333, 0.25}},
-  {5, {2.283333, -5.0, 5.0, -3.333333, 1.25, -0.2}},
-  {6, {2.45, -6.0, 7.5, -6.666666, 3.75, -1.2, 0.166666}}};
+  {3, {1.833333333333333, -3.0, 1.5, -0.333333333333333}},
+  {4, {2.083333333333333, -4.0, 3.0, -1.333333333333333, 0.25}},
+  {5, {2.283333333333333, -5.0, 5.0, -3.333333333333333, 1.25, -0.2}},
+  {6, {2.45, -6.0, 7.5, -6.666666666666667, 3.75, -1.2, 0.166666666666667}}};
 
 // Coefficients come from Table 3 in Fornberg (1988)
 // DOI: 10.1090/S0025-5718-1988-0935077-0
-const std::map<int, vector<float>> bd_coefficients_second_order_ = {
+const std::map<int, vector<double>> bd_coefficients_second_order_ = {
   {1, {1.0, -2.0, 1.0}}, {2, {2.0, -5.0, 4, -1}},
-  {3, {2.916666, -8.666666, 9.5, -4.666666, 0.916666}},
-  {4, {3.75, -12.833333, 17.833333, -13.0, 5.083333, -0.833333}},
-  {5, {4.511111, -17.4, 29.25, -28.222222, 16.5, -5.4, 0.761111}},
-  {6, {5.211111, -22.3, 43.95, -52.722222, 41.0, -20.1, 5.661111, -0.7}}};
+  {3, {2.916666666666667, -8.666666666666667, 9.5, -4.666666666666667, 0.916666666666667}},
+  {4, {3.75, -12.833333333333333, 17.833333333333333, -13.0, 5.083333333333333, -0.833333333333333}},
+  {5, {4.511111111111111, -17.4, 29.25, -28.222222222222222, 16.5, -5.4, 0.761111111111111}},
+  {6, {5.211111111111111, -22.3, 43.95, -52.722222222222222, 41.0, -20.1, 5.661111111111111, -0.7}}};
 
 // bd vector funtions
 template<typename T>
 T bd_time_derivative(int index, vector<T>* bd_vector, int bd_order, double dt,
   int offset, int derivative_order = 1)
 {
-  vector<float> bd_coeffs;
+  vector<double> bd_coeffs;
   int n_bd_terms;
   double time_factor;
   if (derivative_order == 1) {
@@ -52,7 +52,7 @@ T bd_time_derivative(int index, vector<T>* bd_vector, int bd_order, double dt,
   }
   T bd_derivative = 0.0;
   for (int i = 0; i < n_bd_terms; i++) {
-    float coeff = bd_coeffs[i];
+    double coeff = bd_coeffs[i];
     T x = (*bd_vector)[index + i * offset]; // n_source_elements_ in most cases
     bd_derivative += coeff * x * time_factor;
   }
@@ -81,7 +81,7 @@ void update_bd_vector(
 // Take RHS derivative to solve for the current timestep
 template<typename T>
 T rhs_backwards_difference(vector<T>* bd_vector, int64_t vector_size, int idx,
-  const vector<float>& bd_coeffs, double dt)
+  const vector<double>& bd_coeffs, double dt)
 {
   int bd_order = bd_coeffs.size() - 1;
   T rhs_bd = 0.0;

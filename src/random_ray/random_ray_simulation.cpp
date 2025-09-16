@@ -182,7 +182,7 @@ void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
   // We need bd_order_max + 2 solutions to take 2nd-order derivatives.
   (*scalar_flux_bd).assign(n_source_elements * (bd_order_max + 2), 0.0);
   //(*source_bd).assign(n_source_elements * (bd_order_max + 1), 0.0);
-  (*precursors_bd).assign(n_source_elements * (bd_order_max + 1), 0.0);
+  (*precursors_bd).assign(n_delay_elements * (bd_order_max + 1), 0.0);
 
   // Store criticality solutions to the bd vectors
 #pragma omp parallel for
@@ -200,8 +200,8 @@ void compute_rhs_backward_differences(int64_t n_source_elements,
   vector<double>* precursors_bd, vector<double>& scalar_flux_rhs_bd,
   vector<double>& precursors_rhs_bd)
 {
-  const vector<float> bd_coeffs = bd_coefficients_first_order_.at(bd_order);
-  float A0 = bd_coeffs[0] / settings::dt;
+  const vector<double> bd_coeffs = bd_coefficients_first_order_.at(bd_order);
+  double A0 = bd_coeffs[0] / settings::dt;
 
   scalar_flux_rhs_bd.assign(n_source_elements, 0.0);
   precursors_rhs_bd.assign(n_delay_elements, 0.0);
@@ -628,7 +628,7 @@ void RandomRaySimulation::simulate()
 
     // Compute precursors
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      domain_->compute_precursors(k_eff_);
+      domain_->compute_criticality_precursors(k_eff_);
     } else if (settings::is_initial_condition) {
       domain_->compute_criticality_precursors(k_eff_);
     }
