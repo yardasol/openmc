@@ -90,8 +90,7 @@ void openmc_run_random_ray()
     // Extract flux and source for initial condition for time-dependent
     // simulation
     if (settings::is_initial_condition) {
-      previous_k_eff = sim.k_eff_;
-      sim.domain()->serialize_old_fluxes(previous_scalar_flux);
+      previous_k_eff = simulation::keff;
       criticality_scalar_flux = forward_flux;
       sim.domain()->serialize_final_precursors(criticality_precursors);
 #pragma omp parallel for
@@ -172,10 +171,8 @@ vector<double> precursors_bd;
 vector<double> scalar_flux_rhs_bd;
 vector<double> precursors_rhs_bd;
 
-// Last-batch solution from previous timestep
+// Previous k_eff solution
 double previous_k_eff;
-vector<double> previous_scalar_flux;
-vector<double> previous_scalar_flux_td;
 
 vector<double> criticality_scalar_flux;
 // vector<double> criticality_source;
@@ -259,7 +256,7 @@ void openmc_run_random_ray_time_dependent()
     RandomRaySimulation::bd_order_max_, &scalar_flux_bd, &precursors_bd,
     &criticality_scalar_flux, &criticality_precursors);
 
-  previous_scalar_flux_td = previous_scalar_flux;
+  vector<double> previous_scalar_flux = criticality_scalar_flux;
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
     settings::current_timestep = i;
@@ -283,7 +280,7 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->precursors_bd_ = &precursors_bd;
 
     sim_td.k_eff_ = previous_k_eff;
-    sim_td.domain()->set_initial_condition(&previous_scalar_flux, &previous_scalar_flux_td);
+    sim_td.domain()->set_initial_condition(&previous_scalar_flux);
 
     // TODO: Determine if defining the domain variables as pointers will cause
     // issues with parallelization
@@ -330,13 +327,14 @@ void openmc_run_random_ray_time_dependent()
       sim_td.domain()->compute_fixed_source_normalization_factor() /
       (settings::n_batches - settings::n_inactive);
 
-    // Save the last-batch keff in previous_k_eff
-    previous_k_eff = sim_td.k_eff_;
+    // Save the converged keff in previous_k_eff
+    previous_k_eff = simulation::keff;
 
     // Normalize and save the final forward flux
-    sim_td.domain()->serialize_old_fluxes(previous_scalar_flux);
-    sim_td.domain()->serialize_old_td_fluxes(previous_scalar_flux_td);
-
+    sim_td.domain()->serialize_final_fluxes(previous_scalar_flux);
+#pragma omp parallel for
+    for (uint64_t i = 0; i < previous_scalar_flux.size(); i++)
+      previous_scalar_flux[i] *= source_normalization_factor;
 
     // Normalize and save the final forward time-depenedent flux
     vector<double> forward_flux_td;
