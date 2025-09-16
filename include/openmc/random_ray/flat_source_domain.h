@@ -50,6 +50,7 @@ public:
 
   //----------------------------------------------------------------------------
   // Time dependent methods
+  void set_initial_condition(vector<double>* previous_scalar_flux);
   virtual void update_neutron_source_td(double k_dynamic);
   double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);
@@ -110,6 +111,9 @@ public:
 
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;
+
+  // Pointers to previous scalar flux solution
+  vector<double>* previous_scalar_flux_;
 
   // Pointers to BDF vectors
   // TODO: integrate this into source regions?
