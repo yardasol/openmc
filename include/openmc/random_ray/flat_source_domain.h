@@ -56,6 +56,7 @@ public:
   void compute_precursors(double k_eff);
   void serialize_final_td_fluxes(vector<double>& flux_td);
   void serialize_final_precursors(vector<double>& precursors);
+  void add_batchwise_precursors();
   void flux_td_swap();
   void precursors_swap();
   virtual void accumulate_iteration_flux_td();
@@ -116,6 +117,8 @@ public:
   vector<double>* scalar_flux_bd_;
   // vector<float>* source_bd_;
   vector<double>* precursors_bd_;
+
+  vector<double> precursors_batchwise_;
 
   vector<double>* scalar_flux_rhs_bd_;
   vector<double>* precursors_rhs_bd_;
