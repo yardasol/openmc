@@ -90,7 +90,6 @@ void openmc_run_random_ray()
     // Extract flux and source for initial condition for time-dependent
     // simulation
     if (settings::is_initial_condition) {
-      previous_k_eff = simulation::keff;
       criticality_scalar_flux = forward_flux;
       sim.domain()->serialize_final_precursors(criticality_precursors);
 #pragma omp parallel for
@@ -170,9 +169,6 @@ vector<double> precursors_bd;
 // 1D RHS BD arrays
 vector<double> scalar_flux_rhs_bd;
 vector<double> precursors_rhs_bd;
-
-// Previous k_eff solution
-double previous_k_eff;
 
 vector<double> criticality_scalar_flux;
 // vector<double> criticality_source;
@@ -256,7 +252,6 @@ void openmc_run_random_ray_time_dependent()
     RandomRaySimulation::bd_order_max_, &scalar_flux_bd, &precursors_bd,
     &criticality_scalar_flux, &criticality_precursors);
 
-  vector<double> previous_scalar_flux = criticality_scalar_flux;
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
     settings::current_timestep = i;
@@ -278,9 +273,6 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->bd_order_ = bd_order;
     sim_td.domain()->scalar_flux_bd_ = &scalar_flux_bd;
     sim_td.domain()->precursors_bd_ = &precursors_bd;
-
-    sim_td.k_eff_ = previous_k_eff;
-    sim_td.domain()->set_initial_condition(&previous_scalar_flux);
 
     // TODO: Determine if defining the domain variables as pointers will cause
     // issues with parallelization
@@ -322,28 +314,19 @@ void openmc_run_random_ray_time_dependent()
     // Rename statepoint file
     rename_statepoint_file(i + 1);
 
-    // Compute the normalization factor
+    // Normalize and save the final forward flux
     double source_normalization_factor =
       sim_td.domain()->compute_fixed_source_normalization_factor() /
       (settings::n_batches - settings::n_inactive);
 
-    // Save the converged keff in previous_k_eff
-    previous_k_eff = simulation::keff;
-
-    // Normalize and save the final forward flux
-    sim_td.domain()->serialize_final_fluxes(previous_scalar_flux);
-#pragma omp parallel for
-    for (uint64_t i = 0; i < previous_scalar_flux.size(); i++)
-      previous_scalar_flux[i] *= source_normalization_factor;
-
-    // Normalize and save the final forward time-depenedent flux
+    // Alias for convenience
     vector<double> forward_flux_td;
     sim_td.domain()->serialize_final_td_fluxes(forward_flux_td);
 #pragma omp parallel for
     for (uint64_t i = 0; i < forward_flux_td.size(); i++)
       forward_flux_td[i] *= source_normalization_factor;
 
-    // Normalize and save the fnal precursors by number of active batches
+    // Normalize final precursors by number of active batches
     vector<double> precursors;
     sim_td.domain()->serialize_final_precursors(precursors);
 #pragma omp parallel for
@@ -645,7 +628,7 @@ void RandomRaySimulation::simulate()
 
     // Compute precursors
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      domain_->compute_precursors(k_eff_);
+      domain_->compute_criticality_precursors(k_eff_);
     } else if (settings::is_initial_condition) {
       domain_->compute_criticality_precursors(k_eff_);
     }

@@ -1276,18 +1276,6 @@ void FlatSourceDomain::serialize_final_fluxes(vector<double>& flux)
 //------------------------------------------------------------------------------
 // Time Dependent Methods
 
-void FlatSourceDomain::set_initial_condition(vector<double>* previous_scalar_flux)
-{
-
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements_; se++)
-    source_regions_.scalar_flux_old(se) = (*previous_scalar_flux)[se];
-
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements_; se++)
-    source_regions_.scalar_flux_td_old(se) = (*scalar_flux_bd_)[se];
-}
-
 // Generates new estimate of k_dynamic based on the fraction between this
 // timestep's estimate of neutron production and loss.
 // TODO: implement compute_k_dynamic

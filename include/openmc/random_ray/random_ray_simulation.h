@@ -96,8 +96,7 @@ extern vector<double> precursors_bdf;
 extern vector<double> scalar_flux_rhs_bd;
 extern vector<double> precursors_rhs_bd;
 
-extern double previous_k_eff;
-
+extern double criticality_k_eff;
 extern vector<double> criticality_scalar_flux;
 extern vector<float> criticality_source;
 extern vector<double> criticality_precursors;
