@@ -17,8 +17,72 @@
 #include "openmc/timer.h"
 
 #include <cstdio>
+#include <cmath>
 
 namespace openmc {
+
+//==============================================================================
+// Non-method functions
+//==============================================================================
+double lambda_tilde(double lambda)
+{
+  return settings::dt * lamdba;
+}
+
+//if using nonuniform timestep sizes, this will be dt_i-1 / dt_i
+double gamma()
+{
+  return 1.0;
+}
+
+double E(double x)
+{
+    double neg_x = -1 * x;
+    return exp(x);
+}
+
+double k0(double x)
+{
+  return 1 - E(x);
+}        
+
+double k1(double x)
+{
+  double inv_x = 1 / x;
+  return (1 - k0(x)) * inv_x;
+}
+
+double k2(double x)
+{
+  double inv_x = 1 / x;
+  return (1 - 2 * k1(x)) * inv_x;
+}
+
+double omega0(double lam_tilde)
+{
+    return E(lam_tilde);
+}
+
+double omega_n(double lam_tilde)
+{
+  double numerator = k2(lam_tilde) + gamma() * k1(lam_tilde);
+  double denominator = 1 + gamma();
+  return numerator / denominator;
+}
+
+double omega_nm1(double lam_tilde)
+{
+  double numerator = k2(lam_tilde) + (1 - gamma()) * k1(lam_tilde);
+  double denominator = gamma();
+  return k0(lam_tilde) - numerator / denominator;
+}
+
+double omega_nm2(double lam_tilde)
+{
+  double numerator = k2(lam_tilde) - k1(lam_tilde);
+  double denominator = (1 + gamma()) * gamma();
+  return numerator / denominator;
+}
 
 //==============================================================================
 // FlatSourceDomain implementation
@@ -118,7 +182,7 @@ void FlatSourceDomain::accumulate_iteration_flux()
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
     source_regions_.scalar_flux_final(se) +=
-      source_regions_.scalar_flux_new(se);
+ a     source_regions_.scalar_flux_new(se);
   }
 }
 
@@ -1136,13 +1200,17 @@ void FlatSourceDomain::flatten_xs()
         for (int dg = 0; dg < ndgroups_; dg++) {
           double lambda =
             m.get_xs(MgxsType::DECAY_RATE, 0, NULL, NULL, &dg, t, a);
+          double beta =
+            m.get_xs(MgxsType::BETA, 0, NULL, NULL, &dg, t, a);
           lambda_.push_back(lambda);
+          beta_.push_back(beta);
         } 
       }
     } else {
       if (settings::run_mode == RunMode::TIME_DEPENDENT ||
           settings::is_initial_condition) {
         lambda_.push_back(0);
+        beta_.push_back(0);
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
@@ -1386,6 +1454,52 @@ void FlatSourceDomain::compute_precursors(double k_eff)
     }
   }
 }
+
+void FlatSourceDomain::compute_precursors_analytic_integration(double k_eff)
+{
+#pragma omp parallel for
+  for (int sr = 0; sr < n_source_regions_; sr++) {
+    int mat = source_regions_.material(sr);
+
+    // TODO: We need to compute these for each timestep outside of the array
+    double S_f = 0.0;
+    for (int g_in = 0; g_in < negroups_; g_in++) {
+        double scalar_flux = source_regions_.scalar_flux_td_old(sr, g_in);
+        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+        S_f += nu_sigma_f * scalar_flux;
+    }
+
+    double S_f_nm1 = 0.0;
+    for (int g_in = 0; g_in < negroups_; g_in++) {
+        double scalar_flux = source_regions_.scalar_flux_td_old(sr, g_in);
+        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+        S_f += nu_sigma_f * scalar_flux;
+    }
+
+    double S_f_nm2 = 0.0;
+    for (int g_in = 0; g_in < negroups_; g_in++) {
+        double scalar_flux = source_regions_.scalar_flux_td_old(sr, g_in);
+        double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+        S_f += nu_sigma_f * scalar_flux;
+    }
+
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      double lambda = lambda_[mat * ndgroups_ + dg];
+      double beta = beta_[mat * ndgroups_ + dg];
+      if (lambda == 0.0) {
+        source_regions_.precursors_new(sr, dg) = 0.0;
+      } else {
+        double lam_tilde = lambda_tilde(lambda);
+        source_regions_.precursors_new(sr, dg) = beta * S_f * omega_n(lam_tilde);
+        source_regions_.precursors_new(sr, dg) += beta * S_f_nm1 * omega_nm1(lam_tilde);
+        source_regions_.precursors_new(sr, dg) += beta * S_f_nm2 * omega_nm2(lam_tilde);
+        source_regions_.precursors_new(sr, dg) /= lambda;
+        source_regions_.precursors_new(sr, dg) += omega0(lam_tilde) * (*precursors_bd_)[sr * ndgroups_ + dg];
+      }
+    }
+  }
+}
+
 
 void FlatSourceDomain::serialize_final_td_fluxes(vector<double>& flux_td)
 {

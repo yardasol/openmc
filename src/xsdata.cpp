@@ -47,9 +47,11 @@ XsData::XsData(bool fissionable, AngleDistributionType scatter_format,
     kappa_fission = xt::zeros<double>(shape);
   }
 
-  // allocate decay_rate; [temperature][angle][delayed group]
+  // allocate decay_rate and beta; [temperature][angle][delayed group]
   shape[1] = n_dg_;
   decay_rate = xt::zeros<double>(shape);
+  beta = xt::zeros<double>(shape);
+
 
   if (fissionable) {
     shape = {n_ang, n_dg_, n_g_};
@@ -94,6 +96,7 @@ void XsData::from_hdf5(hid_t xsdata_grp, bool fissionable,
   }
   // Get the non-fission-specific data
   read_nd_vector(xsdata_grp, "decay-rate", decay_rate);
+  read_nd_vector(xsdata_grp, "beta", beta);
   read_nd_vector(xsdata_grp, "absorption", absorption, true);
   read_nd_vector(xsdata_grp, "inverse-velocity", inverse_velocity);
 
@@ -555,6 +558,8 @@ void XsData::combine(
                      that->chi_delayed;
     }
     decay_rate += scalar * that->decay_rate;
+    beta += scalar * that->beta;
+
   }
 
   // Ensure the chi_prompt and chi_delayed are normalized to 1 for each
