@@ -527,13 +527,6 @@ double Mgxs::get_xs(MgxsType xstype, int gin, const int* gout, const double* mu,
       val = xs_t->decay_rate(a, 0);
     }
     break;
-  case MgxsType::BETA:
-    if (dg != nullptr) {
-      val = xs_t->beta(a, *dg);
-    } else {
-      val = xs_t->beta(a, 0);
-    }
-    break;
   default:
     val = 0.;
   }

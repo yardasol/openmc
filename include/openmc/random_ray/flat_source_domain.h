@@ -98,7 +98,6 @@ public:
   // 2D arrays stored in 1D representing values for all materials x
   // delay_groups
   vector<double> lambda_;
-  vector<double> beta_;
 
   // 3D arrays stored in 1D representing values for all materials x energy
   // groups x energy groups

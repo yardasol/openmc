@@ -80,9 +80,6 @@ public:
   // decay_rate has the following dimensions:
   // [angle][delayed group]
   xt::xtensor<double, 2> decay_rate;
-  // beta has the following dimensions:
-  // [angle][delayed group]
-  xt::xtensor<double, 2> beta;
   // delayed_nu_fission has the following dimensions:
   // [angle][delayed group][incoming group]
   xt::xtensor<double, 3> delayed_nu_fission;
