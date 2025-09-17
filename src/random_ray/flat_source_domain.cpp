@@ -66,8 +66,6 @@ FlatSourceDomain::FlatSourceDomain()
     }
   }
 
-  precursors_batchwise_.assign(settings::n_batches * n_delay_elements_, 0.0);
-
   // Sanity check
   if (source_region_id != n_source_regions_) {
     fatal_error("Unexpected number of source regions");
@@ -1377,7 +1375,7 @@ void FlatSourceDomain::compute_precursors(double k_eff)
         }
         delayed_fission_source /= k_eff;
 
-        double precursor_rhs_bd = (*precursors_rhs_bd_)[(simulation::current_batch - 1) * n_source_regions_ * ndgroups_ + sr * ndgroups_ + dg];
+        double precursor_rhs_bd = (*precursors_rhs_bd_)[sr * ndgroups_ + dg];
 
         source_regions_.precursors_new(sr, dg) =
           delayed_fission_source - precursor_rhs_bd;
@@ -1408,15 +1406,6 @@ void FlatSourceDomain::serialize_final_precursors(vector<double>& precursors)
 #pragma omp parallel for
   for (int64_t de = 0; de < n_delay_elements_; de++) {
     precursors[de] = source_regions_.precursors_final(de);
-  }
-}
-
-void FlatSourceDomain::add_batchwise_precursors()
-{
-// Serialize the precursors for output
-#pragma omp parallel for
-  for (int64_t de = 0; de < n_delay_elements_; de++) {
-    precursors_batchwise_[(simulation::current_batch - 1) * n_delay_elements_ + de] = source_regions_.precursors_new(de);
   }
 }
 

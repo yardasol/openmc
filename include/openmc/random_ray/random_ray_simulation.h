@@ -89,9 +89,9 @@ void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
 //==============================================================================
 // Time-dependent global variables
 //==============================================================================
-extern vector<double> scalar_flux_bd;
-extern vector<float> source_bd;
-extern vector<double> precursors_bd;
+extern vector<double> scalar_flux_bdf;
+extern vector<float> source_bdf;
+extern vector<double> precursors_bdf;
 
 extern vector<double> scalar_flux_rhs_bd;
 extern vector<double> precursors_rhs_bd;
@@ -99,7 +99,7 @@ extern vector<double> precursors_rhs_bd;
 extern double criticality_k_eff;
 extern vector<double> criticality_scalar_flux;
 extern vector<float> criticality_source;
-extern vector<double> batchwise_criticality_precursors;
+extern vector<double> criticality_precursors;
 
 } // namespace openmc
 
