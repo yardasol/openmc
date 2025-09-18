@@ -47,6 +47,7 @@ public:
   void flatten_xs();
   void transpose_scattering_matrix();
   void serialize_final_fluxes(vector<double>& flux);
+  void add_batchwise_scalar_flux();
 
   //----------------------------------------------------------------------------
   // Time dependent methods
@@ -57,6 +58,7 @@ public:
   void serialize_final_td_fluxes(vector<double>& flux_td);
   void serialize_final_precursors(vector<double>& precursors);
   void add_batchwise_precursors();
+  void add_batchwise_scalar_flux_td();
   void flux_td_swap();
   void precursors_swap();
   virtual void accumulate_iteration_flux_td();
@@ -119,6 +121,7 @@ public:
   vector<double>* precursors_bd_;
 
   vector<double> precursors_batchwise_;
+  vector<double> scalar_flux_batchwise_;
 
   vector<double>* scalar_flux_rhs_bd_;
   vector<double>* precursors_rhs_bd_;

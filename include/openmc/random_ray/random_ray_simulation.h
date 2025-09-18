@@ -75,8 +75,8 @@ void rename_statepoint_file(int i);
 
 void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
   int bd_order_max, vector<double>* scalar_flux_bd,
-  vector<double>* precursors_bd, vector<double>* criticality_scalar_flux,
-  vector<double>* criticality_precursors);
+  vector<double>* precursors_bd, vector<double>* batchwise_criticality_scalar_flux,
+  vector<double>* batchwise_criticality_precursors);
 
 void compute_rhs_backward_differences(int64_t n_source_elements,
   int64_t n_delay_elements, int bd_order, vector<double>* scalar_flux_bd,
@@ -97,9 +97,8 @@ extern vector<double> scalar_flux_rhs_bd;
 extern vector<double> precursors_rhs_bd;
 
 extern double criticality_k_eff;
-extern vector<double> criticality_scalar_flux;
+extern vector<double> batchwise_criticality_scalar_flux;
 extern vector<float> criticality_source;
-extern vector<double> criticality_precursors;
 extern vector<double> batchwise_criticality_precursors;
 
 } // namespace openmc

@@ -67,6 +67,8 @@ FlatSourceDomain::FlatSourceDomain()
   }
 
   precursors_batchwise_.assign(settings::n_batches * n_delay_elements_, 0.0);
+  scalar_flux_batchwise_.assign(settings::n_batches * n_source_elements_, 0.0);
+
 
   // Sanity check
   if (source_region_id != n_source_regions_) {
@@ -1328,6 +1330,15 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
         delayed_source += chi_d * precursors * lambda;
       }
       source_regions_.source_td(sr, g_out) += delayed_source;
+
+      // Add derivative of scalar flux (TI method)
+      double inverse_vbar = inverse_vbar_[material * negroups_ + g_out];
+      double scalar_flux_rhs_bd = (*scalar_flux_rhs_bd_)[(simulation::current_batch - 1) * n_source_regions_ * negroups_ + sr * negroups_ + g_out];
+      double A0 = (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
+      double scalar_flux_td = source_regions_.scalar_flux_td_old(sr, g_out);
+      double scalar_flux_time_derivative =
+          (A0 * scalar_flux_td + scalar_flux_rhs_bd) * inverse_vbar;
+      source_regions_.source_td(sr, g_out) -= scalar_flux_time_derivative;
       source_regions_.source_td(sr, g_out) /= sigma_t;
     }
   }
@@ -1417,6 +1428,24 @@ void FlatSourceDomain::add_batchwise_precursors()
 #pragma omp parallel for
   for (int64_t de = 0; de < n_delay_elements_; de++) {
     precursors_batchwise_[(simulation::current_batch - 1) * n_delay_elements_ + de] = source_regions_.precursors_new(de);
+  }
+}
+
+void FlatSourceDomain::add_batchwise_scalar_flux()
+{
+// Serialize the precursors for output
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    scalar_flux_batchwise_[(simulation::current_batch - 1) * n_source_elements_ + se] = source_regions_.scalar_flux_old(se);
+  }
+}
+
+void FlatSourceDomain::add_batchwise_scalar_flux_td()
+{
+// Serialize the precursors for output
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    scalar_flux_batchwise_[(simulation::current_batch - 1) * n_source_elements_ + se] = source_regions_.scalar_flux_td_old(se);
   }
 }
 
