@@ -47,18 +47,16 @@ public:
   void flatten_xs();
   void transpose_scattering_matrix();
   void serialize_final_fluxes(vector<double>& flux);
-  void add_batchwise_scalar_flux();
 
   //----------------------------------------------------------------------------
   // Time dependent methods
+  void set_initial_condition();
   virtual void update_neutron_source_td(double k_dynamic);
   double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);
   void compute_precursors(double k_eff);
   void serialize_final_td_fluxes(vector<double>& flux_td);
   void serialize_final_precursors(vector<double>& precursors);
-  void add_batchwise_precursors();
-  void add_batchwise_scalar_flux_td();
   void flux_td_swap();
   void precursors_swap();
   virtual void accumulate_iteration_flux_td();
@@ -114,14 +112,14 @@ public:
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;
 
+  // Poiner to previous steady state scalar flux solution
+  vector<double>* previous_scalar_flux_;
+
   // Pointers to BDF vectors
   // TODO: integrate this into source regions?
   vector<double>* scalar_flux_bd_;
   // vector<float>* source_bd_;
   vector<double>* precursors_bd_;
-
-  vector<double> precursors_batchwise_;
-  vector<double> scalar_flux_batchwise_;
 
   vector<double>* scalar_flux_rhs_bd_;
   vector<double>* precursors_rhs_bd_;
