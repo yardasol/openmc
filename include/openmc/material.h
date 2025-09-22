@@ -180,6 +180,9 @@ public:
   double volume_ {-1.0};                //!< Volume in [cm^3]
   vector<bool> p0_; //!< Indicate which nuclides are to be treated with
                     //!< iso-in-lab scattering
+ 
+  // Time dependent data
+  vector<double> density_timeseries_;   //!< Total atom density timeseries in [atom/b-cm]
 
   // To improve performance of tallying, we store an array (direct address
   // table) that indicates for each nuclide in data::nuclides the index of the

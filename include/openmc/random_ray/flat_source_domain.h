@@ -63,6 +63,7 @@ public:
   void precursors_swap();
   virtual void accumulate_iteration_flux_td();
   void accumulate_iteration_precursors();
+  void update_material_density(int i);
 
   //----------------------------------------------------------------------------
   // Static Data members
@@ -110,6 +111,12 @@ public:
   // groups x delay groups
   vector<double> nu_d_sigma_f_;
   vector<double> chi_d_;
+
+  // Time-dependent cross section arrays for use with material density timeseries
+  vector<double> sigma_t_td_;
+  vector<double> nu_sigma_f_td_;
+  vector<double> sigma_f_td_;
+  vector<double> sigma_s_td_;
 
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;

@@ -208,7 +208,8 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
   source_regions_.scalar_flux_new(sr, g) /= (sigma_t * volume);
   source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g);
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    source_regions_.scalar_flux_td_new(sr, g) /= (sigma_t * volume);
+    double sigma_t_td = sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
+    source_regions_.scalar_flux_td_new(sr, g) /= (sigma_t_td * volume);
     source_regions_.scalar_flux_td_new(sr, g) += source_regions_.source_td(sr, g);
   }
 }
@@ -660,6 +661,18 @@ void FlatSourceDomain::random_ray_tally()
       // Determine numerical score value
       for (auto& task : source_regions_.tally_task(sr, g)) {
         double score;
+        double sigma_t;
+        double sigma_f;
+        double nu_sigma_f;
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+          sigma_t = sigma_t_td_[material * negroups_ + g];
+          sigma_f = sigma_f_td_[material * negroups_ + g];
+          nu_sigma_f = nu_sigma_f_td_[material * negroups_ + g];
+        } else { 
+          sigma_t = sigma_t_[material * negroups_ + g];
+          sigma_f = sigma_f_[material * negroups_ + g];
+          nu_sigma_f = nu_sigma_f_[material * negroups_ + g];
+        }
         switch (task.score_type) {
 
         case SCORE_FLUX:
@@ -667,15 +680,15 @@ void FlatSourceDomain::random_ray_tally()
           break;
 
         case SCORE_TOTAL:
-          score = flux * volume * sigma_t_[material * negroups_ + g];
+          score = flux * volume * sigma_t;
           break;
 
         case SCORE_FISSION:
-          score = flux * volume * sigma_f_[material * negroups_ + g];
+          score = flux * volume * sigma_f;
           break;
 
         case SCORE_NU_FISSION:
-          score = flux * volume * nu_sigma_f_[material * negroups_ + g];
+          score = flux * volume * nu_sigma_f;
           break;
 
         case SCORE_EVENTS:
@@ -1225,6 +1238,13 @@ void FlatSourceDomain::flatten_xs()
       }
     }
   }
+  // Create copies of cross section vectors for use in material density changes
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    sigma_t_td_ = sigma_t_;
+    nu_sigma_f_td_ = nu_sigma_f_;
+    sigma_f_td_ = sigma_f_;
+    sigma_s_td_ = sigma_s_;
+  }
 }
 
 void FlatSourceDomain::set_adjoint_sources(const vector<double>& forward_flux)
@@ -1302,19 +1322,19 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
     // TODO: Consider splitting up this for loop into smaller, testable
     // functions
     for (int g_out = 0; g_out < negroups_; g_out++) {
-      double sigma_t = sigma_t_[material * negroups_ + g_out];
+      double sigma_t_td = sigma_t_td_[material * negroups_ + g_out];
       double scatter_source_td = 0.0;
       double fission_source_td = 0.0;
 
       for (int g_in = 0; g_in < negroups_; g_in++) {
         double scalar_flux_td = source_regions_.scalar_flux_td_old(sr, g_in);
-        double sigma_s =
-          sigma_s_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
+        double sigma_s_td =
+          sigma_s_td_[material * negroups_ * negroups_ + g_out * negroups_ + g_in];
         // Use prompt cross section data if in time dependent mode
         double nu_p_sigma_f = nu_p_sigma_f_[material * negroups_ + g_in];
         double chi_p = chi_p_[material * negroups_ + g_out];
 
-        scatter_source_td += sigma_s * scalar_flux_td;
+        scatter_source_td += sigma_s_td * scalar_flux_td;
         fission_source_td += nu_p_sigma_f * scalar_flux_td * chi_p;
       }
       source_regions_.source_td(sr, g_out) =
@@ -1339,7 +1359,7 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
       double scalar_flux_time_derivative =
           (A0 * scalar_flux_td + scalar_flux_rhs_bd) * inverse_vbar;
       source_regions_.source_td(sr, g_out) -= scalar_flux_time_derivative;
-      source_regions_.source_td(sr, g_out) /= sigma_t;
+      source_regions_.source_td(sr, g_out) /= sigma_t_td;
     }
   }
 
@@ -1475,5 +1495,31 @@ void FlatSourceDomain::accumulate_iteration_precursors()
     source_regions_.precursors_final(de) += source_regions_.precursors_new(de);
   }
 }
+
+void FlatSourceDomain::update_material_density(int i) {
+  // Update material density and cross sections
+#pragma omp parallel for
+  for (int j = 0; j < model::materials.size(); j++) {
+    auto& mat {model::materials[j]};
+    if (mat->density_timeseries_.size() != 0) {
+      double density_factor = mat->density_timeseries_[i] / mat->density_; 
+      //double new_density = mat->density_timeseries_[i];  
+      //double old_density = mat->density_;
+      //mat->density_ = new_density;
+      for (int g_out = 0; g_out < negroups_; g_out++) {
+        for (int dg = 0; dg < ndgroups_; dg++) {
+          nu_d_sigma_f_[j * negroups_ * ndgroups_ + dg * negroups_ + g_out] *= density_factor;
+        }
+        nu_p_sigma_f_[j * negroups_ + g_out] *= density_factor;
+        sigma_t_td_[j * negroups_ + g_out] *= density_factor;
+        nu_sigma_f_td_[j * negroups_ + g_out] *= density_factor;
+        sigma_f_td_[j * negroups_ + g_out] *= density_factor;
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          sigma_s_td_[j * negroups_ * negroups_ + g_out * negroups_ + g_in] *= density_factor;
+        }
+      }
+    }
+  }
+} 
 
 } // namespace openmc

@@ -283,7 +283,7 @@ void openmc_run_random_ray_time_dependent()
     // issues with parallelization
 
     // Update time dependent cross section based on the density
-    // sim_td.domain()->update_material_density(i);
+    sim_td.domain()->update_material_density(i);
 
     // Begin main simulation timer
     simulation::time_total.start();
@@ -599,7 +599,7 @@ RandomRaySimulation::RandomRaySimulation()
 
   // Convert OpenMC native MGXS into a more efficient format
   // internal to the random ray solver
-  domain_->flatten_xs();
+  domain_->flatten_xs(); 
 }
 
 void RandomRaySimulation::prepare_fixed_sources()
