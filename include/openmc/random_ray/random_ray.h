@@ -44,8 +44,8 @@ public:
 
   //----------------------------------------------------------------------------
   // Public data members
-  vector<float> angular_flux_;
-  vector<float> angular_flux_td_;
+  vector<double> angular_flux_;
+  vector<double> angular_flux_td_;
 
 
   bool ray_trace_only_ {false}; // If true, only perform geometry operations
@@ -53,8 +53,8 @@ public:
 private:
   //----------------------------------------------------------------------------
   // Private data members
-  vector<float> delta_psi_;
-  vector<float> delta_psi_td_;
+  vector<double> delta_psi_;
+  vector<double> delta_psi_td_;
   vector<MomentArray> delta_moments_;
 
   int negroups_;
