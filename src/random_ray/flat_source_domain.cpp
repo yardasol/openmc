@@ -142,7 +142,6 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
     // TODO: Consider splitting up this for loop into smaller, testable
     // functions
     for (int g_out = 0; g_out < negroups_; g_out++) {
-      double sigma_t = sigma_t_[material * negroups_ + g_out];
       double scatter_source = 0.0;
       double fission_source = 0.0;
 
@@ -157,7 +156,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         fission_source += nu_sigma_f * scalar_flux * chi;
       }
       source_regions_.source(sr, g_out) =
-        (scatter_source + fission_source * inverse_k_eff) / sigma_t;
+        (scatter_source + fission_source * inverse_k_eff);
     }
   }
 
@@ -206,11 +205,11 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
 {
   double sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
   source_regions_.scalar_flux_new(sr, g) /= (sigma_t * volume);
-  source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g);
+  source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g) / sigma_t;
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     double sigma_t_td = sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
     source_regions_.scalar_flux_td_new(sr, g) /= (sigma_t_td * volume);
-    source_regions_.scalar_flux_td_new(sr, g) += source_regions_.source_td(sr, g);
+    source_regions_.scalar_flux_td_new(sr, g) += source_regions_.source_td(sr, g) / sigma_t_td;
   }
 }
 
@@ -226,9 +225,11 @@ void FlatSourceDomain::set_flux_to_old_flux(int64_t sr, int g)
 
 void FlatSourceDomain::set_flux_to_source(int64_t sr, int g)
 {
-  source_regions_.scalar_flux_new(sr, g) = source_regions_.source(sr, g);
+  double sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
+  source_regions_.scalar_flux_new(sr, g) = source_regions_.source(sr, g) / sigma_t;
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    source_regions_.scalar_flux_td_new(sr, g) = source_regions_.source_td(sr, g);
+    double sigma_t_td = sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
+    source_regions_.scalar_flux_td_new(sr, g) = source_regions_.source_td(sr, g) / sigma_t_td;
   }
 }
 
@@ -589,12 +590,10 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
   double simulation_external_source_strength = 0.0;
 #pragma omp parallel for reduction(+ : simulation_external_source_strength)
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
-    int material = source_regions_.material(sr);
     double volume = source_regions_.volume(sr) * simulation_volume_;
     for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[material * negroups_ + g];
       simulation_external_source_strength +=
-        source_regions_.external_source(sr, g) * sigma_t * volume;
+        source_regions_.external_source(sr, g) * volume;
     }
   }
 
@@ -1120,16 +1119,6 @@ void FlatSourceDomain::convert_external_sources()
       }
     }
   } // End loop over external sources
-
-// Divide the fixed source term by sigma t (to save time when applying each
-// iteration)
-#pragma omp parallel for
-  for (int64_t sr = 0; sr < n_source_regions_; sr++) {
-    for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
-      source_regions_.external_source(sr, g) /= sigma_t;
-    }
-  }
 }
 
 void FlatSourceDomain::flux_swap()
@@ -1256,16 +1245,6 @@ void FlatSourceDomain::set_adjoint_sources(const vector<double>& forward_flux)
   for (int64_t se = 0; se < n_source_elements_; se++) {
     source_regions_.external_source(se) = 1.0 / forward_flux[se];
   }
-
-  // Divide the fixed source term by sigma t (to save time when applying each
-  // iteration)
-#pragma omp parallel for
-  for (int64_t sr = 0; sr < n_source_regions_; sr++) {
-    for (int g = 0; g < negroups_; g++) {
-      double sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
-      source_regions_.external_source(sr, g) /= sigma_t;
-    }
-  }
 }
 
 void FlatSourceDomain::transpose_scattering_matrix()
@@ -1322,7 +1301,6 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
     // TODO: Consider splitting up this for loop into smaller, testable
     // functions
     for (int g_out = 0; g_out < negroups_; g_out++) {
-      double sigma_t_td = sigma_t_td_[material * negroups_ + g_out];
       double scatter_source_td = 0.0;
       double fission_source_td = 0.0;
 
@@ -1359,7 +1337,6 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
       double scalar_flux_time_derivative =
           (A0 * scalar_flux_td + scalar_flux_rhs_bd) * inverse_vbar;
       source_regions_.source_td(sr, g_out) -= scalar_flux_time_derivative;
-      source_regions_.source_td(sr, g_out) /= sigma_t_td;
     }
   }
 

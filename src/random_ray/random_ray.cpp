@@ -329,7 +329,7 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active, bool
     double tau = sigma_t * distance;
     double exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
     double new_delta_psi =
-      (angular_flux_[g] - domain_->source_regions_.source(sr, g)) * exponential;
+      (angular_flux_[g] - domain_->source_regions_.source(sr, g) / sigma_t) * exponential;
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
     if (td_transport) {
@@ -337,7 +337,7 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active, bool
       double tau_td = sigma_t_td * distance;
       double exponential_td = cjosey_exponential(tau_td); // exponential = 1 - exp(-tau)
       double new_delta_psi_td =
-        (angular_flux_td_[g] - domain_->source_regions_.source_td(sr, g)) * exponential_td;
+        (angular_flux_td_[g] - domain_->source_regions_.source_td(sr, g) / sigma_t_td) * exponential_td;
       delta_psi_td_[g] = new_delta_psi_td;
       angular_flux_td_[g] -= new_delta_psi_td;
     }
@@ -436,10 +436,10 @@ void RandomRay::attenuate_flux_linear_source(double distance, bool is_active)
     // calculated from the source gradients dot product with local centroid
     // and direction, respectively.
     double spatial_source =
-      domain_->source_regions_.source(sr, g) +
-      rm_local.dot(domain_->source_regions_.source_gradients(sr, g));
+      domain_->source_regions_.source(sr, g) / sigma_t +
+      rm_local.dot(domain_->source_regions_.source_gradients(sr, g) / sigma_t);
     double dir_source =
-      u().dot(domain_->source_regions_.source_gradients(sr, g));
+      u().dot(domain_->source_regions_.source_gradients(sr, g) / sigma_t);
 
     double gn = exponentialG(tau);
     double f1 = 1.0f - tau * gn;
@@ -557,12 +557,14 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
   int64_t sr = domain_->source_region_offsets_[i_cell] + cell_instance();
 
   for (int g = 0; g < negroups_; g++) {
-    angular_flux_[g] = domain_->source_regions_.source(sr, g);
+    double sigma_t = domain_->sigma_t_[domain_->source_regions_.material(sr) * negroups_ + g];
+    angular_flux_[g] = domain_->source_regions_.source(sr, g) / sigma_t;
   }
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     for (int g = 0; g < negroups_; g++) {
-      angular_flux_td_[g] = domain_->source_regions_.source_td(sr, g);
+      double sigma_t_td = domain_->sigma_t_td_[domain_->source_regions_.material(sr) * negroups_ + g];
+      angular_flux_td_[g] = domain_->source_regions_.source_td(sr, g) / sigma_t_td;
     }
   }
 }
