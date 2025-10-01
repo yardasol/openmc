@@ -91,6 +91,8 @@ void openmc_run_random_ray()
     if (settings::is_initial_condition) {
       batchwise_criticality_scalar_flux = sim.domain()->scalar_flux_batchwise_;
       batchwise_criticality_precursors = sim.domain()->precursors_batchwise_;
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+        batchwise_criticality_source = sim.domain()->source_batchwise_;
     }
   }
 
@@ -147,15 +149,19 @@ void openmc_run_random_ray()
 //==============================================================================
 // 2D time solution arrays
 vector<double> scalar_flux_bd;
-// vector<float> source_bd;
+vector<double> source_bd;
 vector<double> precursors_bd;
 
 // 1D RHS BD arrays
 vector<double> scalar_flux_rhs_bd;
 vector<double> precursors_rhs_bd;
 
+vector<double> source_rhs_bd;
+vector<double> scalar_flux_rhs_bd_2;
+
 vector<double> batchwise_criticality_scalar_flux;
 vector<double> batchwise_criticality_precursors;
+vector<double> batchwise_criticality_source;
 
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
   vector<double>& bd_vector, vector<double>& batchwise_vector)
@@ -204,6 +210,10 @@ void openmc_run_random_ray_time_dependent()
   initialize_bd_vector(settings::n_batches * n_delay_elements,
     RandomRaySimulation::bd_order_ + 1, precursors_bd,
     batchwise_criticality_precursors);
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+    initialize_bd_vector(settings::n_batches * n_source_elements,
+      RandomRaySimulation::bd_order_ + 1, source_bd,
+      batchwise_criticality_source);
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
@@ -230,6 +240,8 @@ void openmc_run_random_ray_time_dependent()
     // Increment BD vectors to a zero-valued solution to be filled in.
     increment_bd_vector(settings::n_batches * n_source_elements, &scalar_flux_bd);
     increment_bd_vector(settings::n_batches * n_delay_elements, &precursors_bd);
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+      increment_bd_vector(settings::n_batches * n_source_elements, &source_bd);
 
     // Compute RHS backward differences to be used later
     compute_rhs_backward_difference(settings::n_batches * n_source_elements,
@@ -238,6 +250,16 @@ void openmc_run_random_ray_time_dependent()
       RandomRaySimulation::bd_order_, precursors_bd, precursors_rhs_bd, 1);
     sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
     sim_td.domain()->precursors_rhs_bd_ = &precursors_rhs_bd;
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      compute_rhs_backward_difference(settings::n_batches * n_source_elements,
+        RandomRaySimulation::bd_order_, source_bd, source_rhs_bd, 1);
+      sim_td.domain()->source_rhs_bd_ = &source_rhs_bd;
+
+      compute_rhs_backward_difference(settings::n_batches * n_source_elements,
+        RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd_2,
+        2);
+      sim_td.domain()->scalar_flux_rhs_bd_2_ = &scalar_flux_rhs_bd_2;
+    }
 
     // Update time dependent cross section based on the density
     sim_td.domain()->update_material_density(i);
@@ -285,6 +307,14 @@ void openmc_run_random_ray_time_dependent()
     // Store final solutions in BD vectors
     update_bd_vector(&scalar_flux_bd, sim_td.domain()->scalar_flux_batchwise_, false);
     update_bd_vector(&precursors_bd, sim_td.domain()->precursors_batchwise_, false);
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      vector<double> forward_source_td;
+      sim_td.domain()->serialize_final_td_sources(forward_source_td);
+#pragma omp parallel for
+      for (uint64_t i = 0; i < forward_flux_td.size(); i++)
+        forward_source_td[i] *= normalization_factor;
+      update_bd_vector(&source_bd, sim_td.domain()->source_batchwise_, false);
+    }
   }
 }
 
@@ -588,10 +618,27 @@ void RandomRaySimulation::simulate()
       domain_->add_batchwise_scalar_flux();
     }
 
+    // Compute 2nd order flux time derivative for SDP
+    if (settings::run_mode == RunMode::TIME_DEPENDENT &&
+        RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+      domain_->compute_scalar_flux_time_derivative_2();
+
     // Update source term (scattering + fission)
     domain_->update_neutron_source(k_eff_);
-    if (settings::run_mode == RunMode::TIME_DEPENDENT)
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       domain_->update_neutron_source_td(k_eff_);
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+        domain_->compute_neutron_source_time_derivative();
+    }
+
+    // Store batchwise neutron source if using SDP
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        domain_->add_batchwise_source_td();
+      } else if (settings::is_initial_condition) {
+        domain_->add_batchwise_source();
+      }
+    }
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
     // zero
@@ -642,6 +689,14 @@ void RandomRaySimulation::simulate()
         domain_->accumulate_iteration_precursors();
       if (settings::run_mode == RunMode::TIME_DEPENDENT)
         domain_->accumulate_iteration_flux_td();
+
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+          domain_->accumulate_iteration_source_td();
+        } else if (settings::is_initial_condition) {
+          domain_->accumulate_iteration_source();
+        }
+      }
 
       if (mpi::master) {
         // Generate mapping between source regions and tallies

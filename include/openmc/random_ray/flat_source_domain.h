@@ -36,6 +36,7 @@ public:
   void reset_tally_volumes();
   void random_ray_tally();
   virtual void accumulate_iteration_flux();
+  void accumulate_iteration_source();
   void output_to_vtk() const;
   void all_reduce_replicated_source_regions();
   void convert_external_sources();
@@ -48,6 +49,7 @@ public:
   void transpose_scattering_matrix();
   void serialize_final_fluxes(vector<double>& flux);
   void add_batchwise_scalar_flux();
+  void add_batchwise_source();
 
   //----------------------------------------------------------------------------
   // Time dependent methods
@@ -55,14 +57,19 @@ public:
   double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);
   void compute_precursors(double k_eff);
+  void compute_neutron_source_time_derivative();
+  void compute_scalar_flux_time_derivative_2();
   void serialize_final_td_fluxes(vector<double>& flux_td);
+  void serialize_final_td_sources(vector<double>& flux_td);
   void serialize_final_precursors(vector<double>& precursors);
   void add_batchwise_precursors();
   void add_batchwise_scalar_flux_td();
+  void add_batchwise_source_td();
   void flux_td_swap();
   void precursors_swap();
   virtual void accumulate_iteration_flux_td();
   void accumulate_iteration_precursors();
+  void accumulate_iteration_source_td();
   void update_material_density(int i);
 
   //----------------------------------------------------------------------------
@@ -123,10 +130,14 @@ public:
 
   vector<double> precursors_batchwise_;
   vector<double> scalar_flux_batchwise_;
+  vector<double> source_batchwise_;
 
   // Pointers to RHS derivative vectors
   vector<double>* scalar_flux_rhs_bd_;
   vector<double>* precursors_rhs_bd_;
+
+  vector<double>* source_rhs_bd_;
+  vector<double>* scalar_flux_rhs_bd_2_;
 
 protected:
   //----------------------------------------------------------------------------

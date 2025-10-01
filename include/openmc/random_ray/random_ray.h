@@ -46,7 +46,7 @@ public:
   // Public data members
   vector<double> angular_flux_;
   vector<double> angular_flux_td_;
-
+  vector<double> angular_flux_td_prime_;
 
   bool ray_trace_only_ {false}; // If true, only perform geometry operations
 
@@ -55,6 +55,7 @@ private:
   // Private data members
   vector<double> delta_psi_;
   vector<double> delta_psi_td_;
+  vector<double> delta_psi_td_prime_;
   vector<MomentArray> delta_moments_;
 
   int negroups_;

@@ -114,6 +114,7 @@ public:
   vector<double> scalar_flux_old_;
   vector<double> scalar_flux_new_;
   vector<double> source_;
+  vector<double> source_final_;
   vector<float> external_source_;
   vector<double> scalar_flux_final_;
 
@@ -122,12 +123,17 @@ public:
   vector<MomentArray> flux_moments_new_;
   vector<MomentArray> flux_moments_t_;
 
-  // Energy group-wise 1D time-dependnet arrrays
+  // Energy group-wise 1D time-dependent arrrays
   vector<double> scalar_flux_td_old_;
   vector<double> scalar_flux_td_new_;
-  vector<double> source_td_;
   vector<double> scalar_flux_td_final_;
 
+  vector<double> source_td_;
+  vector<double> source_td_final_;
+
+  // Energy group-wise 1D derivative arrays
+  vector<double> source_time_derivative_;
+  vector<double> scalar_flux_time_derivative_2_;
 
   // Delay group-wise 1D arrays
   vector<double> precursors_old_;
@@ -314,6 +320,17 @@ public:
   double& source(int64_t se) { return source_[se]; }
   const double& source(int64_t se) const { return source_[se]; }
 
+  double& source_final(int64_t sr, int g)
+  {
+    return source_final_[index(sr, g)];
+  }
+  const double& source_final(int64_t sr, int g) const
+  {
+    return source_final_[index(sr, g)];
+  }
+  double& source_final(int64_t se) { return source_final_[se]; }
+  const double& source_final(int64_t se) const { return source_final_[se]; }
+
   double& scalar_flux_td_old(int64_t sr, int g)
   {
     return scalar_flux_td_old_[index(sr, g)];
@@ -360,6 +377,54 @@ public:
   const double& source_td(int64_t sr, int g) const { return source_td_[index(sr, g)]; }
   double& source_td(int64_t se) { return source_td_[se]; }
   const double& source_td(int64_t se) const { return source_td_[se]; }
+
+  double& source_td_final(int64_t sr, int g)
+  {
+    return source_td_final_[index(sr, g)];
+  }
+  const double& source_td_final(int64_t sr, int g) const
+  {
+    return source_td_final_[index(sr, g)];
+  }
+  double& source_td_final(int64_t se) { return source_td_final_[se]; }
+  const double& source_td_final(int64_t se) const
+  {
+    return source_td_final_[se];
+  }
+
+  double& source_time_derivative(int64_t sr, int g)
+  {
+    return source_time_derivative_[index(sr, g)];
+  }
+  const double& source_time_derivative(int64_t sr, int g) const
+  {
+    return source_time_derivative_[index(sr, g)];
+  }
+  double& source_time_derivative(int64_t se)
+  {
+    return source_time_derivative_[se];
+  }
+  const double& source_time_derivative(int64_t se) const
+  {
+    return source_time_derivative_[se];
+  }
+
+  double& scalar_flux_time_derivative_2(int64_t sr, int g)
+  {
+    return scalar_flux_time_derivative_2_[index(sr, g)];
+  }
+  const double& scalar_flux_time_derivative_2(int64_t sr, int g) const
+  {
+    return scalar_flux_time_derivative_2_[index(sr, g)];
+  }
+  double& scalar_flux_time_derivative_2(int64_t se)
+  {
+    return scalar_flux_time_derivative_2_[se];
+  }
+  const double& scalar_flux_time_derivative_2(int64_t se) const
+  {
+    return scalar_flux_time_derivative_2_[se];
+  }
 
   double& precursors_old(int64_t sr, int dg)
   {
@@ -496,6 +561,7 @@ private:
   vector<double> scalar_flux_new_;
   vector<double> scalar_flux_final_;
   vector<double> source_;
+  vector<double> source_final_;
   vector<float> external_source_;
 
   vector<MomentArray> source_gradients_;
@@ -503,11 +569,17 @@ private:
   vector<MomentArray> flux_moments_new_;
   vector<MomentArray> flux_moments_t_;
 
-  // SoA energy group-wise 2D timde-dependent arrays flattened to 1D
+  // SoA energy group-wise 2D time-dependent arrays flattened to 1D
   vector<double> scalar_flux_td_old_;
   vector<double> scalar_flux_td_new_;
   vector<double> scalar_flux_td_final_;
+
   vector<double> source_td_;
+  vector<double> source_td_final_;
+
+  // SoA energy group-wise 2D derivative arrays flattened to 1D
+  vector<double> source_time_derivative_;
+  vector<double> scalar_flux_time_derivative_2_;
 
   // SoA delay group-wise 2D arrays flattened to 1D
   vector<double> precursors_old_;
