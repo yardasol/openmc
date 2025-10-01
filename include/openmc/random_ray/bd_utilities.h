@@ -33,8 +33,8 @@ const std::map<int, vector<double>> bd_coefficients_second_order_ = {
 
 // bd vector funtions
 template<typename T>
-T bd_time_derivative(int index, vector<T>* bd_vector, int bd_order, double dt,
-  int offset, int derivative_order = 1)
+T bd_time_derivative(vector<T>& bd_vector, int64_t vector_size,
+  int index, int bd_order, double dt, int derivative_order = 1)
 {
   vector<double> bd_coeffs;
   int n_bd_terms;
@@ -51,11 +51,9 @@ T bd_time_derivative(int index, vector<T>* bd_vector, int bd_order, double dt,
     fatal_error("Only first or second order bd derivatives are allowed.");
   }
   T bd_derivative = 0.0;
-  for (int i = 0; i < n_bd_terms; i++) {
-    double coeff = bd_coeffs[i];
-    T x = (*bd_vector)[index + i * offset]; // n_source_elements_ in most cases
-    bd_derivative += coeff * x * time_factor;
-  }
+  for (int i = 0; i < n_bd_terms; i++)
+    bd_derivative += bd_coeffs[i] * bd_vector[index + i * vector_size];
+  bd_derivative *= time_factor;
   return bd_derivative;
 }
 
@@ -80,14 +78,27 @@ void update_bd_vector(
 
 // Take RHS derivative to solve for the current timestep
 template<typename T>
-T rhs_backwards_difference(vector<T>* bd_vector, int64_t vector_size, int idx,
-  const vector<double>& bd_coeffs, double dt)
+T rhs_backwards_difference(vector<T>& bd_vector, int64_t vector_size,
+  int index, int bd_order, double dt, int derivative_order = 1)
 {
-  int bd_order = bd_coeffs.size() - 1;
+  vector<double> bd_coeffs;
+  int n_bd_terms;
+  double time_factor;
+  if (derivative_order == 1) {
+    bd_coeffs = bd_coefficients_first_order_.at(bd_order);
+    time_factor = 1 / dt;
+    n_bd_terms = bd_order + 1;
+  } else if (derivative_order == 2) {
+    bd_coeffs = bd_coefficients_second_order_.at(bd_order);
+    n_bd_terms = bd_order + 2;
+    time_factor = 1 / (dt * dt);
+  } else {
+    fatal_error("Only first or second order bd derivatives are allowed.");
+  }
   T rhs_bd = 0.0;
-  for (int j = 1; j <= bd_order; j++)
-    rhs_bd += bd_coeffs[j] * (*bd_vector)[idx + j * vector_size];
-  rhs_bd /= dt;
+  for (int i = 1; i < n_bd_terms; i++)
+    rhs_bd += bd_coeffs[i] * bd_vector[index + i * vector_size];
+  rhs_bd *= time_factor;
   return rhs_bd;
 }
 

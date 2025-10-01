@@ -121,15 +121,10 @@ public:
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;
 
-  // Pointers to BDF vectors
-  // TODO: integrate this into source regions?
-  vector<double>* scalar_flux_bd_;
-  // vector<float>* source_bd_;
-  vector<double>* precursors_bd_;
-
   vector<double> precursors_batchwise_;
   vector<double> scalar_flux_batchwise_;
 
+  // Pointers to RHS derivative vectors
   vector<double>* scalar_flux_rhs_bd_;
   vector<double>* precursors_rhs_bd_;
 

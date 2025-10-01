@@ -91,17 +91,6 @@ void openmc_run_random_ray()
     if (settings::is_initial_condition) {
       batchwise_criticality_scalar_flux = sim.domain()->scalar_flux_batchwise_;
       batchwise_criticality_precursors = sim.domain()->precursors_batchwise_;
-
-      // if (RandomRay::time_mode_ == RandomRayTimeMode::SDP){
-      //  Set scalar_flux_old to criticality flux
-      //    for (int se = 0; se < sim.domain()->n_source_element; se++)
-      //      sim.domain()->source_regions_.scalar_flux_old(se) =
-      //      criticality_scalar_flux[se];
-
-      // Calculate source using criticality flux
-      //    sim.domain()->update_neutron_source(simulation::keff)
-      //    for (int sr = 0; sr < sim.domain()->n_source_regions; sr++)
-      //      criticality_source.push_back(sim.domain()
     }
   }
 
@@ -166,77 +155,34 @@ vector<double> scalar_flux_rhs_bd;
 vector<double> precursors_rhs_bd;
 
 vector<double> batchwise_criticality_scalar_flux;
-// vector<double> criticality_source;
 vector<double> batchwise_criticality_precursors;
 
-void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
-  int bd_order_max, vector<double>* scalar_flux_bd,
-  vector<double>* precursors_bd, vector<double>* batchwise_criticality_scalar_flux,
-  vector<double>* batchwise_criticality_precursors)
+void initialize_bd_vector(int64_t vector_size, int n_timesteps,
+  vector<double>& bd_vector, vector<double>& batchwise_vector)
 {
-  // We need bd_order_max + 2 solutions to take 2nd-order derivatives.
-  (*scalar_flux_bd).assign(settings::n_batches * n_source_elements * (bd_order_max + 2), 0.0);
-  //(*source_bd).assign(n_source_elements * (bd_order_max + 1), 0.0);
-  (*precursors_bd).assign(settings::n_batches * n_delay_elements * (bd_order_max + 1), 0.0);
-
-  // Store criticality solutions to the bd vectors
+  bd_vector.assign(vector_size * n_timesteps, 0.0);
 #pragma omp parallel for
-  for (int batch = 0; batch < settings::n_batches; batch++) {
-    for (int se = 0; se < n_source_elements; se++) {
-      (*scalar_flux_bd)[batch * n_source_elements + se] = (*batchwise_criticality_scalar_flux)[batch * n_source_elements + se];
-      //(*source_bd)[se] = (*criticality_source)[se];
-    }
-  }
-
-#pragma omp parallel for
-  for (int batch = 0; batch < settings::n_batches; batch++) {
-    for (int de = 0; de < n_delay_elements; de++) {
-      (*precursors_bd)[(batch * n_delay_elements) + de] = (*batchwise_criticality_precursors)[(batch * n_delay_elements) + de];
-    }
-  }    
+  for (int t = 0; t < n_timesteps - 1; t++) {
+    for (int i = 0; i < vector_size; i++) 
+      bd_vector[t * vector_size + i] = batchwise_vector[i];
+  } 
 }
 
-void compute_rhs_backward_differences(int64_t n_source_elements,
-  int64_t n_delay_elements, int bd_order, vector<double>* scalar_flux_bd,
-  vector<double>* precursors_bd, vector<double>& scalar_flux_rhs_bd,
-  vector<double>& precursors_rhs_bd)
+void compute_rhs_backward_difference(int64_t vector_size,
+  int bd_order, vector<double>& bd_vector,
+  vector<double>& rhs_bd_vector, int derivative_order)
 {
-  const vector<double> bd_coeffs = bd_coefficients_first_order_.at(bd_order);
-  double A0 = bd_coeffs[0] / settings::dt;
-
-  scalar_flux_rhs_bd.assign(settings::n_batches * n_source_elements, 0.0);
-  precursors_rhs_bd.assign(settings::n_batches * n_delay_elements, 0.0);
+  rhs_bd_vector.assign(vector_size, 0.0);
 #pragma omp parallel for
-  for (int batch = 0; batch < settings::n_batches; batch++) {
-    for (int se = 0; se < n_source_elements; se++) {
-      scalar_flux_rhs_bd[batch * n_source_elements + se] = rhs_backwards_difference(
-        scalar_flux_bd, settings::n_batches * n_source_elements, batch * n_source_elements + se, bd_coeffs, settings::dt);
-     }
-  }
-
-#pragma omp parallel for
-  for (int batch = 0; batch < settings::n_batches; batch++) {
-    for (int de = 0; de < n_delay_elements; de++) {
-      precursors_rhs_bd[batch * n_delay_elements + de] = rhs_backwards_difference(
-        precursors_bd, settings::n_batches * n_delay_elements, batch * n_delay_elements + de, bd_coeffs, settings::dt);
-    }
-  }   
+  for (int i = 0; i < vector_size; i++)
+    rhs_bd_vector[i] = rhs_backwards_difference(bd_vector, vector_size, i, bd_order, settings::dt, derivative_order);
 }
 
-void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
-  vector<double>* scalar_flux_bd, vector<double>* precursors_bd)
+void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector)
 {
-  vector<double> scalar_flux_blank;
-  // vector<float> source_blank;
-  vector<double> precursors_blank;
-
-  scalar_flux_blank.assign(settings::n_batches * n_source_elements, 0.0);
-  // source_blank.assign(n_source_elements, 0.0);
-  precursors_blank.assign(settings::n_batches * n_delay_elements, 0.0);
-
-  update_bd_vector(scalar_flux_bd, scalar_flux_blank, true);
-  // update_bd_vector(source_bd, source_blank, true);
-  update_bd_vector(precursors_bd, precursors_blank, true);
+  vector<double> vector_blank;
+  vector_blank.assign(vector_size, 0.0);
+  update_bd_vector(bd_vector, vector_blank, true);
 }
 
 void openmc_run_random_ray_time_dependent()
@@ -248,14 +194,16 @@ void openmc_run_random_ray_time_dependent()
 
   // Settings for timestepping loop
   settings::run_mode = RunMode::TIME_DEPENDENT;
-  int bd_order = 1;
   int64_t n_source_elements = batchwise_criticality_scalar_flux.size() / settings::n_batches;
   int64_t n_delay_elements = (n_source_elements / data::mg.num_energy_groups_) *
                              data::mg.num_delayed_groups_;
 
-  initialize_bd_vectors(n_source_elements, n_delay_elements,
-    RandomRaySimulation::bd_order_max_, &scalar_flux_bd, &precursors_bd,
-    &batchwise_criticality_scalar_flux, &batchwise_criticality_precursors);
+  initialize_bd_vector(settings::n_batches * n_source_elements,
+    RandomRaySimulation::bd_order_ + 2, scalar_flux_bd,
+    batchwise_criticality_scalar_flux);
+  initialize_bd_vector(settings::n_batches * n_delay_elements,
+    RandomRaySimulation::bd_order_ + 1, precursors_bd,
+    batchwise_criticality_precursors);
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
@@ -275,31 +223,27 @@ void openmc_run_random_ray_time_dependent()
     openmc_simulation_init();
 
     RandomRaySimulation sim_td;
-    sim_td.domain()->bd_order_ = bd_order;
-    sim_td.domain()->scalar_flux_bd_ = &scalar_flux_bd;
-    sim_td.domain()->precursors_bd_ = &precursors_bd;
+    sim_td.domain()->bd_order_ = RandomRaySimulation::bd_order_;
 
-    // TODO: Determine if defining the domain variables as pointers will cause
-    // issues with parallelization
+    // TODO: Consider using the same time-ordering for this vector instead of
+    // rotating it!!!
+    // Increment BD vectors to a zero-valued solution to be filled in.
+    increment_bd_vector(settings::n_batches * n_source_elements, &scalar_flux_bd);
+    increment_bd_vector(settings::n_batches * n_delay_elements, &precursors_bd);
+
+    // Compute RHS backward differences to be used later
+    compute_rhs_backward_difference(settings::n_batches * n_source_elements,
+      RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd, 1);
+    compute_rhs_backward_difference(settings::n_batches * n_delay_elements,
+      RandomRaySimulation::bd_order_, precursors_bd, precursors_rhs_bd, 1);
+    sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
+    sim_td.domain()->precursors_rhs_bd_ = &precursors_rhs_bd;
 
     // Update time dependent cross section based on the density
     sim_td.domain()->update_material_density(i);
 
     // Begin main simulation timer
     simulation::time_total.start();
-
-    // TODO: Consider using the same time-ordering for this vector instead of
-    // rotating it!!!
-    // Increment BD vectors to a zero-valued solution to be filled in.
-    increment_bd_vectors(
-      n_source_elements, n_delay_elements, &scalar_flux_bd, &precursors_bd);
-
-    // Compute RHS backward differences to be used later
-    compute_rhs_backward_differences(n_source_elements, n_delay_elements,
-      bd_order, &scalar_flux_bd, &precursors_bd, scalar_flux_rhs_bd,
-      precursors_rhs_bd);
-    sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
-    sim_td.domain()->precursors_rhs_bd_ = &precursors_rhs_bd;
 
     // Execute random ray simulation
     sim_td.simulate();
@@ -320,9 +264,9 @@ void openmc_run_random_ray_time_dependent()
     rename_statepoint_file(i + 1);
 
     // Normalize and save the final forward flux
+    double normalization_factor = 1 / (settings::n_batches - settings::n_inactive);
     double source_normalization_factor =
-      sim_td.domain()->compute_fixed_source_normalization_factor() /
-      (settings::n_batches - settings::n_inactive);
+      sim_td.domain()->compute_fixed_source_normalization_factor() * normalization_factor;
 
     // Alias for convenience
     vector<double> forward_flux_td;
@@ -336,17 +280,11 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->serialize_final_precursors(precursors);
 #pragma omp parallel for
     for (uint64_t i = 0; i < precursors.size(); i++)
-      precursors[i] *= source_normalization_factor;
+      precursors[i] *= normalization_factor;
 
     // Store final solutions in BD vectors
     update_bd_vector(&scalar_flux_bd, sim_td.domain()->scalar_flux_batchwise_, false);
-    // update_bd_vector(&source_bd, sim_td.domain()->source_, false);
     update_bd_vector(&precursors_bd, sim_td.domain()->precursors_batchwise_, false);
-
-    // Increment BD order up to the maximum allowed by the user
-    if (bd_order < RandomRaySimulation::bd_order_max_) {
-      bd_order++;
-    }
   }
 }
 
@@ -572,7 +510,7 @@ void validate_random_ray_inputs()
 //==============================================================================
 
 // Static variable declaration
-int RandomRaySimulation::bd_order_max_ {1};
+int RandomRaySimulation::bd_order_ {1};
 
 RandomRaySimulation::RandomRaySimulation()
   : negroups_(data::mg.num_energy_groups_)

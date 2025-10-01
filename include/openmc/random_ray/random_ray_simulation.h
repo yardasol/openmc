@@ -39,7 +39,7 @@ public:
   // Data members
 
   // Maximum order for BD approximation.
-  static int bd_order_max_;
+  static int bd_order_;
 
   // Random ray eigenvalue
   double k_eff_ {1.0};
@@ -73,24 +73,19 @@ void validate_random_ray_inputs();
 void openmc_run_random_ray_time_dependent();
 void rename_statepoint_file(int i);
 
-void initialize_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
-  int bd_order_max, vector<double>* scalar_flux_bd,
-  vector<double>* precursors_bd, vector<double>* batchwise_criticality_scalar_flux,
-  vector<double>* batchwise_criticality_precursors);
+void initialize_bd_vector(int64_t vector_size, int n_timesteps,
+  vector<double>& bd_vector, vector<double>& batchwise_vector);
 
-void compute_rhs_backward_differences(int64_t n_source_elements,
-  int64_t n_delay_elements, int bd_order, vector<double>* scalar_flux_bd,
-  vector<double>* precursors_bd, vector<double>& scalar_flux_rhs_bd,
-  vector<double>& precursors_rhs_bd);
+void compute_rhs_backward_difference(int64_t vector_size,
+  int bd_order, vector<double>& bd_vector,
+  vector<double>& rhs_bd_vector, int derivative_order);
 
-void increment_bd_vectors(int64_t n_source_elements, int64_t n_delay_elements,
-  vector<double>* scalar_flux_bd, vector<double>* precursors_bd);
+void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector);
 
 //==============================================================================
 // Time-dependent global variables
 //==============================================================================
 extern vector<double> scalar_flux_bdf;
-extern vector<float> source_bdf;
 extern vector<double> precursors_bdf;
 
 extern vector<double> scalar_flux_rhs_bd;
@@ -98,7 +93,6 @@ extern vector<double> precursors_rhs_bd;
 
 extern double criticality_k_eff;
 extern vector<double> batchwise_criticality_scalar_flux;
-extern vector<float> criticality_source;
 extern vector<double> batchwise_criticality_precursors;
 
 } // namespace openmc

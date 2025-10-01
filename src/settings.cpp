@@ -353,7 +353,7 @@ void get_run_parameters(pugi::xml_node node_base)
           fatal_error("Specified BD order of " + std::to_string(n) +
                       ". BD order must be between 1 and 6");
         } else {
-          RandomRaySimulation::bd_order_max_ = n;
+          RandomRaySimulation::bd_order_ = n;
         }
       } else {
         fatal_error("Specify BD approximation order in settings XML");
