@@ -190,7 +190,9 @@ RandomRay::RandomRay()
     delta_psi_(data::mg.num_energy_groups_),
     negroups_(data::mg.num_energy_groups_),
     angular_flux_td_(data::mg.num_energy_groups_),
-    delta_psi_td_(data::mg.num_energy_groups_)
+    delta_psi_td_(data::mg.num_energy_groups_),
+    angular_flux_td_prime_(data::mg.num_energy_groups_),
+    delta_psi_td_prime_(data::mg.num_energy_groups_)
 {
   if (source_shape_ == RandomRaySourceShape::LINEAR ||
       source_shape_ == RandomRaySourceShape::LINEAR_XY) {
@@ -337,7 +339,30 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active, bool
       double tau_td = sigma_t_td * distance;
       double exponential_td = cjosey_exponential(tau_td); // exponential = 1 - exp(-tau)
       double new_delta_psi_td =
-        (angular_flux_td_[g] - domain_->source_regions_.source_td(sr, g) / sigma_t_td) * exponential_td;
+        (angular_flux_td_[g] -
+          domain_->source_regions_.source_td(sr, g) / sigma_t_td) *
+        exponential_td;
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        double source_derivative =
+          domain_->source_regions_.source_time_derivative(sr, g);
+        double flux_derivative_2 =
+          domain_->source_regions_.scalar_flux_time_derivative_2(sr, g);
+        double T1 = (source_derivative - flux_derivative_2) / sigma_t_td;
+
+        // SDP terms for characteristic equation
+        double inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
+        new_delta_psi_td += T1 * inverse_vbar * exponential_td / sigma_t_td;
+        new_delta_psi_td += distance * inverse_vbar *
+                            (angular_flux_td_prime_[g] - T1) *
+                            (1 - exponential_td);
+
+        // Time Derivative Characteristic Equation
+        double new_delta_psi_td_prime =
+          (angular_flux_td_prime_[g] - T1) * exponential_td;
+        delta_psi_td_prime_[g] = new_delta_psi_td_prime;
+        angular_flux_td_prime_[g] -= new_delta_psi_td_prime;
+      }
+
       delta_psi_td_[g] = new_delta_psi_td;
       angular_flux_td_[g] -= new_delta_psi_td;
     }
@@ -565,6 +590,20 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
     for (int g = 0; g < negroups_; g++) {
       double sigma_t_td = domain_->sigma_t_td_[domain_->source_regions_.material(sr) * negroups_ + g];
       angular_flux_td_[g] = domain_->source_regions_.source_td(sr, g) / sigma_t_td;
+    }
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      for (int g = 0; g < negroups_; g++) {
+        double sigma_t_td =
+          domain_
+            ->sigma_t_td_[domain_->source_regions_.material(sr) * negroups_ +
+                          g];
+        double source_derivative =
+          domain_->source_regions_.source_time_derivative(sr, g);
+        double flux_derivative_2 =
+          domain_->source_regions_.scalar_flux_time_derivative_2(sr, g);
+        double T1 = (source_derivative - flux_derivative_2);
+        angular_flux_td_prime_[g] = T1 / sigma_t_td;
+      }
     }
   }
 }

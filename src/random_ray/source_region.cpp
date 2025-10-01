@@ -1,4 +1,5 @@
 #include "openmc/random_ray/source_region.h"
+#include "openmc/random_ray/random_ray.h"
 
 #include "openmc/error.h"
 #include "openmc/message_passing.h"
@@ -38,6 +39,16 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     precursors_new_.assign(ndgroups, 0.0);
     precursors_final_.assign(ndgroups, 0.0);
     tally_delay_task_.resize(ndgroups);
+  }
+
+  // SDP arrays
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    source_final_.assign(negroups, 0.0);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      source_td_final_.assign(negroups, 0.0);
+      source_time_derivative_.assign(negroups, 0.0);
+      scalar_flux_time_derivative_2_.assign(negroups, 0.0);
+    }
   }
 
   scalar_flux_new_.assign(negroups, 0.0);
@@ -87,6 +98,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
     scalar_flux_new_.push_back(sr.scalar_flux_new_[g]);
     scalar_flux_final_.push_back(sr.scalar_flux_final_[g]);
     source_.push_back(sr.source_[g]);
+
     if (settings::run_mode == RunMode::FIXED_SOURCE) {
       external_source_.push_back(sr.external_source_[g]);
     } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
@@ -94,6 +106,17 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       scalar_flux_td_new_.push_back(sr.scalar_flux_td_new_[g]);
       scalar_flux_td_final_.push_back(sr.scalar_flux_td_final_[g]);
       source_td_.push_back(sr.source_td_[g]);
+    }
+
+    // SDP arrays
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      source_final_.push_back(sr.source_final_[g]);
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        source_td_final_.push_back(sr.source_final_[g]);
+        source_time_derivative_.push_back(sr.source_time_derivative_[g]);
+        scalar_flux_time_derivative_2_.push_back(
+          sr.scalar_flux_time_derivative_2_[g]);
+      }
     }
 
     // Only store these fields if is_linear_ is true
@@ -159,6 +182,11 @@ void SourceRegionContainer::assign(
     scalar_flux_td_new_.clear();
     scalar_flux_td_final_.clear();
     source_td_.clear();
+
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      source_time_derivative_.clear();
+      scalar_flux_time_derivative_2_.clear();
+    }
   }
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT ||

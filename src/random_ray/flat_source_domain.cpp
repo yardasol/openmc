@@ -68,7 +68,7 @@ FlatSourceDomain::FlatSourceDomain()
 
   precursors_batchwise_.assign(settings::n_batches * n_delay_elements_, 0.0);
   scalar_flux_batchwise_.assign(settings::n_batches * n_source_elements_, 0.0);
-
+  source_batchwise_.assign(settings::n_batches * n_source_elements_, 0.0);
 
   // Sanity check
   if (source_region_id != n_source_regions_) {
@@ -123,6 +123,14 @@ void FlatSourceDomain::accumulate_iteration_flux()
   for (int64_t se = 0; se < n_source_elements_; se++) {
     source_regions_.scalar_flux_final(se) +=
       source_regions_.scalar_flux_new(se);
+  }
+}
+
+void FlatSourceDomain::accumulate_iteration_source()
+{
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    source_regions_.source_final(se) += source_regions_.source(se);
   }
 }
 
@@ -210,6 +218,20 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
     double sigma_t_td = sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
     source_regions_.scalar_flux_td_new(sr, g) /= (sigma_t_td * volume);
     source_regions_.scalar_flux_td_new(sr, g) += source_regions_.source_td(sr, g) / sigma_t_td;
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      double inverse_vbar =
+        inverse_vbar_[source_regions_.material(sr) * negroups_ + g];
+      double scalar_flux_rhs_bd =
+        (*scalar_flux_rhs_bd_)[(simulation::current_batch - 1) *
+                                 n_source_regions_ * negroups_ +
+                               sr * negroups_ + g_out];
+      double A0 =
+        (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
+      source_regions_.scalar_flux_td_new(sr, g) -=
+        scalar_flux_rhs_bd * inverse_vbar / sigma_t;
+      source_regions_.scalar_flux_td_new(sr, g) /=
+        1 + A0 * inverse_vbar / sigma_t;
+    }
   }
 }
 
@@ -1330,13 +1352,20 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
       source_regions_.source_td(sr, g_out) += delayed_source;
 
       // Add derivative of scalar flux (TI method)
-      double inverse_vbar = inverse_vbar_[material * negroups_ + g_out];
-      double scalar_flux_rhs_bd = (*scalar_flux_rhs_bd_)[(simulation::current_batch - 1) * n_source_regions_ * negroups_ + sr * negroups_ + g_out];
-      double A0 = (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
-      double scalar_flux_td = source_regions_.scalar_flux_td_old(sr, g_out);
-      double scalar_flux_time_derivative =
-          (A0 * scalar_flux_td + scalar_flux_rhs_bd) * inverse_vbar;
-      source_regions_.source_td(sr, g_out) -= scalar_flux_time_derivative;
+      if (RandomRay::time_mode_ == RandomRayTimeMode::TI) {
+        double inverse_vbar = inverse_vbar_[material * negroups_ + g_out];
+        double scalar_flux_rhs_bd =
+          (*scalar_flux_rhs_bd_)[(simulation::current_batch - 1) *
+                                   n_source_regions_ * negroups_ +
+                                 sr * negroups_ + g_out];
+        double A0 =
+          (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
+        double scalar_flux_td = source_regions_.scalar_flux_td_old(sr, g_out);
+        double scalar_flux_time_derivative =
+          A0 * scalar_flux_td + scalar_flux_rhs_bd;
+        source_regions_.source_td(sr, g_out) -=
+          scalar_flux_time_derivative * inverse_vbar;
+      }
     }
   }
 
@@ -1397,6 +1426,35 @@ void FlatSourceDomain::compute_precursors(double k_eff)
   }
 }
 
+void FlatSourceDomain::compute_neutron_source_time_derivative()
+{
+  double A0 = (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    double source_rhs_bd =
+      (*source_rhs_bd_)[(simulation::current_batch - 1) * n_source_elements_ +
+                        se];
+    double source_td = source_regions_.source_td(se);
+    source_regions_.source_time_derivative(se) = A0 * source_td + source_rhs_bd;
+  }
+}
+
+void FlatSourceDomain::compute_scalar_flux_time_derivative_2()
+{
+  double B0 = (bd_coefficients_second_order_.at(bd_order_))[0] /
+              (settings::dt * settings::dt);
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    double scalar_flux_rhs_bd_2 =
+      (*scalar_flux_rhs_bd_2_)[(simulation::current_batch - 1) *
+                                 n_source_elements_ +
+                               se];
+    double scalar_flux_td = source_regions_.scalar_flux_td_old(se);
+    source_regions_.scalar_flux_time_derivative_2(se) =
+      B0 * scalar_flux_td + scalar_flux_rhs_bd_2;
+  }
+}
+
 void FlatSourceDomain::serialize_final_td_fluxes(vector<double>& flux_td)
 {
   // Ensure array is correct size
@@ -1405,6 +1463,17 @@ void FlatSourceDomain::serialize_final_td_fluxes(vector<double>& flux_td)
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
     flux_td[se] = source_regions_.scalar_flux_td_final(se);
+  }
+}
+
+void FlatSourceDomain::serialize_final_td_sources(vector<double>& source_td)
+{
+  // Ensure array is correct size
+  source_td.resize(n_source_regions_ * negroups_);
+  // Serialize the final sources for output
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    source_td[se] = source_regions_.source_td_final(se);
   }
 }
 
@@ -1437,12 +1506,32 @@ void FlatSourceDomain::add_batchwise_scalar_flux()
   }
 }
 
+void FlatSourceDomain::add_batchwise_source()
+{
+// Serialize the precursors for output
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    source_batchwise_[(simulation::current_batch - 1) * n_source_elements_ +
+                      se] = source_regions_.source(se);
+  }
+}
+
 void FlatSourceDomain::add_batchwise_scalar_flux_td()
 {
 // Serialize the precursors for output
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
     scalar_flux_batchwise_[(simulation::current_batch - 1) * n_source_elements_ + se] = source_regions_.scalar_flux_td_old(se);
+  }
+}
+
+void FlatSourceDomain::add_batchwise_source_td()
+{
+// Serialize the precursors for output
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    source_batchwise_[(simulation::current_batch - 1) * n_source_elements_ +
+                      se] = source_regions_.source_td(se);
   }
 }
 
@@ -1462,6 +1551,14 @@ void FlatSourceDomain::accumulate_iteration_flux_td()
   for (int64_t se = 0; se < n_source_elements_; se++) {
     source_regions_.scalar_flux_td_final(se) +=
       source_regions_.scalar_flux_td_new(se);
+  }
+}
+
+void FlatSourceDomain::accumulate_iteration_source_td()
+{
+#pragma omp parallel for
+  for (int64_t se = 0; se < n_source_elements_; se++) {
+    source_regions_.source_td_final(se) += source_regions_.source_td(se);
   }
 }
 
