@@ -238,7 +238,6 @@ double RandomRay::avg_miss_rate_;
 int RandomRay::bd_order_ {1};
 unique_ptr<Source> RandomRay::ray_source_;
 RandomRaySourceShape RandomRay::source_shape_ {RandomRaySourceShape::FLAT};
-bool RandomRay::mesh_subdivision_enabled_ {false};
 RandomRaySampleMethod RandomRay::sample_method_ {RandomRaySampleMethod::PRNG};
 RandomRayTimeMethod RandomRay::time_method_ {RandomRayTimeMethod::TI};
 int64_t RandomRay::n_source_regions_;
@@ -345,71 +344,60 @@ void RandomRay::event_advance_ray()
 
 void RandomRay::attenuate_flux(double distance, bool is_active, double offset)
 {
-  // Determine source region index etc.
-  int i_cell = lowest_coord().cell;
-
-  // The base source region is the spatial region index
-  int64_t sr = domain_->source_region_offsets_[i_cell] + cell_instance();
+  // Lookup base source region index
+  int64_t sr = domain_->lookup_base_source_region_idx(*this);
 
   // Perform ray tracing across mesh
-  if (mesh_subdivision_enabled_) {
-    // Determine the mesh index for the base source region, if any
-    int mesh_idx = domain_->base_source_regions_.mesh(sr);
+  // Determine the mesh index for the base source region, if any
+  int mesh_idx = domain_->lookup_mesh_idx(sr);
 
-    if (mesh_idx == C_NONE) {
-      // If there's no mesh being applied to this cell, then
-      // we just attenuate the flux as normal, and set
-      // the mesh bin to 0
-      attenuate_flux_inner(distance, is_active, sr, 0, r());
-    } else {
-      // If there is a mesh being applied to this cell, then
-      // we loop over all the bin crossings and attenuate
-      // separately.
-      Mesh* mesh = model::meshes[mesh_idx].get();
-
-      // We adjust the start and end positions of the ray slightly
-      // to accomodate for floating point precision issues that tend
-      // to occur at mesh boundaries that overlap with geometry lattice
-      // boundaries.
-      Position start = r() + (offset + TINY_BIT) * u();
-      Position end = start + (distance - 2.0 * TINY_BIT) * u();
-      double reduced_distance = (end - start).norm();
-
-      // Ray trace through the mesh and record bins and lengths
-      mesh_bins_.resize(0);
-      mesh_fractional_lengths_.resize(0);
-      mesh->bins_crossed(start, end, u(), mesh_bins_, mesh_fractional_lengths_);
-
-      // Loop over all mesh bins and attenuate flux
-      for (int b = 0; b < mesh_bins_.size(); b++) {
-        double physical_length = reduced_distance * mesh_fractional_lengths_[b];
-        attenuate_flux_inner(
-          physical_length, is_active, sr, mesh_bins_[b], start);
-        start += physical_length * u();
-      }
-    }
+  if (mesh_idx == C_NONE) {
+    // If there's no mesh being applied to this cell, then
+    // we just attenuate the flux as normal, and set
+    // the mesh bin to 0
+    attenuate_flux_inner(distance, is_active, sr, 0, r());
   } else {
-    attenuate_flux_inner(distance, is_active, sr, C_NONE, r());
+    // If there is a mesh being applied to this cell, then
+    // we loop over all the bin crossings and attenuate
+    // separately.
+    Mesh* mesh = model::meshes[mesh_idx].get();
+
+    // We adjust the start and end positions of the ray slightly
+    // to accomodate for floating point precision issues that tend
+    // to occur at mesh boundaries that overlap with geometry lattice
+    // boundaries.
+    Position start = r() + (offset + TINY_BIT) * u();
+    Position end = start + (distance - 2.0 * TINY_BIT) * u();
+    double reduced_distance = (end - start).norm();
+
+    // Ray trace through the mesh and record bins and lengths
+    mesh_bins_.resize(0);
+    mesh_fractional_lengths_.resize(0);
+    mesh->bins_crossed(start, end, u(), mesh_bins_, mesh_fractional_lengths_);
+
+    // Loop over all mesh bins and attenuate flux
+    for (int b = 0; b < mesh_bins_.size(); b++) {
+      double physical_length = reduced_distance * mesh_fractional_lengths_[b];
+      attenuate_flux_inner(
+        physical_length, is_active, sr, mesh_bins_[b], start);
+      start += physical_length * u();
+    }
   }
 }
 
 void RandomRay::attenuate_flux_inner(
   double distance, bool is_active, int64_t sr, int mesh_bin, Position r)
 {
+  SourceRegionKey sr_key {sr, mesh_bin};
   SourceRegionHandle srh;
-  if (mesh_subdivision_enabled_) {
-    srh = domain_->get_subdivided_source_region_handle(
-      sr, mesh_bin, r, distance, u());
-    if (srh.is_numerical_fp_artifact_) {
-      return;
-    }
-  } else {
-    srh = domain_->source_regions_.get_source_region_handle(sr);
+  srh = domain_->get_subdivided_source_region_handle(sr_key, r, u());
+  if (srh.is_numerical_fp_artifact_) {
+    return;
   }
 
   switch (source_shape_) {
   case RandomRaySourceShape::FLAT:
-    if (this->material() == MATERIAL_VOID) {
+    if (srh.material() == MATERIAL_VOID) {
       attenuate_flux_flat_source_void(srh, distance, is_active, r);
     } else {
       attenuate_flux_flat_source(srh, distance, is_active, r);
@@ -421,7 +409,7 @@ void RandomRay::attenuate_flux_inner(
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       fatal_error("LINEAR and LINEAR_XY source shapes unimplemented for time-dependent transport.");
     } else {
-      if (this->material() == MATERIAL_VOID) {
+      if (srh.material() == MATERIAL_VOID) {
         attenuate_flux_linear_source_void(srh, distance, is_active, r);
       } else {
         attenuate_flux_linear_source(srh, distance, is_active, r);
@@ -452,16 +440,19 @@ void RandomRay::attenuate_flux_flat_source(
   // The number of geometric intersections is counted for reporting purposes
   n_event()++;
 
+  // Get material
+  int material = srh.material();
+
   // MOC incoming flux attenuation + source contribution/attenuation equation
   for (int g = 0; g < negroups_; g++) {
-    double sigma_t = domain_->sigma_t_[srh.material() * negroups_ + g];
+    double sigma_t = domain_->sigma_t_[material * negroups_ + g];
     double tau = sigma_t * distance;
     double exponential = cjosey_exponential(tau); // exponential = 1 - exp(-tau)
     double new_delta_psi = (angular_flux_[g] - srh.source(g)) * exponential;
     delta_psi_[g] = new_delta_psi;
     angular_flux_[g] -= new_delta_psi;
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      double sigma_t_td = domain_->sigma_t_td_[srh.material() * negroups_ + g];
+      double sigma_t_td = domain_->sigma_t_td_[material * negroups_ + g];
       double tau_td = sigma_t_td * distance;
       double exponential_td = cjosey_exponential(tau_td); // exponential = 1 - exp(-tau)
       double new_delta_psi_td =
@@ -472,7 +463,7 @@ void RandomRay::attenuate_flux_flat_source(
         double T1 = (source_derivative - flux_derivative_2);
 
         // SDP terms for characteristic equation
-        double inverse_vbar = domain_->inverse_vbar_[srh.material() * negroups_ + g];
+        double inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
         new_delta_psi_td += T1 * inverse_vbar * exponential_td / sigma_t_td;
         new_delta_psi_td += distance * inverse_vbar *
                             (angular_flux_td_prime_[g] - T1) *
@@ -531,8 +522,7 @@ void RandomRay::attenuate_flux_flat_source_void(
   // The number of geometric intersections is counted for reporting purposes
   n_event()++;
 
-  // The source element is the energy-specific region index
-  int material = this->material();
+  int material = srh.material();
 
   // If ray is in the active phase (not in dead zone), make contributions to
   // source region bookkeeping
@@ -586,7 +576,7 @@ void RandomRay::attenuate_flux_linear_source(
   // The number of geometric intersections is counted for reporting purposes
   n_event()++;
 
-  int material = this->material();
+  int material = srh.material();
 
   Position& centroid = srh.centroid();
   Position midpoint = r + u() * (distance / 2.0);
@@ -859,27 +849,12 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
       cell_born() = lowest_coord().cell;
   }
 
+  SourceRegionKey sr_key = domain_->lookup_source_region_key(*this);
+  SourceRegionHandle srh =
+    domain_->get_subdivided_source_region_handle(sr_key, r(), u());
+
   // Initialize ray's starting angular flux to starting location's isotropic
   // source
-  int i_cell = lowest_coord().cell;
-  int64_t sr = domain_->source_region_offsets_[i_cell] + cell_instance();
-
-  SourceRegionHandle srh;
-  if (mesh_subdivision_enabled_) {
-    int mesh_idx = domain_->base_source_regions_.mesh(sr);
-    int mesh_bin;
-    if (mesh_idx == C_NONE) {
-      mesh_bin = 0;
-    } else {
-      Mesh* mesh = model::meshes[mesh_idx].get();
-      mesh_bin = mesh->get_bin(r());
-    }
-    srh =
-      domain_->get_subdivided_source_region_handle(sr, mesh_bin, r(), 0.0, u());
-  } else {
-    srh = domain_->source_regions_.get_source_region_handle(sr);
-  }
-
   if (!srh.is_numerical_fp_artifact_) {
     for (int g = 0; g < negroups_; g++) {
       angular_flux_[g] = srh.source(g);
@@ -891,14 +866,9 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
       }
       if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
         for (int g = 0; g < negroups_; g++) {
-          double sigma_t_td =
-            domain_
-              ->sigma_t_td_[srh.material() * negroups_ +
-                            g];
-          double source_derivative =
-            srh.source_time_derivative(g);
-          double flux_derivative_2 =
-            srh.scalar_flux_time_derivative_2(g);
+          double sigma_t_td = domain_ ->sigma_t_td_[srh.material() * negroups_ + g];
+          double source_derivative = srh.source_time_derivative(g);
+          double flux_derivative_2 = srh.scalar_flux_time_derivative_2(g);
           // T1
           angular_flux_td_prime_[g] = source_derivative - flux_derivative_2;
         }
