@@ -292,10 +292,7 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
       double inverse_vbar =
         inverse_vbar_[source_regions_.material(sr) * negroups_ + g];
-      double scalar_flux_rhs_bd =
-        (*scalar_flux_rhs_bd_)[(simulation::current_batch - 1) *
-                                 n_source_regions_ * negroups_ +
-                               sr * negroups_ + g_out];
+      double scalar_flux_rhs_bd = (*scalar_flux_rhs_bd_)[index(sr, g)];
       double A0 =
         (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
       source_regions_.scalar_flux_td_new(sr, g) -=
@@ -1440,10 +1437,7 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
       // Add derivative of scalar flux (TI method)
       if (RandomRay::time_mode_ == RandomRayTimeMode::TI) {
         double inverse_vbar = inverse_vbar_[material * negroups_ + g_out];
-        double scalar_flux_rhs_bd =
-          (*scalar_flux_rhs_bd_)[(simulation::current_batch - 1) *
-                                   n_source_regions_ * negroups_ +
-                                 sr * negroups_ + g_out];
+        double scalar_flux_rhs_bd = (*scalar_flux_rhs_bd_)[index(sr, g_out)];
         double A0 =
           (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
         double scalar_flux_td = source_regions_.scalar_flux_td_old(sr, g_out);
@@ -1500,7 +1494,7 @@ void FlatSourceDomain::compute_precursors(double k_eff)
         }
         delayed_fission_source /= k_eff;
 
-        double precursor_rhs_bd = (*precursors_rhs_bd_)[(simulation::current_batch - 1) * n_source_regions_ * ndgroups_ + sr * ndgroups_ + dg];
+        double precursor_rhs_bd = (*precursors_rhs_bd_)[dindex(sr, dg)];
 
         source_regions_.precursors_new(sr, dg) =
           delayed_fission_source - precursor_rhs_bd;
@@ -1552,17 +1546,13 @@ void FlatSourceDomain::compute_precursors_analytic_integration()
         double S_f = source_regions_.S_f(sr, dg);
         double S_f_nm1 =
           (*S_f_bd_)[1 * settings::n_batches * n_delay_elements_ +
-                     (simulation::current_batch - 1) * n_delay_elements_ +
-                     sr * ndgroups_ + dg];
+                     dindex(sr, dg)];
         double S_f_nm2 =
           (*S_f_bd_)[2 * settings::n_batches * n_delay_elements_ +
-                     (simulation::current_batch - 1) * n_delay_elements_ +
-                     sr * ndgroups_ + dg];
+                     dindex(sr, dg)];
         double C_nm1 =
           (*precursors_bd_)[1 * settings::n_batches * n_delay_elements_ +
-                            (simulation::current_batch - 1) *
-                              n_delay_elements_ +
-                            sr * ndgroups_ + dg];
+                            dindex(sr, dg)];
         source_regions_.precursors_new(sr, dg) = S_f * omega_n(lam_tilde);
         source_regions_.precursors_new(sr, dg) +=
           S_f_nm1 * omega_nm1(lam_tilde);
@@ -1580,9 +1570,7 @@ void FlatSourceDomain::compute_neutron_source_time_derivative()
   double A0 = (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
-    double source_rhs_bd =
-      (*source_rhs_bd_)[(simulation::current_batch - 1) * n_source_elements_ +
-                        se];
+    double source_rhs_bd = (*source_rhs_bd_)[index(se)];
     double source_td = source_regions_.source_td(se);
     source_regions_.source_time_derivative(se) = A0 * source_td + source_rhs_bd;
   }
@@ -1594,10 +1582,7 @@ void FlatSourceDomain::compute_scalar_flux_time_derivative_2()
               (settings::dt * settings::dt);
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
-    double scalar_flux_rhs_bd_2 =
-      (*scalar_flux_rhs_bd_2_)[(simulation::current_batch - 1) *
-                                 n_source_elements_ +
-                               se];
+    double scalar_flux_rhs_bd_2 = (*scalar_flux_rhs_bd_2_)[index(se)];
     double scalar_flux_td = source_regions_.scalar_flux_td_old(se);
     source_regions_.scalar_flux_time_derivative_2(se) =
       B0 * scalar_flux_td + scalar_flux_rhs_bd_2;
@@ -1653,7 +1638,7 @@ void FlatSourceDomain::add_batchwise_precursors()
 // Serialize the precursors for output
 #pragma omp parallel for
   for (int64_t de = 0; de < n_delay_elements_; de++) {
-    precursors_batchwise_[(simulation::current_batch - 1) * n_delay_elements_ + de] = source_regions_.precursors_new(de);
+    precursors_batchwise_[dindex(de)] = source_regions_.precursors_new(de);
   }
 }
 
@@ -1662,7 +1647,7 @@ void FlatSourceDomain::add_batchwise_scalar_flux()
 // Serialize the precursors for output
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
-    scalar_flux_batchwise_[(simulation::current_batch - 1) * n_source_elements_ + se] = source_regions_.scalar_flux_old(se);
+    scalar_flux_batchwise_[index(se)] = source_regions_.scalar_flux_old(se);
   }
 }
 
@@ -1671,8 +1656,7 @@ void FlatSourceDomain::add_batchwise_source()
 // Serialize the precursors for output
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
-    source_batchwise_[(simulation::current_batch - 1) * n_source_elements_ +
-                      se] = source_regions_.source(se);
+    source_batchwise_[index(se)] = source_regions_.source(se);
   }
 }
 
@@ -1681,7 +1665,7 @@ void FlatSourceDomain::add_batchwise_scalar_flux_td()
 // Serialize the precursors for output
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
-    scalar_flux_batchwise_[(simulation::current_batch - 1) * n_source_elements_ + se] = source_regions_.scalar_flux_td_old(se);
+    scalar_flux_batchwise_[index(se)] = source_regions_.scalar_flux_td_old(se);
   }
 }
 
@@ -1690,8 +1674,7 @@ void FlatSourceDomain::add_batchwise_source_td()
 // Serialize the precursors for output
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
-    source_batchwise_[(simulation::current_batch - 1) * n_source_elements_ +
-                      se] = source_regions_.source_td(se);
+    source_batchwise_[index(se)] = source_regions_.source_td(se);
   }
 }
 
@@ -1700,8 +1683,7 @@ void FlatSourceDomain::add_batchwise_S_f()
 // Serialize the precursors for output
 #pragma omp parallel for
   for (int64_t de = 0; de < n_delay_elements_; de++) {
-    S_f_batchwise_[(simulation::current_batch - 1) * n_delay_elements_ + de] =
-      source_regions_.S_f(de);
+    S_f_batchwise_[dindex(de)] = source_regions_.S_f(de);
   }
 }
 
