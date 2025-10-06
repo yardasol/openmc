@@ -41,6 +41,7 @@ public:
   static unique_ptr<Source> ray_source_;     // Starting source for ray sampling
   static RandomRaySourceShape source_shape_; // Flag for linear source
   static RandomRayTimeMode time_mode_;       // Flag for time mode
+  static RandomRayPrecursorMode precursor_mode_; // Flag for precursor mode
 
   //----------------------------------------------------------------------------
   // Public data members

@@ -68,14 +68,13 @@ void openmc_run_random_ray()
     // Normalize and save the final forward flux
     sim.domain()->serialize_final_fluxes(forward_flux);
 
+    double normalization_factor =
+      1.0 / (settings::n_batches - settings::n_inactive);
     double source_normalization_factor =
-      sim.domain()->compute_fixed_source_normalization_factor() /
-      (settings::n_batches - settings::n_inactive);
+      sim.domain()->compute_fixed_source_normalization_factor() *
+      normalization_factor;
 
-#pragma omp parallel for
-    for (uint64_t i = 0; i < forward_flux.size(); i++) {
-      forward_flux[i] *= source_normalization_factor;
-    }
+    normalize_serialized_vector(forward_flux, source_normalization_factor);
 
     // Finalize OpenMC
     openmc_simulation_finalize();
@@ -93,6 +92,9 @@ void openmc_run_random_ray()
       batchwise_criticality_precursors = sim.domain()->precursors_batchwise_;
       if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
         batchwise_criticality_source = sim.domain()->source_batchwise_;
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+        batchwise_criticality_S_f = sim.domain()->S_f_batchwise_;
+      }
     }
   }
 
@@ -151,6 +153,7 @@ void openmc_run_random_ray()
 vector<double> scalar_flux_bd;
 vector<double> source_bd;
 vector<double> precursors_bd;
+vector<double> S_f_bd;
 
 // 1D RHS BD arrays
 vector<double> scalar_flux_rhs_bd;
@@ -159,18 +162,20 @@ vector<double> precursors_rhs_bd;
 vector<double> source_rhs_bd;
 vector<double> scalar_flux_rhs_bd_2;
 
+double criticality_k_eff;
 vector<double> batchwise_criticality_scalar_flux;
 vector<double> batchwise_criticality_precursors;
 vector<double> batchwise_criticality_source;
+vector<double> batchwise_criticality_S_f;
 
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
-  vector<double>& bd_vector, vector<double>& batchwise_vector)
+  vector<double>& bd_vector, vector<double>& vector)
 {
   bd_vector.assign(vector_size * n_timesteps, 0.0);
 #pragma omp parallel for
   for (int t = 0; t < n_timesteps - 1; t++) {
-    for (int i = 0; i < vector_size; i++) 
-      bd_vector[t * vector_size + i] = batchwise_vector[i];
+    for (int i = 0; i < vector_size; i++)
+      bd_vector[t * vector_size + i] = vector[i];
   } 
 }
 
@@ -191,6 +196,14 @@ void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector)
   update_bd_vector(bd_vector, vector_blank, true);
 }
 
+void normalize_serialized_vector(
+  vector<double>& vector, double normalization_factor)
+{
+#pragma omp parallel for
+  for (uint64_t i = 0; i < vector.size(); i++)
+    vector[i] *= normalization_factor;
+}
+
 void openmc_run_random_ray_time_dependent()
 {
   // Criticality solve to get initial condition
@@ -200,9 +213,12 @@ void openmc_run_random_ray_time_dependent()
 
   // Settings for timestepping loop
   settings::run_mode = RunMode::TIME_DEPENDENT;
+  settings::is_initial_condition = false;
   int64_t n_source_elements = batchwise_criticality_scalar_flux.size() / settings::n_batches;
-  int64_t n_delay_elements = (n_source_elements / data::mg.num_energy_groups_) *
-                             data::mg.num_delayed_groups_;
+  int64_t n_source_regions = n_source_elements / data::mg.num_energy_groups_;
+  int64_t n_delay_elements = n_source_regions * data::mg.num_delayed_groups_;
+  int64_t n_material_elements =
+    data::mg.macro_xs_.size() * data::mg.num_energy_groups_;
 
   initialize_bd_vector(settings::n_batches * n_source_elements,
     RandomRaySimulation::bd_order_ + 2, scalar_flux_bd,
@@ -214,6 +230,10 @@ void openmc_run_random_ray_time_dependent()
     initialize_bd_vector(settings::n_batches * n_source_elements,
       RandomRaySimulation::bd_order_ + 1, source_bd,
       batchwise_criticality_source);
+
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+    initialize_bd_vector(settings::n_batches * n_delay_elements, 3, S_f_bd,
+      batchwise_criticality_S_f);
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
@@ -242,6 +262,8 @@ void openmc_run_random_ray_time_dependent()
     increment_bd_vector(settings::n_batches * n_delay_elements, &precursors_bd);
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
       increment_bd_vector(settings::n_batches * n_source_elements, &source_bd);
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+      increment_bd_vector(settings::n_batches * n_delay_elements, &S_f_bd);
 
     // Compute RHS backward differences to be used later
     compute_rhs_backward_difference(settings::n_batches * n_source_elements,
@@ -259,6 +281,10 @@ void openmc_run_random_ray_time_dependent()
         RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd_2,
         2);
       sim_td.domain()->scalar_flux_rhs_bd_2_ = &scalar_flux_rhs_bd_2;
+    }
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+      sim_td.domain()->precursors_bd_ = &precursors_bd;
+      sim_td.domain()->S_f_bd_ = &S_f_bd;
     }
 
     // Update time dependent cross section based on the density
@@ -286,34 +312,36 @@ void openmc_run_random_ray_time_dependent()
     rename_statepoint_file(i + 1);
 
     // Normalize and save the final forward flux
-    double normalization_factor = 1 / (settings::n_batches - settings::n_inactive);
+    double normalization_factor =
+      1.0 / (settings::n_batches - settings::n_inactive);
     double source_normalization_factor =
-      sim_td.domain()->compute_fixed_source_normalization_factor() * normalization_factor;
+      sim_td.domain()->compute_fixed_source_normalization_factor() *
+      normalization_factor;
 
     // Alias for convenience
     vector<double> forward_flux_td;
     sim_td.domain()->serialize_final_td_fluxes(forward_flux_td);
-#pragma omp parallel for
-    for (uint64_t i = 0; i < forward_flux_td.size(); i++)
-      forward_flux_td[i] *= source_normalization_factor;
+    normalize_serialized_vector(forward_flux_td, source_normalization_factor);
+    update_bd_vector(
+      &scalar_flux_bd, sim_td.domain()->scalar_flux_batchwise_, false);
 
     // Normalize final precursors by number of active batches
     vector<double> precursors;
     sim_td.domain()->serialize_final_precursors(precursors);
-#pragma omp parallel for
-    for (uint64_t i = 0; i < precursors.size(); i++)
-      precursors[i] *= normalization_factor;
-
-    // Store final solutions in BD vectors
-    update_bd_vector(&scalar_flux_bd, sim_td.domain()->scalar_flux_batchwise_, false);
+    normalize_serialized_vector(precursors, normalization_factor);
     update_bd_vector(&precursors_bd, sim_td.domain()->precursors_batchwise_, false);
+
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
       vector<double> forward_source_td;
       sim_td.domain()->serialize_final_td_sources(forward_source_td);
-#pragma omp parallel for
-      for (uint64_t i = 0; i < forward_flux_td.size(); i++)
-        forward_source_td[i] *= normalization_factor;
+      normalize_serialized_vector(forward_source_td, normalization_factor);
       update_bd_vector(&source_bd, sim_td.domain()->source_batchwise_, false);
+    }
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+      vector<double> S_f;
+      sim_td.domain()->serialize_final_S_f(S_f);
+      normalize_serialized_vector(S_f, normalization_factor);
+      update_bd_vector(&S_f_bd, sim_td.domain()->S_f_batchwise_, false);
     }
   }
 }
@@ -601,8 +629,15 @@ void RandomRaySimulation::simulate()
 
     // Compute precursors
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      domain_->compute_precursors(k_eff_);
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+        domain_->compute_S_f(k_eff_);
+        domain_->compute_precursors_analytic_integration();
+      } else {
+        domain_->compute_precursors(k_eff_);
+      }
     } else if (settings::is_initial_condition) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+        domain_->compute_S_f(k_eff_);
       domain_->compute_criticality_precursors(k_eff_);
     }
 
@@ -622,6 +657,9 @@ void RandomRaySimulation::simulate()
     if (settings::run_mode == RunMode::TIME_DEPENDENT &&
         RandomRay::time_mode_ == RandomRayTimeMode::SDP)
       domain_->compute_scalar_flux_time_derivative_2();
+
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+      domain_->add_batchwise_S_f();
 
     // Update source term (scattering + fission)
     domain_->update_neutron_source(k_eff_);
@@ -696,6 +734,10 @@ void RandomRaySimulation::simulate()
         } else if (settings::is_initial_condition) {
           domain_->accumulate_iteration_source();
         }
+      }
+
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+        domain_->accumulate_iteration_S_f();
       }
 
       if (mpi::master) {

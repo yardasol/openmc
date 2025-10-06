@@ -81,13 +81,16 @@ void compute_rhs_backward_difference(int64_t vector_size,
   vector<double>& rhs_bd_vector, int derivative_order);
 
 void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector);
+void normalize_serialized_vector(
+  vector<double>& vector, double normalization_factor);
 
 //==============================================================================
 // Time-dependent global variables
 //==============================================================================
-extern vector<double> scalar_flux_bdf;
-extern vector<double> precursors_bdf;
+extern vector<double> scalar_flux_bd;
+extern vector<double> precursors_bd;
 extern vector<double> source_bd;
+extern vector<double> S_f_bd;
 
 extern vector<double> scalar_flux_rhs_bd;
 extern vector<double> precursors_rhs_bd;
@@ -99,6 +102,7 @@ extern double criticality_k_eff;
 extern vector<double> batchwise_criticality_scalar_flux;
 extern vector<double> batchwise_criticality_precursors;
 extern vector<double> batchwise_criticality_source;
+extern vector<double> batchwise_criticality_S_f;
 
 } // namespace openmc
 

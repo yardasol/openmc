@@ -460,6 +460,20 @@ double Mgxs::get_xs(MgxsType xstype, int gin, const int* gout, const double* mu,
       val = 0.;
     }
     break;
+  case MgxsType::BETA:
+    if (fissionable) {
+      if (dg != nullptr) {
+        val = xs_t->beta(a, *dg, gin);
+      } else {
+        val = 0.;
+        for (int d = 0; d < xs_t->beta.shape()[1]; d++) {
+          val += xs_t->beta(a, d, gin);
+        }
+      }
+    } else {
+      val = 0.;
+    }
+    break;
   case MgxsType::CHI:
     if (fissionable) {
       if (gout != nullptr) {

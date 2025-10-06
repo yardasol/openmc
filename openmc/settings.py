@@ -181,9 +181,13 @@ class Settings:
             Indicates the integer order of BD formula used for Time Derivative
             Propogation.
         :time_mode:
-            Method for resolving :math:`\frac{\partial}{\partial t}
+            Method for resolving :math:`\\frac{\\partial}{\\partial t}
             I_{g,r}(s,t)` term in the time-dependent charactersitic equation.
             Options are 'ti' (default), or 'sdp'.
+        :precursor_mode:
+            Method for solving the characteristic equation.
+            Options are 'bd' (default), or 'analytic'. 'analytic' use the Analytic
+            Precursor Integration method developed for PARCS, which uses a ...
 
         .. versionadded:: 0.15.0
     resonance_scattering : dict
@@ -1162,6 +1166,10 @@ class Settings:
                 elif key == 'time_mode':
                     cv.check_value('time mode', value,
                                    ('ti', 'sdp'))
+                elif key == 'precursor_mode':
+                    cv.check_value('precursor mode', value,
+                                   ('bd', 'analytic'))
+
             else:
                 raise ValueError(f'Unable to set random ray to "{key}" which is '
                                  'unsupported by OpenMC')
@@ -2015,6 +2023,9 @@ class Settings:
                     self.random_ray['bd_order'] = int(child.text)
                 elif child.tag == 'time_mode':
                     self.random_ray['time_mode'] = child.text
+                elif child.tag == 'precursor_mode':
+                    self.random_ray['precursor_mode'] = child.text
+
 
     def _time_dependent_from_xml_element(self, root):
         elem = root.find('time_dependent')

@@ -184,6 +184,7 @@ double RandomRay::distance_active_;
 unique_ptr<Source> RandomRay::ray_source_;
 RandomRaySourceShape RandomRay::source_shape_ {RandomRaySourceShape::FLAT};
 RandomRayTimeMode RandomRay::time_mode_ {RandomRayTimeMode::TI};
+RandomRayPrecursorMode RandomRay::precursor_mode_ {RandomRayPrecursorMode::BD};
 
 RandomRay::RandomRay()
   : angular_flux_(data::mg.num_energy_groups_),

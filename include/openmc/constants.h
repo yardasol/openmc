@@ -272,7 +272,8 @@ enum class MgxsType {
   NU_FISSION,
   CHI,
   CHI_PROMPT,
-  CHI_DELAYED
+  CHI_DELAYED,
+  BETA
 };
 
 // ============================================================================
@@ -348,6 +349,7 @@ enum class SolverType { MONTE_CARLO, RANDOM_RAY };
 enum class RandomRayVolumeEstimator { NAIVE, SIMULATION_AVERAGED, HYBRID };
 enum class RandomRaySourceShape { FLAT, LINEAR, LINEAR_XY };
 enum class RandomRayTimeMode { TI, SDP };
+enum class RandomRayPrecursorMode { BD, ANALYTIC };
 
 //==============================================================================
 // Geometry Constants

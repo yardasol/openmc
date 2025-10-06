@@ -56,6 +56,9 @@ XsData::XsData(bool fissionable, AngleDistributionType scatter_format,
     // allocate delayed_nu_fission; [temperature][angle][delay group][in group]
     delayed_nu_fission = xt::zeros<double>(shape);
 
+    // beta; [temperature][angle][delay group][in group]
+    beta = xt::zeros<double>(shape);
+
     // chi and chi_prompt; [temperature][angle][in group][out group]
     shape = {n_ang, n_g_, n_g_};
     chi = xt::zeros<double>(shape);
@@ -165,6 +168,9 @@ void XsData::fission_vector_beta_from_hdf5(
     delayed_nu_fission =
       xt::view(temp_beta, xt::all(), xt::all(), xt::newaxis()) *
       xt::view(temp_nufiss, xt::all(), xt::newaxis(), xt::all());
+
+    // Set beta
+    beta = xt::view(temp_beta, xt::all(), xt::all(), xt::newaxis());
   } else if (beta_ndims == ndim_target + 1) {
     xt::xtensor<double, 3> temp_beta({n_ang, n_dg_, n_g_}, 0.);
     read_nd_vector(xsdata_grp, "beta", temp_beta, true);
@@ -175,6 +181,9 @@ void XsData::fission_vector_beta_from_hdf5(
     // Set delayed_nu_fission as beta * nu_fission
     delayed_nu_fission =
       temp_beta * xt::view(temp_nufiss, xt::all(), xt::newaxis(), xt::all());
+
+    // Set beta
+    beta = temp_beta;
   }
 }
 
@@ -542,6 +551,7 @@ void XsData::combine(
       kappa_fission += scalar * that->kappa_fission;
       fission += scalar * that->fission;
       delayed_nu_fission += scalar * that->delayed_nu_fission;
+      beta += scalar * that->beta;
       // This will probably throw an error in some cases. Need a check for if
       // chi exists!
       chi += scalar * that->chi;
