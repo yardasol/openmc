@@ -369,6 +369,17 @@ void get_run_parameters(pugi::xml_node node_base)
           fatal_error("Unrecognized time mode: " + temp_str);
         }
       }
+      if (check_for_node(random_ray_node, "precursor_mode")) {
+        std::string temp_str =
+          get_node_value(random_ray_node, "precursor_mode", true, true);
+        if (temp_str == "bd") {
+          RandomRay::precursor_mode_ = RandomRayPrecursorMode::BD;
+        } else if (temp_str == "analytic") {
+          RandomRay::precursor_mode_ = RandomRayPrecursorMode::ANALYTIC;
+        } else {
+          fatal_error("Unrecognized time mode: " + temp_str);
+        }
+      }
     }
   }
 }

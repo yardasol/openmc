@@ -139,6 +139,8 @@ public:
   vector<double> precursors_old_;
   vector<double> precursors_new_;
   vector<double> precursors_final_;
+  vector<double> S_f_;
+  vector<double> S_f_final_;
 
   // 2D array representing values for all energy groups x tally
   // tasks. Each group may have a different number of tally tasks
@@ -462,6 +464,19 @@ public:
     return precursors_final_[de];
   }
 
+  double& S_f(int64_t sr, int dg) { return S_f_[dindex(sr, dg)]; }
+  const double& S_f(int64_t sr, int dg) const { return S_f_[dindex(sr, dg)]; }
+  double& S_f(int64_t de) { return S_f_[de]; }
+  const double& S_f(int64_t de) const { return S_f_[de]; }
+
+  double& S_f_final(int64_t sr, int dg) { return S_f_final_[dindex(sr, dg)]; }
+  const double& S_f_final(int64_t sr, int dg) const
+  {
+    return S_f_final_[dindex(sr, dg)];
+  }
+  double& S_f_final(int64_t de) { return S_f_final_[de]; }
+  const double& S_f_final(int64_t de) const { return S_f_final_[de]; }
+
   float& external_source(int64_t sr, int g)
   {
     return external_source_[index(sr, g)];
@@ -585,6 +600,8 @@ private:
   vector<double> precursors_old_;
   vector<double> precursors_new_;
   vector<double> precursors_final_;
+  vector<double> S_f_;
+  vector<double> S_f_final_;
 
   // SoA 3D array representing values for all source regions x energy groups x
   // tally tasks. The outer two dimensions (source regions and energy groups)

@@ -51,6 +51,12 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     }
   }
 
+  // Analytic precursor integration arrays
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+    S_f_.assign(ndgroups, 0.0);
+    S_f_final_.assign(ndgroups, 0.0);
+  }
+
   scalar_flux_new_.assign(negroups, 0.0);
   source_.resize(negroups);
   scalar_flux_final_.assign(negroups, 0.0);
@@ -131,6 +137,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
     tally_task_.emplace_back(sr.tally_task_[g]);
   }
 
+  // Precursor-dependent fields
   if (settings::run_mode == RunMode::TIME_DEPENDENT ||
       settings::is_initial_condition) {
     for (int dg = 0; dg < ndgroups_; dg++) {
@@ -138,6 +145,11 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       precursors_new_.push_back(sr.precursors_new_[dg]);
       precursors_final_.push_back(sr.precursors_final_[dg]);
       tally_delay_task_.emplace_back(sr.tally_delay_task_[dg]);
+      // Analytic precursor integration arrays
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+        S_f_.push_back(sr.S_f_[dg]);
+        S_f_final_.push_back(sr.S_f_final_[dg]);
+      }
     }
   }
 }
@@ -182,11 +194,19 @@ void SourceRegionContainer::assign(
     scalar_flux_td_new_.clear();
     scalar_flux_td_final_.clear();
     source_td_.clear();
+  }
 
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    source_final_.clear();
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       source_time_derivative_.clear();
       scalar_flux_time_derivative_2_.clear();
     }
+  }
+
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+    S_f_.clear();
+    S_f_final_.clear();
   }
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT ||
