@@ -627,6 +627,9 @@ void RandomRaySimulation::simulate()
     // Reset total starting particle weight used for normalizing tallies
     simulation::total_weight = 1.0;
 
+    // Set batch index
+    domain_->b_idx_ = simulation::current_batch - 1;
+
     // Compute precursors
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {

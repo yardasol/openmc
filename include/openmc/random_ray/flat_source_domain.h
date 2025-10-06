@@ -135,6 +135,7 @@ public:
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;
 
+  int b_idx_; // Current batch index
   vector<double> precursors_batchwise_;
   vector<double> scalar_flux_batchwise_;
   vector<double> source_batchwise_;
@@ -149,6 +150,24 @@ public:
 
   vector<double>* precursors_bd_;
   vector<double>* S_f_bd_;
+
+  // Heper index functions
+  inline int index(int64_t sr, int g) const
+  {
+    return b_idx_ * n_source_elements_ + sr * ndgroups_ + g;
+  }
+  inline int index(int64_t se) const
+  {
+    return b_idx_ * n_source_elements_ + se;
+  }
+  inline int dindex(int64_t sr, int dg) const
+  {
+    return b_idx_ * n_delay_elements_ + sr * ndgroups_ + dg;
+  }
+  inline int dindex(int64_t de) const
+  {
+    return b_idx_ * n_delay_elements_ + de;
+  }
 
 protected:
   //----------------------------------------------------------------------------
