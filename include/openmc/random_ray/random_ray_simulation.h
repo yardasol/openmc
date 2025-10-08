@@ -74,7 +74,7 @@ void openmc_run_random_ray_time_dependent();
 void rename_statepoint_file(int i);
 
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
-  vector<double>& bd_vector, vector<double>& batchwise_vector);
+  vector<double>& bd_vector, vector<double>& vector);
 
 void compute_rhs_backward_difference(int64_t vector_size,
   int bd_order, vector<double>& bd_vector,
@@ -98,11 +98,11 @@ extern vector<double> precursors_rhs_bd;
 extern vector<double> source_rhs_bd;
 extern vector<double> scalar_flux_rhs_bd_2;
 
-extern double criticality_k_eff;
-extern vector<double> batchwise_criticality_scalar_flux;
-extern vector<double> batchwise_criticality_precursors;
-extern vector<double> batchwise_criticality_source;
-extern vector<double> batchwise_criticality_S_f;
+extern double previous_k_eff;
+extern vector<double> previous_scalar_flux;
+extern vector<double> previous_precursors;
+extern vector<double> previous_source;
+extern vector<double> previous_S_f;
 
 } // namespace openmc
 
