@@ -212,6 +212,10 @@ void openmc_run_random_ray_time_dependent()
   rename_statepoint_file(0);
 
   // Settings for timestepping loop
+  /////////////////////////////////
+
+  simulation::time_initialize_td.start();
+  // Reset run_mode and batches
   settings::run_mode = RunMode::TIME_DEPENDENT;
   settings::is_initial_condition = false;
   int64_t n_source_elements = batchwise_criticality_scalar_flux.size() / settings::n_batches;
@@ -234,6 +238,8 @@ void openmc_run_random_ray_time_dependent()
   if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
     initialize_bd_vector(settings::n_batches * n_delay_elements, 3, S_f_bd,
       batchwise_criticality_S_f);
+
+  simulation::time_initialize_td.stop();
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
@@ -258,28 +264,36 @@ void openmc_run_random_ray_time_dependent()
     // TODO: Consider using the same time-ordering for this vector instead of
     // rotating it!!!
     // Increment BD vectors to a zero-valued solution to be filled in.
+    simulation::time_update_bd_vectors_td.start();
     increment_bd_vector(settings::n_batches * n_source_elements, &scalar_flux_bd);
     increment_bd_vector(settings::n_batches * n_delay_elements, &precursors_bd);
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
       increment_bd_vector(settings::n_batches * n_source_elements, &source_bd);
     if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
       increment_bd_vector(settings::n_batches * n_delay_elements, &S_f_bd);
+    simulation::time_update_bd_vectors_td.stop();
 
     // Compute RHS backward differences to be used later
     compute_rhs_backward_difference(settings::n_batches * n_source_elements,
       RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd, 1);
+    sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
+
     compute_rhs_backward_difference(settings::n_batches * n_delay_elements,
       RandomRaySimulation::bd_order_, precursors_bd, precursors_rhs_bd, 1);
-    sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
     sim_td.domain()->precursors_rhs_bd_ = &precursors_rhs_bd;
+
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      simulation::time_compute_neutron_source_time_derivative.start();
       compute_rhs_backward_difference(settings::n_batches * n_source_elements,
         RandomRaySimulation::bd_order_, source_bd, source_rhs_bd, 1);
+      simulation::time_compute_neutron_source_time_derivative.stop();
       sim_td.domain()->source_rhs_bd_ = &source_rhs_bd;
 
+      simulation::time_compute_scalar_time_derivative_2.start();
       compute_rhs_backward_difference(settings::n_batches * n_source_elements,
         RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd_2,
         2);
+      simulation::time_compute_scalar_time_derivative_2.stop();
       sim_td.domain()->scalar_flux_rhs_bd_2_ = &scalar_flux_rhs_bd_2;
     }
     if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
@@ -840,7 +854,6 @@ void RandomRaySimulation::print_results_random_ray(
     double misc_time = time_total.elapsed() - time_update_src.elapsed() -
                        time_transport.elapsed() - time_tallies.elapsed() -
                        time_bank_sendrecv.elapsed();
-
     header("Simulation Statistics", 4);
     fmt::print(
       " Total Iterations                  = {}\n", settings::n_batches);
@@ -886,12 +899,27 @@ void RandomRaySimulation::print_results_random_ray(
     show_time("Total simulation time", time_total.elapsed());
     show_time("Transport sweep only", time_transport.elapsed(), 1);
     show_time("Source update only", time_update_src.elapsed(), 1);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT)
+      show_time(
+        "Time-dependent source update only", time_update_src_td.elapsed(), 1);
+    if (settings::is_initial_condition ||
+        settings::run_mode == RunMode::TIME_DEPENDENT)
+      show_time(
+        "Precursor computation only", time_compute_precursors.elapsed(), 1);
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+      show_time("S_f computation only", time_compute_S_f.elapsed(), 1);
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      show_time("Source time derivaitve computation only",
+        time_compute_neutron_source_time_derivative.elapsed(), 1);
+      show_time("Scalar flux time derivative computation only",
+        time_compute_scalar_time_derivative_2.elapsed(), 1);
+    }
     show_time("Tally conversion only", time_tallies.elapsed(), 1);
     show_time("MPI source reductions only", time_bank_sendrecv.elapsed(), 1);
     show_time("Other iteration routines", misc_time, 1);
-    if (settings::run_mode == RunMode::EIGENVALUE) {
+    if (settings::run_mode == RunMode::EIGENVALUE ||
+        settings::run_mode == RunMode::TIME_DEPENDENT)
       show_time("Time in inactive batches", time_inactive.elapsed());
-    }
     show_time("Time in active batches", time_active.elapsed());
     show_time("Time writing statepoints", time_statepoint.elapsed());
     show_time("Total time for finalization", time_finalize.elapsed());

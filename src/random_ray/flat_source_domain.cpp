@@ -1393,8 +1393,7 @@ void FlatSourceDomain::serialize_final_sources(vector<double>& source)
 // based on the flux estimate from the previous iteration.
 void FlatSourceDomain::update_neutron_source_td(double k_eff)
 {
-  //TODO: add variable for time_update_src_td
-  //simulation::time_update_src.start();
+  simulation::time_update_src_td.start();
 
   double inverse_k_eff = 1.0 / k_eff;
 
@@ -1450,12 +1449,12 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
   }
 
   // TODO: Time-dependent external source?
-  // TODO: add variable for time_update_src_td
-  //simulation::time_update_src.stop();
+  simulation::time_update_src_td.stop();
 }
 
 void FlatSourceDomain::compute_criticality_precursors(double k_eff)
 {
+  simulation::time_compute_precursors.start();
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1473,10 +1472,12 @@ void FlatSourceDomain::compute_criticality_precursors(double k_eff)
       }
     }
   }
+  simulation::time_compute_precursors.stop();
 }
 
 void FlatSourceDomain::compute_precursors(double k_eff)
 {
+  simulation::time_compute_precursors.start();
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1504,10 +1505,12 @@ void FlatSourceDomain::compute_precursors(double k_eff)
       }
     }
   }
+  simulation::time_compute_precursors.stop();
 }
 
 void FlatSourceDomain::compute_S_f(double k_eff)
 {
+  simulation::time_compute_S_f.start();
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1530,10 +1533,12 @@ void FlatSourceDomain::compute_S_f(double k_eff)
       }
     }
   }
+  simulation::time_compute_S_f.stop();
 }
 
 void FlatSourceDomain::compute_precursors_analytic_integration()
 {
+  simulation::time_compute_precursors.start();
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1563,10 +1568,12 @@ void FlatSourceDomain::compute_precursors_analytic_integration()
       }
     }
   }
+  simulation::time_compute_precursors.start();
 }
 
 void FlatSourceDomain::compute_neutron_source_time_derivative()
 {
+  simulation::time_compute_neutron_source_time_derivative.start();
   double A0 = (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
@@ -1574,10 +1581,12 @@ void FlatSourceDomain::compute_neutron_source_time_derivative()
     double source_td = source_regions_.source_td(se);
     source_regions_.source_time_derivative(se) = A0 * source_td + source_rhs_bd;
   }
+  simulation::time_compute_neutron_source_time_derivative.stop();
 }
 
 void FlatSourceDomain::compute_scalar_flux_time_derivative_2()
 {
+  simulation::time_compute_scalar_time_derivative_2.start();
   double B0 = (bd_coefficients_second_order_.at(bd_order_))[0] /
               (settings::dt * settings::dt);
 #pragma omp parallel for
@@ -1587,6 +1596,7 @@ void FlatSourceDomain::compute_scalar_flux_time_derivative_2()
     source_regions_.scalar_flux_time_derivative_2(se) =
       B0 * scalar_flux_td + scalar_flux_rhs_bd_2;
   }
+  simulation::time_compute_scalar_time_derivative_2.stop();
 }
 
 void FlatSourceDomain::serialize_final_td_fluxes(vector<double>& flux_td)
