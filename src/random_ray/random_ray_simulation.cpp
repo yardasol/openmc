@@ -217,12 +217,28 @@ void openmc_run_random_ray_time_dependent()
   openmc_run_random_ray();
   rename_statepoint_file(0);
 
+  /////////////////////////////////
   // Settings for timestepping loop
   /////////////////////////////////
 
   simulation::time_initialize_td.start();
   // Reset run_mode and batches
   settings::run_mode = RunMode::TIME_DEPENDENT;
+  settings::n_batches = settings::n_batches_td;
+  settings::n_inactive = settings::n_inactive_td;
+  settings::n_max_batches = settings::n_batches_td;
+
+  // Reset k_generation and entropy
+  int m = settings::n_max_batches * settings::gen_per_batch;
+  simulation::k_generation.clear();
+  simulation::k_generation.reserve(m);
+  simulation::entropy.clear();
+  simulation::entropy.reserve(m);
+
+  // Reset statepoint_batch
+  settings::statepoint_batch.clear();
+  settings::statepoint_batch.insert(settings::n_batches);
+
   settings::is_initial_condition = false;
   int64_t n_source_elements = previous_scalar_flux.size();
   int64_t n_source_regions = n_source_elements / data::mg.num_energy_groups_;
