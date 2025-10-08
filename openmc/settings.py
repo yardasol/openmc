@@ -268,6 +268,8 @@ class Settings:
         be used to evaluate resolved resonance cross sections.
     time_dependent : dict
         Options for configuring `time dependent` run mode. Acceptable keys are:
+        :inactive:
+            Number of inactive batches to use in timesteps
         :dt:
             Fixed timestep size.
         :n_timesteps:
@@ -1186,7 +1188,10 @@ class Settings:
             raise ValueError(f'Unable to set time_dependent from "{time_dependent}" '
                              'which is not a dict.')
         for key, value in time_dependent.items():
-            if key == 'dt':
+            if key == 'inactive':
+                cv.check_type('time step inactive batches', value, Integral)
+                cv.check_greater_than('time step inactive batches', value, 0, True)
+            elif key == 'dt':
                 cv.check_type('dt', value, Real)
                 cv.check_greater_than('dt', value, 0)
             elif key == 'n_timesteps':
@@ -2038,6 +2043,9 @@ class Settings:
                     self.time_dependent['timestep_units'] = child.text
                 elif child.tag == 'dt':
                     self.time_dependent['dt'] = float(child.text)
+                elif child.tag == 'inactive':
+                    self.time_dependent['inactive'] = int(child.text)
+
 
     def to_xml_element(self, mesh_memo=None):
         """Create a 'settings' element to be written to an XML file.

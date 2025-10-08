@@ -138,6 +138,8 @@ double weight_cutoff {0.25};
 double weight_survive {1.0};
 
 // Time-dependent variables
+int n_batches_td;
+int32_t n_inactive_td {0};
 int n_timesteps;
 double dt;
 int current_timestep;
@@ -253,6 +255,11 @@ void get_run_parameters(pugi::xml_node node_base)
   // Get parameters for time-dependent simulations
   if (run_mode == RunMode::TIME_DEPENDENT) {
     xml_node td_node = node_base.child("time_dependent");
+    if (check_for_node(td_node, "inactive")) {
+      n_inactive_td = std::stoi(get_node_value(td_node, "inactive"));
+    } else {
+      n_inactive_td = n_inactive;
+    }
     if (check_for_node(td_node, "n_timesteps")) {
       n_timesteps = std::stoi(get_node_value(td_node, "n_timesteps"));
     } else {
@@ -575,6 +582,18 @@ void read_settings_xml(pugi::xml_node root)
     } else if (rel_max_lost_particles <= 0.0 || rel_max_lost_particles >= 1.0) {
       fatal_error("Relative max lost particles must be between zero and one.");
     }
+
+    // Compute time step batches and check
+    if (run_mode == RunMode::TIME_DEPENDENT) {
+      n_batches_td = n_batches - n_inactive + n_inactive_td;
+      if (n_batches_td <= n_inactive_td) {
+        fatal_error(
+          "Number of time step active batches must be greater than zero.");
+      } else if (n_inactive_td < 0) {
+        fatal_error(
+          "Number of time step inactive batches must be non-negative.");
+      }
+    }
   }
 
   // Copy plotting random number seed if specified
@@ -820,6 +839,7 @@ void read_settings_xml(pugi::xml_node root)
     // Get pointer to state_point node
     auto node_sp = root.child("state_point");
 
+    // TODO: Allow time-dependnet simulatiosn to support this feature
     // Determine number of batches at which to store state points
     if (check_for_node(node_sp, "batches")) {
       // User gave specific batches to write state points

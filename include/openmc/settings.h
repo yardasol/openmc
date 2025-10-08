@@ -159,6 +159,8 @@ extern double weight_cutoff;       //!< Weight cutoff for Russian roulette
 extern double weight_survive;      //!< Survival weight after Russian roulette
                                    //
 // Time-dependent variables
+extern int n_batches_td; //!< number of time step (inactive+active) batches
+extern "C" int32_t n_inactive_td; //!< number of time step inactive batches
 extern int n_timesteps;      //!< number of timesteps
 extern double dt;            //!< fixed timestep size
 extern int current_timestep; //!< current timestep index
