@@ -49,12 +49,12 @@ public:
   void transpose_scattering_matrix();
   void serialize_final_fluxes(vector<double>& flux);
   void serialize_final_sources(vector<double>& source);
-  void add_batchwise_scalar_flux();
-  void add_batchwise_source();
 
   //----------------------------------------------------------------------------
   // Time dependent methods
-  virtual void update_neutron_source_td(double k_dynamic);
+  void set_initial_condition(vector<double>& previous_scalar_flux,
+    vector<double>& previous_scalar_flux_td);
+  virtual void update_neutron_source_td(double k_eff);
   double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);
   void compute_precursors(double k_eff);
@@ -66,10 +66,6 @@ public:
   void serialize_final_td_sources(vector<double>& flux_td);
   void serialize_final_precursors(vector<double>& precursors);
   void serialize_final_S_f(vector<double>& S_f);
-  void add_batchwise_precursors();
-  void add_batchwise_scalar_flux_td();
-  void add_batchwise_source_td();
-  void add_batchwise_S_f();
   void flux_td_swap();
   void precursors_swap();
   virtual void accumulate_iteration_flux_td();
@@ -135,12 +131,6 @@ public:
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;
 
-  int b_idx_; // Current batch index
-  vector<double> precursors_batchwise_;
-  vector<double> scalar_flux_batchwise_;
-  vector<double> source_batchwise_;
-  vector<double> S_f_batchwise_;
-
   // Pointers to RHS derivative vectors
   vector<double>* scalar_flux_rhs_bd_;
   vector<double>* precursors_rhs_bd_;
@@ -152,22 +142,10 @@ public:
   vector<double>* S_f_bd_;
 
   // Heper index functions
-  inline int index(int64_t sr, int g) const
-  {
-    return b_idx_ * n_source_elements_ + sr * ndgroups_ + g;
-  }
-  inline int index(int64_t se) const
-  {
-    return b_idx_ * n_source_elements_ + se;
-  }
-  inline int dindex(int64_t sr, int dg) const
-  {
-    return b_idx_ * n_delay_elements_ + sr * ndgroups_ + dg;
-  }
-  inline int dindex(int64_t de) const
-  {
-    return b_idx_ * n_delay_elements_ + de;
-  }
+  inline int index(int64_t sr, int g) const { return sr * negroups_ + g; }
+  inline int index(int64_t se) const { return se; }
+  inline int dindex(int64_t sr, int dg) const { return sr * ndgroups_ + dg; }
+  inline int dindex(int64_t de) const { return de; }
 
 protected:
   //----------------------------------------------------------------------------
