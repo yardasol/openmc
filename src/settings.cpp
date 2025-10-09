@@ -384,7 +384,7 @@ void get_run_parameters(pugi::xml_node node_base)
         } else if (temp_str == "analytic") {
           RandomRay::precursor_mode_ = RandomRayPrecursorMode::ANALYTIC;
         } else {
-          fatal_error("Unrecognized time mode: " + temp_str);
+          fatal_error("Unrecognized precursor mode: " + temp_str);
         }
       }
     }
