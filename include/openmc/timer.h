@@ -37,7 +37,6 @@ extern Timer time_initialize_td;
 extern Timer time_update_bd_vectors_td;
 extern Timer time_update_src_td;
 extern Timer time_compute_precursors;
-extern Timer time_compute_S_f;
 extern Timer time_compute_neutron_source_time_derivative;
 extern Timer time_compute_scalar_time_derivative_2;
 

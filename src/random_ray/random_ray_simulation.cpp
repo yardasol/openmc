@@ -98,8 +98,10 @@ void openmc_run_random_ray()
         normalize_serialized_vector(previous_source, normalization_factor);
       }
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        sim.domain()->serialize_final_S_f(previous_S_f);
-        normalize_serialized_vector(previous_S_f, normalization_factor);
+        sim.domain()->serialize_final_delayed_fission_source(
+          previous_delayed_fission_source);
+        normalize_serialized_vector(
+          previous_delayed_fission_source, normalization_factor);
       }
     }
   }
@@ -159,7 +161,7 @@ void openmc_run_random_ray()
 vector<double> scalar_flux_bd;
 vector<double> source_bd;
 vector<double> precursors_bd;
-vector<double> S_f_bd;
+vector<double> delayed_fission_source_bd;
 
 // 1D RHS BD arrays
 vector<double> scalar_flux_rhs_bd;
@@ -172,7 +174,7 @@ double previous_k_eff;
 vector<double> previous_scalar_flux;
 vector<double> previous_precursors;
 vector<double> previous_source;
-vector<double> previous_S_f;
+vector<double> previous_delayed_fission_source;
 
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
   vector<double>& bd_vector, vector<double>& vector)
@@ -255,7 +257,8 @@ void openmc_run_random_ray_time_dependent()
       source_bd, previous_source);
 
   if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-    initialize_bd_vector(n_delay_elements, 3, S_f_bd, previous_S_f);
+    initialize_bd_vector(n_delay_elements, 3, delayed_fission_source_bd,
+      previous_delayed_fission_source);
 
   simulation::time_initialize_td.stop();
 
@@ -291,7 +294,7 @@ void openmc_run_random_ray_time_dependent()
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
       increment_bd_vector(n_source_elements, &source_bd);
     if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-      increment_bd_vector(n_delay_elements, &S_f_bd);
+      increment_bd_vector(n_delay_elements, &delayed_fission_source_bd);
     simulation::time_update_bd_vectors_td.stop();
 
     // Compute RHS backward differences to be used later
@@ -319,7 +322,7 @@ void openmc_run_random_ray_time_dependent()
     }
     if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
       sim_td.domain()->precursors_bd_ = &precursors_bd;
-      sim_td.domain()->S_f_bd_ = &S_f_bd;
+      sim_td.domain()->delayed_fission_source_bd_ = &delayed_fission_source_bd;
     }
 
     // Update time dependent cross section based on the density
@@ -372,9 +375,12 @@ void openmc_run_random_ray_time_dependent()
       update_bd_vector(&source_bd, previous_source, false);
     }
     if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-      sim_td.domain()->serialize_final_S_f(previous_S_f);
-      normalize_serialized_vector(previous_S_f, normalization_factor);
-      update_bd_vector(&S_f_bd, previous_S_f, false);
+      sim_td.domain()->serialize_final_delayed_fission_source(
+        previous_delayed_fission_source);
+      normalize_serialized_vector(
+        previous_delayed_fission_source, normalization_factor);
+      update_bd_vector(
+        &delayed_fission_source_bd, previous_delayed_fission_source, false);
     }
   }
 }
@@ -663,14 +669,14 @@ void RandomRaySimulation::simulate()
     // Compute precursors
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        domain_->compute_S_f(k_eff_);
+        domain_->compute_delayed_fission_source(k_eff_);
         domain_->compute_precursors_analytic_integration();
       } else {
         domain_->compute_precursors(k_eff_);
       }
     } else if (settings::is_initial_condition) {
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-        domain_->compute_S_f(k_eff_);
+        domain_->compute_delayed_fission_source(k_eff_);
       domain_->compute_criticality_precursors(k_eff_);
     }
 
@@ -746,7 +752,7 @@ void RandomRaySimulation::simulate()
       }
 
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        domain_->accumulate_iteration_S_f();
+        domain_->accumulate_iteration_delayed_fission_source();
       }
 
       if (mpi::master) {
@@ -898,8 +904,6 @@ void RandomRaySimulation::print_results_random_ray(
         settings::run_mode == RunMode::TIME_DEPENDENT)
       show_time(
         "Precursor computation only", time_compute_precursors.elapsed(), 1);
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-      show_time("S_f computation only", time_compute_S_f.elapsed(), 1);
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
       show_time("Source time derivaitve computation only",
         time_compute_neutron_source_time_derivative.elapsed(), 1);
