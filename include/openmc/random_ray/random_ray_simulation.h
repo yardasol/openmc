@@ -90,7 +90,7 @@ void normalize_serialized_vector(
 extern vector<double> scalar_flux_bd;
 extern vector<double> precursors_bd;
 extern vector<double> source_bd;
-extern vector<double> S_f_bd;
+extern vector<double> delayed_fission_source_bd;
 
 extern vector<double> scalar_flux_rhs_bd;
 extern vector<double> precursors_rhs_bd;
@@ -102,7 +102,7 @@ extern double previous_k_eff;
 extern vector<double> previous_scalar_flux;
 extern vector<double> previous_precursors;
 extern vector<double> previous_source;
-extern vector<double> previous_S_f;
+extern vector<double> previous_delayed_fission_source;
 
 } // namespace openmc
 

@@ -53,8 +53,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 
   // Analytic precursor integration arrays
   if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-    S_f_.assign(ndgroups, 0.0);
-    S_f_final_.assign(ndgroups, 0.0);
+    delayed_fission_source_.assign(ndgroups, 0.0);
+    delayed_fission_source_final_.assign(ndgroups, 0.0);
   }
 
   scalar_flux_new_.assign(negroups, 0.0);
@@ -147,8 +147,9 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       tally_delay_task_.emplace_back(sr.tally_delay_task_[dg]);
       // Analytic precursor integration arrays
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        S_f_.push_back(sr.S_f_[dg]);
-        S_f_final_.push_back(sr.S_f_final_[dg]);
+        delayed_fission_source_.push_back(sr.delayed_fission_source_[dg]);
+        delayed_fission_source_final_.push_back(
+          sr.delayed_fission_source_final_[dg]);
       }
     }
   }
@@ -205,8 +206,8 @@ void SourceRegionContainer::assign(
   }
 
   if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-    S_f_.clear();
-    S_f_final_.clear();
+    delayed_fission_source_.clear();
+    delayed_fission_source_final_.clear();
   }
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT ||
