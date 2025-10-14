@@ -100,6 +100,7 @@ extern vector<double> scalar_flux_rhs_bd_2;
 
 extern double previous_k_eff;
 extern vector<double> previous_scalar_flux;
+extern vector<double> previous_scalar_flux_td;
 extern vector<double> previous_precursors;
 extern vector<double> previous_source;
 extern vector<double> previous_delayed_fission_source;

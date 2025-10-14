@@ -172,6 +172,7 @@ vector<double> scalar_flux_rhs_bd_2;
 
 double previous_k_eff;
 vector<double> previous_scalar_flux;
+vector<double> previous_scalar_flux_td;
 vector<double> previous_precursors;
 vector<double> previous_source;
 vector<double> previous_delayed_fission_source;
@@ -360,10 +361,14 @@ void openmc_run_random_ray_time_dependent()
     previous_k_eff = simulation::keff;
 
     // Serialize quantities
-    sim_td.domain()->serialize_final_td_fluxes(previous_scalar_flux);
+    sim_td.domain()->serialize_final_fluxes(previous_scalar_flux);
     normalize_serialized_vector(
       previous_scalar_flux, source_normalization_factor);
-    update_bd_vector(&scalar_flux_bd, previous_scalar_flux, false);
+
+    sim_td.domain()->serialize_final_td_fluxes(previous_scalar_flux_td);
+    normalize_serialized_vector(
+      previous_scalar_flux_td, source_normalization_factor);
+    update_bd_vector(&scalar_flux_bd, previous_scalar_flux_td, false);
 
     sim_td.domain()->serialize_final_precursors(previous_precursors);
     normalize_serialized_vector(previous_precursors, normalization_factor);
