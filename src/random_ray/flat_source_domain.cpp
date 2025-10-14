@@ -285,9 +285,9 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
       double A0 =
         (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
       source_regions_.scalar_flux_td_new(sr, g) -=
-        scalar_flux_rhs_bd * inverse_vbar / sigma_t;
+        scalar_flux_rhs_bd * inverse_vbar / sigma_t_td;
       source_regions_.scalar_flux_td_new(sr, g) /=
-        1 + A0 * inverse_vbar / sigma_t;
+        1 + A0 * inverse_vbar / sigma_t_td;
     }
   }
 }
