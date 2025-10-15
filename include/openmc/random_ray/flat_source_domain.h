@@ -53,8 +53,7 @@ public:
   //----------------------------------------------------------------------------
   // Time dependent methods
   void set_initial_condition(vector<double>& previous_scalar_flux,
-    vector<double>& previous_scalar_flux_td,
-    vector<double>& previous_precursors);
+    vector<double>& previous_scalar_flux_td);
   virtual void update_neutron_source_td(double k_eff);
   double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);
