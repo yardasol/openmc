@@ -1375,7 +1375,8 @@ void FlatSourceDomain::serialize_final_sources(vector<double>& source)
 //double FlatSourceDomain::compute_k_dynamic() const
 
 void FlatSourceDomain::set_initial_condition(
-  vector<double>& previous_scalar_flux, vector<double>& previous_scalar_flux_td)
+  vector<double>& previous_scalar_flux, vector<double>& previous_scalar_flux_td,
+  vector<double>& previous_precursors)
 {
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++)
@@ -1384,6 +1385,10 @@ void FlatSourceDomain::set_initial_condition(
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++)
     source_regions_.scalar_flux_td_old(se) = previous_scalar_flux_td[se];
+
+#pragma omp parallel for
+  for (int64_t de = 0; de < n_delay_elements_; de++)
+    source_regions_.precursors_old(de) = previous_precursors[de];
 }
 
 // Compute new estimate of scattering + fission sources in each source region
@@ -1425,7 +1430,7 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
         double chi_d =
           chi_d_[material * negroups_ * ndgroups_ + dg * negroups_ + g_out];
         double lambda = lambda_[material * ndgroups_ + dg];
-        double precursors = source_regions_.precursors_new(sr, dg);
+        double precursors = source_regions_.precursors_old(sr, dg);
         delayed_source += chi_d * precursors * lambda;
       }
       source_regions_.source_td(sr, g_out) += delayed_source;
@@ -1462,7 +1467,7 @@ void FlatSourceDomain::compute_criticality_precursors(double k_eff)
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + dg * negroups_ + g_in];
-          double flux = source_regions_.scalar_flux_old(sr, g_in);
+          double flux = source_regions_.scalar_flux_new(sr, g_in);
           source_regions_.precursors_new(sr, dg) += flux * nu_d_sigma_f;
         }
         source_regions_.precursors_new(sr, dg) /= lambda * k_eff;
@@ -1487,7 +1492,7 @@ void FlatSourceDomain::compute_precursors(double k_eff)
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + dg * negroups_ + g_in];
-          double flux_td = source_regions_.scalar_flux_td_old(sr, g_in);
+          double flux_td = source_regions_.scalar_flux_td_new(sr, g_in);
           delayed_fission_source += flux_td * nu_d_sigma_f;
         }
         delayed_fission_source /= k_eff;
@@ -1518,9 +1523,9 @@ void FlatSourceDomain::compute_delayed_fission_source(double k_eff)
         for (int g = 0; g < negroups_; g++) {
           double scalar_flux;
           if (settings::is_initial_condition) {
-            scalar_flux = source_regions_.scalar_flux_old(sr, g);
+            scalar_flux = source_regions_.scalar_flux_new(sr, g);
           } else {
-            scalar_flux = source_regions_.scalar_flux_td_old(sr, g);
+            scalar_flux = source_regions_.scalar_flux_td_new(sr, g);
           }
           double nu_d_sigma_f =
             nu_d_sigma_f_[mat * negroups_ * ndgroups_ + dg * negroups_ + g];
