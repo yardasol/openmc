@@ -1482,7 +1482,8 @@ void FlatSourceDomain::flatten_xs()
     }
   }
   // Create copies of cross section vectors for use in material density changes
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
     sigma_t_td_ = sigma_t_;
     nu_sigma_f_td_ = nu_sigma_f_;
     sigma_f_td_ = sigma_f_;
@@ -2021,22 +2022,59 @@ int64_t FlatSourceDomain::lookup_mesh_bin(int64_t sr, Position r) const
 // TODO: implement compute_k_dynamic
 //double FlatSourceDomain::compute_k_dynamic() const
 
-void FlatSourceDomain::set_initial_fluxes()
+void FlatSourceDomain::propagate_final_fluxes()
 {
 #pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements(); se++) {
-    source_regions_.scalar_flux_old(se) = source_regions_.scalar_flux_final(se);
-    source_regions_.scalar_flux_td_old(se) =
-      source_regions_.scalar_flux_td_final(se);
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
+    for (int g = 0; g < negroups_; g++) {
+      srh.scalar_flux_old(g) = srh.scalar_flux_final(g);
+      srh.scalar_flux_td_old(g) = srh.scalar_flux_td_final(g);
+    }
   }
 }
 
-void FlatSourceDomain::set_initial_fluxes(vector<double>& criticality_flux)
+void FlatSourceDomain::set_initial_fluxes(
+  vector<double>& initial_flux, int64_t n_source_regions)
 {
 #pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements(); se++) {
-    source_regions_.scalar_flux_old(se) = criticality_flux[se];
-    source_regions_.scalar_flux_td_old(se) = criticality_flux[se];
+  for (int64_t sr = 0; sr < n_source_regions; sr++) {
+    SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
+    for (int g = 0; g < negroups_; g++) {
+      srh.scalar_flux_old(g) = initial_flux[sr * negroups_ + g];
+      srh.scalar_flux_td_old(g) = initial_flux[sr * negroups_ + g];
+    }
+  }
+}
+
+void FlatSourceDomain::set_rhs_bd_vectors(int64_t n_source_regions,
+  vector<double>& scalar_flux_rhs_bd, vector<double>& source_rhs_bd,
+  vector<double>& scalar_flux_rhs_bd_2, vector<double>& precursors_rhs_bd,
+  vector<double>& precursors_im1, vector<double>& delayed_fission_source_im1,
+  vector<double>& delayed_fission_source_im2)
+{
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions; sr++) {
+    SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
+    for (int g = 0; g < negroups_; g++) {
+      srh.scalar_flux_rhs_bd(g) = scalar_flux_rhs_bd[sr * negroups_ + g];
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        srh.source_rhs_bd(g) = source_rhs_bd[sr * negroups_ + g];
+        srh.scalar_flux_rhs_bd_2(g) = scalar_flux_rhs_bd_2[sr * negroups_ + g];
+      }
+    }
+
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+        srh.precursors_im1(dg) = precursors_im1[sr * ndgroups_ + dg];
+        srh.delayed_fission_source_im1(dg) =
+          delayed_fission_source_im1[sr * ndgroups_ + dg];
+        srh.delayed_fission_source_im2(dg) =
+          delayed_fission_source_im2[sr * ndgroups_ + dg];
+      } else {
+        srh.precursors_rhs_bd(dg) = precursors_rhs_bd[sr * ndgroups_ + dg];
+      }
+    }
   }
 }
 

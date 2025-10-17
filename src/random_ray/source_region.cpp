@@ -60,20 +60,16 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
   if (settings::run_mode == RunMode::EIGENVALUE) {
     // If in eigenvalue mode, set starting flux to guess of 1
     scalar_flux_old_.assign(negroups, 1.0);
-    if (settings::is_initial_condition) {
-      precursors_old_.assign(ndgroups, 0.0);
-      precursors_new_.assign(ndgroups, 0.0);
-      precursors_final_.assign(ndgroups, 0.0);
-      tally_delay_task_.resize(ndgroups);
-    }
   } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
     // If in fixed source mode, set starting flux to guess of zero
     // and initialize external source arrays
     scalar_flux_old_.assign(negroups, 0.0);
     external_source_.assign(negroups, 0.0);
-  } else {
+  }
+
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
     // If in time dependent mode, set starting flux to guess of 1
-    // TODO: try to incorporate criticality/previous final flux here
     scalar_flux_old_.assign(negroups, 1.0);
 
     scalar_flux_td_old_.assign(negroups, 1.0);
@@ -87,12 +83,11 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     tally_delay_task_.resize(ndgroups);
 
     scalar_flux_rhs_bd_.resize(negroups);
-  }
 
-  // SDP arrays
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-    source_final_.assign(negroups, 0.0);
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    // SDP arrays
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      source_final_.assign(negroups, 0.0);
+
       source_td_final_.assign(negroups, 0.0);
       source_time_derivative_.assign(negroups, 0.0);
       scalar_flux_time_derivative_2_.assign(negroups, 0.0);
@@ -100,18 +95,18 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
       source_rhs_bd_.resize(negroups);
       scalar_flux_rhs_bd_2_.resize(negroups);
     }
-  }
 
-  // Precursor integration arrays
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
-    delayed_fission_source_.assign(ndgroups, 0.0);
-    delayed_fission_source_final_.assign(ndgroups, 0.0);
+    // Precursor arrays
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      delayed_fission_source_.assign(ndgroups, 0.0);
+      delayed_fission_source_final_.assign(ndgroups, 0.0);
 
-    precursors_im1_.resize(ndgroups);
-    delayed_fission_source_im1_.resize(ndgroups);
-    delayed_fission_source_im2_.resize(ndgroups);
-  } else {
-    precursors_rhs_bd_.resize(ndgroups);
+      precursors_im1_.resize(ndgroups);
+      delayed_fission_source_im1_.resize(ndgroups);
+      delayed_fission_source_im2_.resize(ndgroups);
+    } else {
+      precursors_rhs_bd_.resize(ndgroups);
+    }
   }
 
   scalar_flux_new_.assign(negroups, 0.0);
@@ -170,19 +165,20 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
 
     if (settings::run_mode == RunMode::FIXED_SOURCE) {
       external_source_.push_back(sr.external_source_[g]);
-    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    }
+
+    if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+        settings::is_initial_condition) {
       scalar_flux_td_old_.push_back(sr.scalar_flux_td_old_[g]);
       scalar_flux_td_new_.push_back(sr.scalar_flux_td_new_[g]);
       scalar_flux_td_final_.push_back(sr.scalar_flux_td_final_[g]);
       source_td_.push_back(sr.source_td_[g]);
 
       scalar_flux_rhs_bd_.push_back(sr.scalar_flux_rhs_bd_[g]);
-    }
 
-    // SDP arrays
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-      source_final_.push_back(sr.source_final_[g]);
-      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      // SDP arrays
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        source_final_.push_back(sr.source_final_[g]);
         source_td_final_.push_back(sr.source_final_[g]);
         source_time_derivative_.push_back(sr.source_time_derivative_[g]);
         scalar_flux_time_derivative_2_.push_back(
@@ -274,39 +270,35 @@ void SourceRegionContainer::assign(
     flux_moments_t_.clear();
   }
 
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
     scalar_flux_td_old_.clear();
     scalar_flux_td_new_.clear();
     scalar_flux_td_final_.clear();
     source_td_.clear();
 
     scalar_flux_rhs_bd_.clear();
-  }
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      source_final_.clear();
 
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-    source_final_.clear();
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       source_time_derivative_.clear();
       scalar_flux_time_derivative_2_.clear();
 
       source_rhs_bd_.clear();
       scalar_flux_rhs_bd_2_.clear();
     }
-  }
 
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
-    delayed_fission_source_.clear();
-    delayed_fission_source_final_.clear();
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      delayed_fission_source_.clear();
+      delayed_fission_source_final_.clear();
 
-    precursors_im1_.clear();
-    delayed_fission_source_im1_.clear();
-    delayed_fission_source_im2_.clear();
-  } else {
-    precursors_rhs_bd_.clear();
-  }
+      precursors_im1_.clear();
+      delayed_fission_source_im1_.clear();
+      delayed_fission_source_im2_.clear();
+    } else {
+      precursors_rhs_bd_.clear();
+    }
 
-  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-      settings::is_initial_condition) {
     precursors_old_.clear();
     precursors_new_.clear();
     precursors_final_.clear();
@@ -374,7 +366,8 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
     handle.flux_moments_t_ = &flux_moments_t(sr, 0);
   }
 
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
     handle.scalar_flux_td_old_ = &scalar_flux_td_old(sr, 0);
     handle.scalar_flux_td_new_ = &scalar_flux_td_new(sr, 0);
     handle.scalar_flux_td_final_ = &scalar_flux_td_final(sr, 0);
@@ -390,8 +383,19 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
   }
 
   // SDP arrays
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+  handle.source_final_ = nullptr;
+
+  handle.source_td_final_ = nullptr;
+  handle.source_time_derivative_ = nullptr;
+  handle.scalar_flux_time_derivative_2_ = nullptr;
+
+  handle.source_rhs_bd_ = nullptr;
+  handle.scalar_flux_rhs_bd_2_ = nullptr;
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      handle.source_final_ = &source_final(sr, 0);
+
       handle.source_td_final_ = &source_final(sr, 0);
       handle.source_time_derivative_ = &source_time_derivative(sr, 0);
       handle.scalar_flux_time_derivative_2_ =
@@ -399,17 +403,6 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
 
       handle.source_rhs_bd_ = &source_rhs_bd(sr, 0);
       handle.scalar_flux_rhs_bd_2_ = &scalar_flux_rhs_bd_2(sr, 0);
-
-      handle.source_final_ = nullptr;
-    } else {
-      handle.source_final_ = &source_final(sr, 0);
-
-      handle.source_td_final_ = nullptr;
-      handle.source_time_derivative_ = nullptr;
-      handle.scalar_flux_time_derivative_2_ = nullptr;
-
-      handle.source_rhs_bd_ = nullptr;
-      handle.scalar_flux_rhs_bd_2_ = nullptr;
     }
   }
 
@@ -420,7 +413,24 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
     handle.precursors_new_ = &precursors_new(sr, 0);
     handle.precursors_final_ = &precursors_final(sr, 0);
     handle.tally_delay_task_ = &tally_delay_task(sr, 0);
-    // Analytic precursor integration arrays
+  } else {
+    handle.precursors_old_ = nullptr;
+    handle.precursors_new_ = nullptr;
+    handle.precursors_final_ = nullptr;
+    handle.tally_delay_task_ = nullptr;
+  }
+
+  // Analytic precursor integration arrays
+  handle.precursors_rhs_bd_ = &precursors_rhs_bd(sr, 0);
+
+  handle.delayed_fission_source_ = nullptr;
+  handle.delayed_fission_source_final_ = nullptr;
+
+  handle.precursors_im1_ = nullptr;
+  handle.delayed_fission_source_im1_ = nullptr;
+  handle.delayed_fission_source_im2_ = nullptr;
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
     if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
       handle.delayed_fission_source_ = &delayed_fission_source(sr, 0);
       handle.delayed_fission_source_final_ =
@@ -431,21 +441,7 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
       handle.delayed_fission_source_im2_ = &delayed_fission_source_im2(sr, 0);
 
       handle.precursors_rhs_bd_ = nullptr;
-    } else {
-      handle.precursors_rhs_bd_ = &precursors_rhs_bd(sr, 0);
-
-      handle.delayed_fission_source_ = nullptr;
-      handle.delayed_fission_source_final_ = nullptr;
-
-      handle.precursors_im1_ = nullptr;
-      handle.delayed_fission_source_im1_ = nullptr;
-      handle.delayed_fission_source_im2_ = nullptr;
     }
-  } else {
-    handle.precursors_old_ = nullptr;
-    handle.precursors_new_ = nullptr;
-    handle.precursors_final_ = nullptr;
-    handle.tally_delay_task_ = nullptr;
   }
 
   return handle;

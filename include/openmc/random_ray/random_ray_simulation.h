@@ -15,7 +15,7 @@ class RandomRaySimulation {
 public:
   //----------------------------------------------------------------------------
   // Constructors
-  RandomRaySimulation();
+  RandomRaySimulation(bool generate_source_domain = true);
 
   //----------------------------------------------------------------------------
   // Methods
@@ -23,7 +23,6 @@ public:
   void apply_fixed_sources_and_mesh_domains();
   void prepare_fixed_sources_adjoint();
   void set_initial_condition();
-  void set_rhs_bd_vectors();
   void simulate();
   void output_simulation_results() const;
   void instability_check(
@@ -36,12 +35,12 @@ public:
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
 
+  // Contains all flat source region data
+  unique_ptr<FlatSourceDomain> domain_;
+
 private:
   //----------------------------------------------------------------------------
   // Data members
-
-  // Contains all flat source region data
-  unique_ptr<FlatSourceDomain> domain_;
 
   // Tracks the average FSR miss rate for analysis and reporting
   double avg_miss_rate_ {0.0};
@@ -99,7 +98,12 @@ extern vector<double> precursors_im1;
 extern vector<double> delayed_fission_source_im1;
 extern vector<double> delayed_fission_source_im2;
 
+extern unique_ptr<FlatSourceDomain> source_domain;
+
 extern double previous_k_eff;
+extern int64_t n_source_elements;
+extern int64_t n_source_regions;
+extern int64_t n_delay_elements;
 
 } // namespace openmc
 

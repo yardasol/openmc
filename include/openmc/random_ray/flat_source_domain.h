@@ -82,8 +82,14 @@ public:
     return source_regions_.n_source_regions() * ndgroups_;
   }
   // TODO: make this depend on srh
-  void set_initial_fluxes();
-  void set_initial_fluxes(vector<double>& criticality_flux);
+  void propagate_final_fluxes();
+  void set_initial_fluxes(
+    vector<double>& initial_flux, int64_t n_source_regions);
+  void set_rhs_bd_vectors(int64_t n_source_regions,
+    vector<double>& scalar_flux_rhs_bd, vector<double>& source_rhs_bd,
+    vector<double>& scalar_flux_rhs_bd_2, vector<double>& precursors_rhs_bd,
+    vector<double>& precursors_im1, vector<double>& delayed_fission_source_im1,
+    vector<double>& delayed_fission_source_im2);
 
   virtual void update_single_neutron_source_td(SourceRegionHandle& srh);
   virtual void update_all_neutron_sources_td();
