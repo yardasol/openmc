@@ -1,7 +1,5 @@
 #include "openmc/tallies/filter_cell.h"
 
-#include <cassert>
-
 #include <fmt/core.h>
 
 #include "openmc/capi.h"
@@ -27,7 +25,7 @@ void CellFilter::from_xml(pugi::xml_node node)
   this->set_cells(cells);
 }
 
-void CellFilter::set_cells(span<int32_t> cells)
+void CellFilter::set_cells(gsl::span<int32_t> cells)
 {
   // Clear existing cells
   cells_.clear();
@@ -36,8 +34,8 @@ void CellFilter::set_cells(span<int32_t> cells)
 
   // Update cells and mapping
   for (auto& index : cells) {
-    assert(index >= 0);
-    assert(index < model::cells.size());
+    Expects(index >= 0);
+    Expects(index < model::cells.size());
     cells_.push_back(index);
     map_[index] = cells_.size() - 1;
   }
@@ -49,7 +47,7 @@ void CellFilter::get_all_bins(
   const Particle& p, TallyEstimator estimator, FilterMatch& match) const
 {
   for (int i = 0; i < p.n_coord(); i++) {
-    auto search = map_.find(p.coord(i).cell());
+    auto search = map_.find(p.coord(i).cell);
     if (search != map_.end()) {
       match.bins_.push_back(search->second);
       match.weights_.push_back(1.0);

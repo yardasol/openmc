@@ -3,8 +3,7 @@ from numbers import Integral, Real
 import lxml.etree as ET
 
 import openmc.checkvalue as cv
-from .filter import Filter
-from ._xml import get_text
+from . import Filter
 
 
 class ExpansionFilter(Filter):
@@ -50,8 +49,8 @@ class ExpansionFilter(Filter):
 
     @classmethod
     def from_xml_element(cls, elem, **kwargs):
-        filter_id = int(get_text(elem, "id"))
-        order = int(get_text(elem, "order"))
+        filter_id = int(elem.get('id'))
+        order = int(elem.find('order').text)
         return cls(order, filter_id=filter_id)
 
     def merge(self, other):
@@ -264,11 +263,11 @@ class SpatialLegendreFilter(ExpansionFilter):
 
     @classmethod
     def from_xml_element(cls, elem, **kwargs):
-        filter_id = int(get_text(elem, "id"))
-        order = int(get_text(elem, "order"))
-        axis = get_text(elem, "axis")
-        minimum = float(get_text(elem, "min"))
-        maximum = float(get_text(elem, "max"))
+        filter_id = int(elem.get('id'))
+        order = int(elem.find('order').text)
+        axis = elem.find('axis').text
+        minimum = float(elem.find('min').text)
+        maximum = float(elem.find('max').text)
         return cls(order, axis, minimum, maximum, filter_id=filter_id)
 
 
@@ -363,10 +362,10 @@ class SphericalHarmonicsFilter(ExpansionFilter):
 
     @classmethod
     def from_xml_element(cls, elem, **kwargs):
-        filter_id = int(get_text(elem, "id"))
-        order = int(get_text(elem, "order"))
+        filter_id = int(elem.get('id'))
+        order = int(elem.find('order').text)
         filter = cls(order, filter_id=filter_id)
-        filter.cosine = get_text(elem, "cosine")
+        filter.cosine = elem.get('cosine')
         return filter
 
 
@@ -519,11 +518,11 @@ class ZernikeFilter(ExpansionFilter):
 
     @classmethod
     def from_xml_element(cls, elem, **kwargs):
-        filter_id = int(get_text(elem, "id"))
-        order = int(get_text(elem, "order"))
-        x = float(get_text(elem, "x"))
-        y = float(get_text(elem, "y"))
-        r = float(get_text(elem, "r"))
+        filter_id = int(elem.get('id'))
+        order = int(elem.find('order').text)
+        x = float(elem.find('x').text)
+        y = float(elem.find('y').text)
+        r = float(elem.find('r').text)
         return cls(order, x, y, r, filter_id=filter_id)
 
 

@@ -1,6 +1,7 @@
 import glob
 import os
 from pathlib import Path
+from subprocess import call
 
 import numpy as np
 import openmc
@@ -25,8 +26,8 @@ class TrackTestHarness(TestHarness):
 
         # For MPI mode, combine track files
         if config['mpi']:
-            track_files = list(glob.glob('tracks_p*.h5'))
-            openmc.Tracks.combine(track_files, 'tracks.h5')
+            call(['../../../scripts/openmc-track-combine', '-o', 'tracks.h5'] +
+                 glob.glob('tracks_p*.h5'))
 
         # Get string of track file information
         outstr = ''

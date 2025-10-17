@@ -4,7 +4,7 @@
 Properties File Format
 ======================
 
-The current version of the properties file format is 1.1.
+The current version of the properties file format is 1.0.
 
 **/**
 
@@ -25,7 +25,6 @@ The current version of the properties file format is 1.1.
 **/geometry/cells/cell <uid>/**
 
 :Datasets: - **temperature** (*double[]*) -- Temperature of the cell in [K].
-           - **density** (*double[]*) -- Density of the cell in [g/cm3].
 
 **/materials/**
 

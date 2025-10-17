@@ -15,6 +15,8 @@
 namespace openmc {
 
 namespace model {
+extern std::unordered_map<int32_t, std::unordered_map<int32_t, int32_t>>
+  universe_cell_counts;
 extern std::unordered_map<int32_t, int32_t> universe_level_counts;
 } // namespace model
 
@@ -36,12 +38,6 @@ void adjust_indices();
 //==============================================================================
 
 void assign_temperatures();
-
-//==============================================================================
-//! Finalize densities (compute density multipliers).
-//==============================================================================
-
-void finalize_cell_densities();
 
 //==============================================================================
 //! \brief Obtain a list of temperatures that each nuclide/thermal scattering
@@ -84,13 +80,15 @@ void prepare_distribcell(
   const std::vector<int32_t>* user_distribcells = nullptr);
 
 //==============================================================================
-//! Recursively search through the geometry and count universe instances.
+//! Recursively search through the geometry and count cell instances.
 //!
-//! This function will update Universe.n_instances_ for each
-//! universe in the geometry.
+//! This function will update the Cell::n_instances value for each cell in the
+//! geometry.
+//! \param univ_indx The index of the universe to begin searching from (probably
+//!   the root universe).
 //==============================================================================
 
-void count_universe_instances();
+void count_cell_instances(int32_t univ_indx);
 
 //==============================================================================
 //! Recursively search through universes and count universe instances.

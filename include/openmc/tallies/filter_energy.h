@@ -1,7 +1,8 @@
 #ifndef OPENMC_TALLIES_FILTER_ENERGY_H
 #define OPENMC_TALLIES_FILTER_ENERGY_H
 
-#include "openmc/span.h"
+#include <gsl/gsl-lite.hpp>
+
 #include "openmc/tallies/filter.h"
 #include "openmc/vector.h"
 
@@ -37,7 +38,7 @@ public:
   // Accessors
 
   const vector<double>& bins() const { return bins_; }
-  void set_bins(span<const double> bins);
+  void set_bins(gsl::span<const double> bins);
 
   bool matches_transport_groups() const { return matches_transport_groups_; }
 

@@ -3,6 +3,8 @@
 
 #include <string>
 
+#include <gsl/gsl-lite.hpp>
+
 #include "openmc/tallies/filter.h"
 
 namespace openmc {
@@ -44,7 +46,7 @@ public:
 
   SphericalHarmonicsCosine cosine() const { return cosine_; }
 
-  void set_cosine(const std::string& cosine);
+  void set_cosine(gsl::cstring_span cosine);
 
 private:
   //----------------------------------------------------------------------------

@@ -4,7 +4,8 @@
 #include <cstdint>
 #include <unordered_map>
 
-#include "openmc/span.h"
+#include <gsl/gsl-lite.hpp>
+
 #include "openmc/tallies/filter.h"
 #include "openmc/vector.h"
 
@@ -39,7 +40,7 @@ public:
   //----------------------------------------------------------------------------
   // Accessors
 
-  void set_universes(span<int32_t> universes);
+  void set_universes(gsl::span<int32_t> universes);
 
 private:
   //----------------------------------------------------------------------------

@@ -4,7 +4,8 @@
 #include "openmc/vector.h"
 #include <string>
 
-#include "openmc/span.h"
+#include <gsl/gsl-lite.hpp>
+
 #include "openmc/tallies/filter.h"
 
 namespace openmc {
@@ -38,7 +39,7 @@ public:
   //----------------------------------------------------------------------------
   // Accessors
 
-  void set_bins(span<double> bins);
+  void set_bins(gsl::span<double> bins);
 
 private:
   //----------------------------------------------------------------------------

@@ -248,10 +248,6 @@ def test_plot():
     c_before = openmc.Cell()
     region.plot()
 
-    # Close plot to avoid warning
-    import matplotlib.pyplot as plt
-    plt.close()
-
     # Ensure that calling plot doesn't affect cell ID space
     c_after = openmc.Cell()
     assert c_after.id - 1 == c_before.id

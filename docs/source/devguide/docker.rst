@@ -45,11 +45,12 @@ Now you can run the following to create a `Docker container`_ called
 This command will open an interactive shell running from within the
 Docker container where you have access to use OpenMC.
 
-.. note:: The ``docker run`` command supports many options_
+.. note:: The ``docker run`` command supports many
+          `options <https://docs.docker.com/engine/reference/commandline/run/>`_
           for spawning containers -- including `mounting volumes`_ from the
           host filesystem -- which many users will find useful.
 
-.. _Docker image: https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-an-image/
+.. _Docker image: https://docs.docker.com/engine/reference/commandline/images/
 .. _Docker container: https://www.docker.com/resources/what-container
-.. _options: https://docs.docker.com/reference/cli/docker/container/run/
-.. _mounting volumes: https://docs.docker.com/engine/storage/volumes/
+.. _options: https://docs.docker.com/engine/reference/commandline/run/
+.. _mounting volumes: https://docs.docker.com/storage/volumes/

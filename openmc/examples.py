@@ -11,9 +11,8 @@ def pwr_pin_cell() -> openmc.Model:
 
     This model is a single fuel pin with 2.4 w/o enriched UO2 corresponding to a
     beginning-of-cycle condition and borated water. The specifications are from
-    the `BEAVRS <https://crpg.mit.edu/research/beavrs>`_ benchmark. Note that
-    the number of particles/batches is initially set very low for testing
-    purposes.
+    the `BEAVRS <http://crpg.mit.edu/research/beavrs>`_ benchmark. Note that the
+    number of particles/batches is initially set very low for testing purposes.
 
     Returns
     -------
@@ -443,7 +442,7 @@ def pwr_assembly() -> openmc.Model:
     """Create a PWR assembly model.
 
     This model is a reflected 17x17 fuel assembly from the the `BEAVRS
-    <https://crpg.mit.edu/research/beavrs>`_ benchmark. The fuel is 2.4 w/o
+    <http://crpg.mit.edu/research/beavrs>`_ benchmark. The fuel is 2.4 w/o
     enriched UO2 corresponding to a beginning-of-cycle condition. Note that the
     number of particles/batches is initially set very low for testing purposes.
 

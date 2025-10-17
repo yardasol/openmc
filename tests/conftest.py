@@ -1,4 +1,3 @@
-import os
 import pytest
 import openmc
 
@@ -29,10 +28,7 @@ def run_in_tmpdir(tmpdir):
         yield
     finally:
         orig.chdir()
-        
-@pytest.fixture(scope="module")
-def endf_data():
-    return os.environ['OPENMC_ENDF_DATA']        
+
 
 @pytest.fixture(scope='session', autouse=True)
 def resolve_paths():

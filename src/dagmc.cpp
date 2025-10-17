@@ -1,7 +1,5 @@
 #include "openmc/dagmc.h"
 
-#include <cassert>
-
 #include "openmc/constants.h"
 #include "openmc/container_util.h"
 #include "openmc/error.h"
@@ -13,7 +11,7 @@
 #include "openmc/settings.h"
 #include "openmc/string_utils.h"
 
-#ifdef OPENMC_UWUW_ENABLED
+#ifdef OPENMC_UWUW
 #include "uwuw.hpp"
 #endif
 #include <fmt/core.h>
@@ -26,13 +24,13 @@
 
 namespace openmc {
 
-#ifdef OPENMC_DAGMC_ENABLED
+#ifdef DAGMC
 const bool DAGMC_ENABLED = true;
 #else
 const bool DAGMC_ENABLED = false;
 #endif
 
-#ifdef OPENMC_UWUW_ENABLED
+#ifdef OPENMC_UWUW
 const bool UWUW_ENABLED = true;
 #else
 const bool UWUW_ENABLED = false;
@@ -40,7 +38,7 @@ const bool UWUW_ENABLED = false;
 
 } // namespace openmc
 
-#ifdef OPENMC_DAGMC_ENABLED
+#ifdef DAGMC
 
 namespace openmc {
 
@@ -131,7 +129,9 @@ void DAGUniverse::set_id()
 
 void DAGUniverse::initialize()
 {
-#ifdef OPENMC_UWUW_ENABLED
+  geom_type() = GeometryType::DAG;
+
+#ifdef OPENMC_UWUW
   // read uwuw materials from the .h5m file if present
   read_uwuw_materials();
 #endif
@@ -430,7 +430,7 @@ bool DAGUniverse::find_cell(GeometryState& p) const
   // cells, place it in the implicit complement
   bool found = Universe::find_cell(p);
   if (!found && model::universe_map[this->id_] != model::root_universe) {
-    p.lowest_coord().cell() = implicit_complement_idx();
+    p.lowest_coord().cell = implicit_complement_idx();
     found = true;
   }
   return found;
@@ -456,16 +456,16 @@ void DAGUniverse::to_hdf5(hid_t universes_group) const
 
 bool DAGUniverse::uses_uwuw() const
 {
-#ifdef OPENMC_UWUW_ENABLED
+#ifdef OPENMC_UWUW
   return uwuw_ && !uwuw_->material_library.empty();
 #else
   return false;
-#endif // OPENMC_UWUW_ENABLED
+#endif // OPENMC_UWUW
 }
 
 std::string DAGUniverse::get_uwuw_materials_xml() const
 {
-#ifdef OPENMC_UWUW_ENABLED
+#ifdef OPENMC_UWUW
   if (!uses_uwuw()) {
     throw std::runtime_error("This DAGMC Universe does not use UWUW materials");
   }
@@ -485,12 +485,12 @@ std::string DAGUniverse::get_uwuw_materials_xml() const
   return ss.str();
 #else
   fatal_error("DAGMC was not configured with UWUW.");
-#endif // OPENMC_UWUW_ENABLED
+#endif // OPENMC_UWUW
 }
 
 void DAGUniverse::write_uwuw_materials_xml(const std::string& outfile) const
 {
-#ifdef OPENMC_UWUW_ENABLED
+#ifdef OPENMC_UWUW
   if (!uses_uwuw()) {
     throw std::runtime_error(
       "This DAGMC universe does not use UWUW materials.");
@@ -503,7 +503,7 @@ void DAGUniverse::write_uwuw_materials_xml(const std::string& outfile) const
   mats_xml.close();
 #else
   fatal_error("DAGMC was not configured with UWUW.");
-#endif // OPENMC_UWUW_ENABLED
+#endif // OPENMC_UWUW
 }
 
 void DAGUniverse::legacy_assign_material(
@@ -565,7 +565,7 @@ void DAGUniverse::legacy_assign_material(
 
 void DAGUniverse::read_uwuw_materials()
 {
-#ifdef OPENMC_UWUW_ENABLED
+#ifdef OPENMC_UWUW
   // If no filename was provided, don't read UWUW materials
   if (filename_ == "")
     return;
@@ -605,13 +605,13 @@ void DAGUniverse::read_uwuw_materials()
   }
 #else
   fatal_error("DAGMC was not configured with UWUW.");
-#endif // OPENMC_UWUW_ENABLED
+#endif // OPENMC_UWUW
 }
 
 void DAGUniverse::uwuw_assign_material(
   moab::EntityHandle vol_handle, std::unique_ptr<DAGCell>& c) const
 {
-#ifdef OPENMC_UWUW_ENABLED
+#ifdef OPENMC_UWUW
   // lookup material in uwuw if present
   std::string uwuw_mat = dmd_ptr->volume_material_property_data_eh[vol_handle];
   if (uwuw_->material_library.count(uwuw_mat) != 0) {
@@ -627,7 +627,7 @@ void DAGUniverse::uwuw_assign_material(
   }
 #else
   fatal_error("DAGMC was not configured with UWUW.");
-#endif // OPENMC_UWUW_ENABLED
+#endif // OPENMC_UWUW
 }
 
 void DAGUniverse::override_assign_material(std::unique_ptr<DAGCell>& c) const
@@ -661,7 +661,10 @@ void DAGUniverse::override_assign_material(std::unique_ptr<DAGCell>& c) const
 //==============================================================================
 
 DAGCell::DAGCell(std::shared_ptr<moab::DagMC> dag_ptr, int32_t dag_idx)
-  : Cell {}, dagmc_ptr_(dag_ptr), dag_index_(dag_idx) {};
+  : Cell {}, dagmc_ptr_(dag_ptr), dag_index_(dag_idx)
+{
+  geom_type() = GeometryType::DAG;
+};
 
 std::pair<double, int32_t> DAGCell::distance(
   Position r, Direction u, int32_t on_surface, GeometryState* p) const
@@ -672,11 +675,11 @@ std::pair<double, int32_t> DAGCell::distance(
     p->last_dir() = u;
     p->history().reset();
   }
-  if (on_surface == SURFACE_NONE) {
+  if (on_surface == 0) {
     p->history().reset();
   }
 
-  const auto& univ = model::universes[p->lowest_coord().universe()];
+  const auto& univ = model::universes[p->lowest_coord().universe];
 
   DAGUniverse* dag_univ = static_cast<DAGUniverse*>(univ.get());
   if (!dag_univ)
@@ -762,7 +765,9 @@ BoundingBox DAGCell::bounding_box() const
 
 DAGSurface::DAGSurface(std::shared_ptr<moab::DagMC> dag_ptr, int32_t dag_idx)
   : Surface {}, dagmc_ptr_(dag_ptr), dag_index_(dag_idx)
-{} // empty constructor
+{
+  geom_type() = GeometryType::DAG;
+} // empty constructor
 
 moab::EntityHandle DAGSurface::mesh_handle() const
 {
@@ -802,13 +807,16 @@ Direction DAGSurface::normal(Position r) const
 
 Direction DAGSurface::reflect(Position r, Direction u, GeometryState* p) const
 {
-  assert(p);
+  Expects(p);
+  p->history().reset_to_last_intersection();
+  moab::ErrorCode rval;
+  moab::EntityHandle surf = dagmc_ptr_->entity_by_index(2, dag_index_);
   double pnt[3] = {r.x, r.y, r.z};
   double dir[3];
-  moab::ErrorCode rval =
-    dagmc_ptr_->get_angle(mesh_handle(), pnt, dir, &p->history());
+  rval = dagmc_ptr_->get_angle(surf, pnt, dir, &p->history());
   MB_CHK_ERR_CONT(rval);
-  return u.reflect(dir);
+  p->last_dir() = u.reflect(dir);
+  return p->last_dir();
 }
 
 //==============================================================================
@@ -926,4 +934,4 @@ int32_t next_cell(int32_t surf, int32_t curr_cell, int32_t univ);
 
 } // namespace openmc
 
-#endif // OPENMC_DAGMC_ENABLED
+#endif // DAGMC

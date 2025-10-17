@@ -4,7 +4,8 @@
 #include <cstdint>
 #include <unordered_map>
 
-#include "openmc/span.h"
+#include <gsl/gsl-lite.hpp>
+
 #include "openmc/tallies/filter.h"
 #include "openmc/vector.h"
 
@@ -43,7 +44,7 @@ public:
 
   const vector<int32_t>& materials() const { return materials_; }
 
-  void set_materials(span<const int32_t> materials);
+  void set_materials(gsl::span<const int32_t> materials);
 
 protected:
   //----------------------------------------------------------------------------

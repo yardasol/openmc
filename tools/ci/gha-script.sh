@@ -14,8 +14,10 @@ if [[ $EVENT == 'y' ]]; then
   args="${args} --event "
 fi
 
-# Run unit tests and then regression tests
-pytest -v $args \
-  tests/test_matplotlib_import.py \
-  tests/unit_tests \
-  tests/regression_tests
+# Check NCrystal installation
+if [[ $NCRYSTAL = 'y' ]]; then
+  nctool --test
+fi
+
+# Run regression and unit tests
+pytest --cov=openmc -v $args tests

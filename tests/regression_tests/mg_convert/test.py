@@ -1,4 +1,3 @@
-from math import isnan
 import os
 import hashlib
 
@@ -143,13 +142,10 @@ class MGXSTestHarness(PyAPITestHarness):
                 openmc.run(openmc_exec=config['exe'])
 
             with openmc.StatePoint('statepoint.{}.h5'.format(batches)) as sp:
-                # Sometimes NaN results are produced; convert these to 0.0
-                std_dev = 0.0 if isnan(sp.keff.s) else sp.keff.s
-
                 # Write out k-combined.
                 outstr += 'k-combined:\n'
                 form = '{:12.6E} {:12.6E}\n'
-                outstr += form.format(sp.keff.n, std_dev)
+                outstr += form.format(sp.keff.n, sp.keff.s)
 
         return outstr
 

@@ -1,3 +1,4 @@
+from copy import deepcopy
 import pytest
 import numpy as np
 
@@ -5,7 +6,6 @@ import openmc
 from openmc.stats import Discrete, Point
 
 from tests.testing_harness import HashedPyAPITestHarness
-
 
 
 @pytest.fixture
@@ -114,7 +114,7 @@ def test_weightwindows(model):
 
 def test_wwinp_cylindrical():
 
-    ww = openmc.WeightWindowsList.from_wwinp('ww_n_cyl.txt')[0]
+    ww = openmc.wwinp_to_wws('ww_n_cyl.txt')[0]
 
     mesh = ww.mesh
 
@@ -144,7 +144,7 @@ def test_wwinp_cylindrical():
 
 def test_wwinp_spherical():
 
-    ww = openmc.WeightWindowsList.from_wwinp('ww_n_sph.txt')[0]
+    ww = openmc.wwinp_to_wws('ww_n_sph.txt')[0]
 
     mesh = ww.mesh
 

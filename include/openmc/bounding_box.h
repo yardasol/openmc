@@ -4,7 +4,6 @@
 #include <algorithm> // for min, max
 
 #include "openmc/constants.h"
-#include "openmc/position.h"
 
 namespace openmc {
 
@@ -55,9 +54,6 @@ struct BoundingBox {
     zmax = std::max(zmax, other.zmax);
     return *this;
   }
-
-  inline Position min() const { return {xmin, ymin, zmin}; }
-  inline Position max() const { return {xmax, ymax, zmax}; }
 };
 
 } // namespace openmc

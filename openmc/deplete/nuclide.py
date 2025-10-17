@@ -14,7 +14,6 @@ import numpy as np
 
 from openmc.checkvalue import check_type
 from openmc.stats import Univariate
-from .._xml import get_elem_list, get_text
 
 __all__ = [
     "DecayTuple", "ReactionTuple", "Nuclide", "FissionYield",
@@ -226,39 +225,38 @@ class Nuclide:
 
         """
         nuc = cls()
-        nuc.name = get_text(element, "name")
+        nuc.name = element.get('name')
 
         # Check for half-life
-        half_life = get_text(element, "half_life")
-        if half_life is not None:
-            nuc.half_life = float(half_life)
-            nuc.decay_energy = float(get_text(element, "decay_energy", 0.0))
+        if 'half_life' in element.attrib:
+            nuc.half_life = float(element.get('half_life'))
+            nuc.decay_energy = float(element.get('decay_energy', '0'))
 
         # Check for decay paths
         for decay_elem in element.iter('decay'):
-            d_type = get_text(decay_elem, "type")
-            target = get_text(decay_elem, "target")
+            d_type = decay_elem.get('type')
+            target = decay_elem.get('target')
             if target is not None and target.lower() == "nothing":
                 target = None
-            branching_ratio = float(get_text(decay_elem, "branching_ratio"))
+            branching_ratio = float(decay_elem.get('branching_ratio'))
             nuc.decay_modes.append(DecayTuple(d_type, target, branching_ratio))
 
         # Check for sources
         for src_elem in element.iter('source'):
-            particle = get_text(src_elem, "particle")
+            particle = src_elem.get('particle')
             distribution = Univariate.from_xml_element(src_elem)
             nuc.sources[particle] = distribution
 
         # Check for reaction paths
         for reaction_elem in element.iter('reaction'):
-            r_type = get_text(reaction_elem, "type")
-            Q = float(get_text(reaction_elem, "Q", 0.0))
-            branching_ratio = float(get_text(reaction_elem, "branching_ratio", 1.0))
+            r_type = reaction_elem.get('type')
+            Q = float(reaction_elem.get('Q', '0'))
+            branching_ratio = float(reaction_elem.get('branching_ratio', '1'))
 
             # If the type is not fission, get target and Q value, otherwise
             # just set null values
             if r_type != 'fission':
-                target = get_text(reaction_elem, "target")
+                target = reaction_elem.get('target')
                 if target is not None and target.lower() == "nothing":
                     target = None
             else:
@@ -273,7 +271,7 @@ class Nuclide:
         fpy_elem = element.find('neutron_fission_yields')
         if fpy_elem is not None:
             # Check for use of FPY from other nuclide
-            parent = get_text(fpy_elem, "parent")
+            parent = fpy_elem.get('parent')
             if parent is not None:
                 assert root is not None
                 fpy_elem = root.find(
@@ -531,9 +529,9 @@ class FissionYieldDistribution(Mapping):
         """
         all_yields = {}
         for yield_elem in element.iter("fission_yields"):
-            energy = float(get_text(yield_elem, "energy"))
-            products = get_elem_list(yield_elem, "products", str) or []
-            yields = get_elem_list(yield_elem, "data", float) or []
+            energy = float(yield_elem.get("energy"))
+            products = yield_elem.find("products").text.split()
+            yields = map(float, yield_elem.find("data").text.split())
             # Get a map of products to their corresponding yield
             all_yields[energy] = dict(zip(products, yields))
 

@@ -101,20 +101,25 @@ TEST_CASE("Test rhs_backwards_difference")
   }
 }
 
-TEST_CASE("Test fill_bd_vector")
+TEST_CASE("Test initialize_bd_vector")
 {
   vector<double> ref_scalar_flux_bd = {0.3, 0.4, 0.3, 0.4, 0.0, 0.0};
   vector<double> ref_precursors_bd = {1.0, 2.0, 3.0, 0.0, 0.0, 0.0};
 
-  int bd_order = 1;
+  int bd_order_max = 1;
   int64_t n_source_elements = 2;
   int64_t n_delay_elements = 3;
 
-  vector<double> scalar_flux_bd = {0.3, 0.4};
-  vector<double> precursors_bd = {1.0, 2.0, 3.0};
+  vector<double> criticality_scalar_flux = {0.3, 0.4};
+  vector<double> criticality_precursors = {1.0, 2.0, 3.0};
 
-  fill_bd_vector(n_source_elements, bd_order + 2, scalar_flux_bd);
-  fill_bd_vector(n_delay_elements, bd_order + 1, precursors_bd);
+  vector<double> scalar_flux_bd;
+  vector<double> precursors_bd;
+
+  initialize_bd_vector(n_source_elements, bd_order_max + 2,
+    scalar_flux_bd, criticality_scalar_flux);
+  initialize_bd_vector(n_delay_elements, bd_order_max + 1,
+    precursors_bd, criticality_precursors);
 
   REQUIRE_THAT(ref_scalar_flux_bd, Catch::Matchers::Equals(scalar_flux_bd));
   REQUIRE_THAT(ref_precursors_bd, Catch::Matchers::Equals(precursors_bd));

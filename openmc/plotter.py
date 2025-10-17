@@ -413,8 +413,7 @@ def _calculate_cexs_nuclide(this, types, temperature=294., sab_name=None,
 
         # Prep S(a,b) data if needed
         if sab_name:
-            sab = openmc.data.ThermalScattering.from_hdf5(
-                library.get_by_material(sab_name, data_type='thermal')['path'])
+            sab = openmc.data.ThermalScattering.from_hdf5(sab_name)
             # Obtain the nearest temperature
             if strT in sab.temperatures:
                 sabT = strT
@@ -501,7 +500,7 @@ def _calculate_cexs_nuclide(this, types, temperature=294., sab_name=None,
                     elif ncrystal_cfg:
                         import NCrystal
                         nc_scatter = NCrystal.createScatter(ncrystal_cfg)
-                        nc_func = nc_scatter.xsect
+                        nc_func = nc_scatter.crossSectionNonOriented
                         nc_emax = 5 # eV # this should be obtained from NCRYSTAL_MAX_ENERGY
                         energy_grid = np.union1d(np.geomspace(min(energy_grid),
                                                               1.1*nc_emax,
@@ -641,13 +640,14 @@ def _calculate_cexs_elem_mat(this, types, temperature=294.,
             sab = openmc.data.ThermalScattering.from_hdf5(
                 library.get_by_material(sab_name, data_type='thermal')['path'])
             for nuc in sab.nuclides:
-                sabs[nuc] = sab_name
+                sabs[nuc] = library.get_by_material(sab_name,
+                        data_type='thermal')['path']
     else:
         if sab_name:
-            sab = openmc.data.ThermalScattering.from_hdf5(
-                library.get_by_material(sab_name, data_type='thermal')['path'])
+            sab = openmc.data.ThermalScattering.from_hdf5(sab_name)
             for nuc in sab.nuclides:
-                sabs[nuc] = sab_name
+                sabs[nuc] = library.get_by_material(sab_name,
+                        data_type='thermal')['path']
 
     # Now we can create the data sets to be plotted
     xs = {}
@@ -655,8 +655,8 @@ def _calculate_cexs_elem_mat(this, types, temperature=294.,
     for nuclide in nuclides.items():
         name = nuclide[0]
         nuc = nuclide[1]
-        sab_name = sabs[name]
-        temp_E, temp_xs = calculate_cexs(nuc, types, T, sab_name, cross_sections,
+        sab_tab = sabs[name]
+        temp_E, temp_xs = calculate_cexs(nuc, types, T, sab_tab, cross_sections,
                                          ncrystal_cfg=ncrystal_cfg
                                          )
         E.append(temp_E)

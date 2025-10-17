@@ -751,10 +751,11 @@ instance, whereas the :meth:`openmc.Track.filter` method returns a new
           with more than one process, a separate track file will be written for
           each MPI process with the filename ``tracks_p#.h5`` where # is the
           rank of the corresponding process. Multiple track files can be
-          combined with the :meth:`openmc.Tracks.combine` method::
+          combined with the :ref:`scripts_track_combine` script:
 
-            track_files = [f"tracks_p{rank}.h5" for rank in range(32)]
-            openmc.Tracks.combine(track_files, "tracks.h5")
+          .. code-block:: sh
+
+            openmc-track-combine tracks_p*.h5 --out tracks.h5
 
 -----------------------
 Restarting a Simulation

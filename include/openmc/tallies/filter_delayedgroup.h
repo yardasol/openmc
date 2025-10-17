@@ -1,7 +1,8 @@
 #ifndef OPENMC_TALLIES_FILTER_DELAYEDGROUP_H
 #define OPENMC_TALLIES_FILTER_DELAYEDGROUP_H
 
-#include "openmc/span.h"
+#include <gsl/gsl-lite.hpp>
+
 #include "openmc/tallies/filter.h"
 #include "openmc/vector.h"
 
@@ -41,7 +42,7 @@ public:
 
   const vector<int>& groups() const { return groups_; }
 
-  void set_groups(span<int> groups);
+  void set_groups(gsl::span<int> groups);
 
 private:
   //----------------------------------------------------------------------------

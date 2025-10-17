@@ -1,7 +1,8 @@
 #ifndef OPENMC_TALLIES_FILTER_MU_H
 #define OPENMC_TALLIES_FILTER_MU_H
 
-#include "openmc/span.h"
+#include <gsl/gsl-lite.hpp>
+
 #include "openmc/tallies/filter.h"
 #include "openmc/vector.h"
 
@@ -37,7 +38,7 @@ public:
   //----------------------------------------------------------------------------
   // Accessors
 
-  void set_bins(span<double> bins);
+  void set_bins(gsl::span<double> bins);
 
 protected:
   //----------------------------------------------------------------------------

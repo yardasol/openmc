@@ -81,13 +81,6 @@ time.
 
     *Default*: 1.0
 
-  :survival_normalization:
-    If this element is set to "true", this will enable the use of survival
-    biasing source normalization, whereby the weight parameters, weight and
-    weight_avg, are multiplied per history by the start weight of said history.
-
-    *Default*: false
-
   :energy_neutron:
     The energy under which neutrons will be killed.
 
@@ -178,16 +171,6 @@ history-based parallelism.
 
   *Default*: false
 
---------------------------------
-``<free_gas_threshold>`` Element
---------------------------------
-
-The ``<free_gas_threshold>`` element specifies the energy multiplier, expressed
-in units of :math:`kT`, that determines when the free gas scattering approach is
-used for elastic scattering. Values must be positive.
-
-  *Default*: 400.0
-
 -----------------------------------
 ``<generations_per_batch>`` Element
 -----------------------------------
@@ -255,7 +238,7 @@ based on the recommended value in LA-UR-14-24530_.
 
   .. note:: This element is not used in the multi-group :ref:`energy_mode`.
 
-.. _LA-UR-14-24530: https://mcnp.lanl.gov/pdf_files/TechReport_2014_LANL_LA-UR-14-24530_Brown.pdf
+.. _LA-UR-14-24530: https://laws.lanl.gov/vhosts/mcnp.lanl.gov/pdf_files/la-ur-14-24530.pdf
 
 ---------------------------
 ``<material_cell_offsets>``
@@ -474,38 +457,6 @@ found in the :ref:`random ray user guide <random_ray>`.
 
     *Default*: None
 
-  :sample_method:
-    Specifies the method for sampling the starting ray distribution. This
-    element can be set to "prng" or "halton".
-
-    *Default*: prng
-
-  :source_region_meshes:
-    Relates meshes to spatial domains for subdividing source regions with each domain.
-
-    :mesh:
-      Contains an ``id`` attribute and one or more ``<domain>`` sub-elements.
-
-      :id:
-        The unique identifier for the mesh.
-
-      :domain:
-        Each domain element has an ``id`` attribute and a ``type`` attribute.
-
-        :id:
-          The unique identifier for the domain.
-
-        :type:
-          The type of the domain. Can be ``material``, ``cell``, or ``universe``.
-
-  :diagonal_stabilization_rho:
-    The rho factor for use with diagonal stabilization. This technique is
-    applied when negative diagonal (in-group) elements are detected in
-    the scattering matrix of input MGXS data, which is a common feature
-    of transport corrected MGXS data.
-
-    *Default*: 1.0
-
 ----------------------------------
 ``<resonance_scattering>`` Element
 ----------------------------------
@@ -580,15 +531,6 @@ The ``seed`` element is used to set the seed used for the linear congruential
 pseudo-random number generator.
 
   *Default*: 1
-
---------------------
-``<stride>`` Element
---------------------
-
-The ``stride`` element is used to specify how many random numbers are allocated
-for each source particle history.
-
-  *Default*: 152,917
 
 .. _source_element:
 
@@ -926,16 +868,6 @@ variable and whose sub-elements/attributes are as follows:
 
   :dist:
     This sub-element of a ``pair`` element provides information on the corresponding univariate distribution.
-
----------------------------------------
-``<source_rejection_fraction>`` Element
----------------------------------------
-
-The ``<source_rejection_fraction>`` element specifies the minimum fraction of
-external source sites that must be accepted when applying rejection sampling
-based on constraints.
-
-   *Default*: 0.05
 
 -------------------------
 ``<state_point>`` Element

@@ -12,7 +12,7 @@ import numpy as np
 from scipy.integrate import trapezoid
 
 import openmc.checkvalue as cv
-from .._xml import get_elem_list, get_text
+from .._xml import get_text
 from ..mixin import EqualityMixin
 
 _INTERPOLATION_SCHEMES = {
@@ -57,7 +57,8 @@ class Univariate(EqualityMixin, ABC):
             return Normal.from_xml_element(elem)
         elif distribution == 'muir':
             # Support older files where Muir had its own class
-            return muir(*get_elem_list(elem, "parameters", float))
+            params = [float(x) for x in get_text(elem, 'parameters').split()]
+            return muir(*params)
         elif distribution == 'tabular':
             return Tabular.from_xml_element(elem)
         elif distribution == 'legendre':
@@ -239,7 +240,7 @@ class Discrete(Univariate):
             Discrete distribution generated from XML element
 
         """
-        params = get_elem_list(elem, "parameters", float)
+        params = [float(x) for x in get_text(elem, 'parameters').split()]
         x = params[:len(params)//2]
         p = params[len(params)//2:]
         return cls(x, p)
@@ -447,8 +448,8 @@ class Uniform(Univariate):
             Uniform distribution generated from XML element
 
         """
-        params = get_elem_list(elem, "parameters", float)
-        return cls(*params)
+        params = get_text(elem, 'parameters').split()
+        return cls(*map(float, params))
 
 
 class PowerLaw(Univariate):
@@ -480,9 +481,6 @@ class PowerLaw(Univariate):
     """
 
     def __init__(self, a: float = 0.0, b: float = 1.0, n: float = 0.):
-        if a >= b:
-            raise ValueError(
-                "Lower bound of sampling interval must be less than upper bound.")
         self.a = a
         self.b = b
         self.n = n
@@ -497,9 +495,6 @@ class PowerLaw(Univariate):
     @a.setter
     def a(self, a):
         cv.check_type('interval lower bound', a, Real)
-        if a < 0:
-            raise ValueError(
-                "PowerLaw sampling is restricted to positive-valued intervals.")
         self._a = a
 
     @property
@@ -509,9 +504,6 @@ class PowerLaw(Univariate):
     @b.setter
     def b(self, b):
         cv.check_type('interval upper bound', b, Real)
-        if b < 0:
-            raise ValueError(
-                "PowerLaw sampling is restricted to positive-valued intervals.")
         self._b = b
 
     @property
@@ -565,8 +557,8 @@ class PowerLaw(Univariate):
             Distribution generated from XML element
 
         """
-        params = get_elem_list(elem, "parameters", float)
-        return cls(*params)
+        params = get_text(elem, 'parameters').split()
+        return cls(*map(float, params))
 
 
 class Maxwell(Univariate):
@@ -745,8 +737,8 @@ class Watt(Univariate):
             Watt distribution generated from XML element
 
         """
-        params = get_elem_list(elem, "parameters", float)
-        return cls(*params)
+        params = get_text(elem, 'parameters').split()
+        return cls(*map(float, params))
 
 
 class Normal(Univariate):
@@ -835,8 +827,8 @@ class Normal(Univariate):
             Normal distribution generated from XML element
 
         """
-        params = get_elem_list(elem, "parameters", float)
-        return cls(*params)
+        params = get_text(elem, 'parameters').split()
+        return cls(*map(float, params))
 
 
 def muir(e0: float, m_rat: float, kt: float):
@@ -1123,7 +1115,7 @@ class Tabular(Univariate):
 
         """
         interpolation = get_text(elem, 'interpolation')
-        params = get_elem_list(elem, "parameters", float)        
+        params = [float(x) for x in get_text(elem, 'parameters').split()]
         m = (len(params) + 1)//2  # +1 for when len(params) is odd
         x = params[:m]
         p = params[m:]

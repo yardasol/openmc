@@ -6,13 +6,12 @@ import numpy as np
 import openmc
 import openmc.lib
 import pytest
-import shutil
 
 from tests.testing_harness import PyAPITestHarness
 
 pytestmark = pytest.mark.skipif(
-    not shutil.which('ncrystal-config'),
-    reason="NCrystal is not installed.")
+    not openmc.lib._ncrystal_enabled(),
+    reason="NCrystal materials are not enabled.")
 
 
 def pencil_beam_model(cfg, E0, N):

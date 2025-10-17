@@ -1,23 +1,23 @@
 #!/usr/bin/env python
+import openmc.lib
 import pytest
 import glob
 import os
-import shutil
-from tests.testing_harness import *
 
+from tests.testing_harness import *
 pytestmark = pytest.mark.skipif(
-    shutil.which("mcpl-config") is None,
-    reason="mcpl-config command not found in PATH; MCPL is likely not available."
-)
+    not openmc.lib._mcpl_enabled(),
+    reason="MCPL is not enabled.")
 
 settings1="""<?xml version="1.0"?>
 <settings>
-  <run_mode>eigenvalue</run_mode>
   <state_point batches="10" />
   <source_point mcpl="true" separate="true" />
-  <batches>10</batches>
-  <inactive>5</inactive>
-  <particles>1000</particles>
+  <eigenvalue>
+    <batches>10</batches>
+    <inactive>5</inactive>
+    <particles>1000</particles>
+  </eigenvalue>
   <source>
     <space type="box">
       <parameters>-4 -4 -4  4  4  4</parameters>
@@ -28,10 +28,11 @@ settings1="""<?xml version="1.0"?>
 
 settings2 = """<?xml version="1.0"?>
 <settings>
-  <run_mode>eigenvalue</run_mode>
-  <batches>10</batches>
-  <inactive>5</inactive>
-  <particles>1000</particles>
+  <eigenvalue>
+    <batches>10</batches>
+    <inactive>5</inactive>
+    <particles>1000</particles>
+  </eigenvalue>
   <source>
     <file>source.10.{}</file>
   </source>

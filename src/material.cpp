@@ -1,7 +1,6 @@
 #include "openmc/material.h"
 
 #include <algorithm> // for min, max, sort, fill
-#include <cassert>
 #include <cmath>
 #include <iterator>
 #include <sstream>
@@ -406,7 +405,7 @@ Material& Material::clone()
   mat->name_ = name_;
   mat->nuclide_ = nuclide_;
   mat->element_ = element_;
-  mat->ncrystal_mat_ = ncrystal_mat_.clone();
+  mat->ncrystal_mat_ = ncrystal_mat_;
   mat->atom_density_ = atom_density_;
   mat->density_ = density_;
   mat->density_gpcc_ = density_gpcc_;
@@ -498,15 +497,12 @@ void Material::normalize_density()
   // Calculate nuclide atom densities
   atom_density_ *= density_;
 
-  // Calculate density in [g/cm^3] and charge density in [e/b-cm]
+  // Calculate density in g/cm^3.
   density_gpcc_ = 0.0;
-  charge_density_ = 0.0;
   for (int i = 0; i < nuclide_.size(); ++i) {
     int i_nuc = nuclide_[i];
     double awr = settings::run_CE ? data::nuclides[i_nuc]->awr_ : 1.0;
-    int z = settings::run_CE ? data::nuclides[i_nuc]->Z_ : 0.0;
     density_gpcc_ += atom_density_(i) * awr * MASS_NEUTRON / N_AVOGADRO;
-    charge_density_ += atom_density_(i) * z;
   }
 }
 
@@ -687,7 +683,7 @@ void Material::init_bremsstrahlung()
     // Allocate arrays for TTB data
     ttb->pdf = xt::zeros<double>({n_e, n_e});
     ttb->cdf = xt::zeros<double>({n_e, n_e});
-    ttb->yield = xt::zeros<double>({n_e});
+    ttb->yield = xt::empty<double>({n_e});
 
     // Allocate temporary arrays
     xt::xtensor<double, 1> stopping_power_collision({n_e}, 0.0);
@@ -824,15 +820,14 @@ void Material::init_bremsstrahlung()
       // Loop over photon energies
       double c = 0.0;
       for (int i = 0; i < j; ++i) {
-        // Integrate the CDF from the PDF using the fact that the PDF is linear
-        // in log-log space
+        // Integrate the CDF from the PDF using the trapezoidal rule in log-log
+        // space
         double w_l = std::log(data::ttb_e_grid(i));
         double w_r = std::log(data::ttb_e_grid(i + 1));
         double x_l = std::log(ttb->pdf(j, i));
         double x_r = std::log(ttb->pdf(j, i + 1));
-        double beta = (x_r - x_l) / (w_r - w_l);
-        double a = beta + 1.0;
-        c += std::exp(w_l + x_l) / a * std::expm1(a * (w_r - w_l));
+
+        c += 0.5 * (w_r - w_l) * (std::exp(w_l + x_l) + std::exp(w_r + x_r));
         ttb->cdf(j, i + 1) = c;
       }
 
@@ -934,7 +929,7 @@ void Material::calculate_neutron_xs(Particle& p) const
     // ADD TO MACROSCOPIC CROSS SECTION
 
     // Copy atom density of nuclide in material
-    double atom_density = this->atom_density(i, p.density_mult());
+    double atom_density = atom_density_(i);
 
     // Add contributions to cross sections
     p.macro_xs().total += atom_density * micro.total;
@@ -969,7 +964,7 @@ void Material::calculate_photon_xs(Particle& p) const
     // ADD TO MACROSCOPIC CROSS SECTION
 
     // Copy atom density of nuclide in material
-    double atom_density = this->atom_density(i, p.density_mult());
+    double atom_density = atom_density_(i);
 
     // Add contributions to material macroscopic cross sections
     p.macro_xs().total += atom_density * micro.total;
@@ -982,7 +977,7 @@ void Material::calculate_photon_xs(Particle& p) const
 
 void Material::set_id(int32_t id)
 {
-  assert(id >= 0 || id == C_NONE);
+  Expects(id >= 0 || id == C_NONE);
 
   // Clear entry in material map if an ID was already assigned before
   if (id_ != C_NONE) {
@@ -1010,9 +1005,9 @@ void Material::set_id(int32_t id)
   model::material_map[id] = index_;
 }
 
-void Material::set_density(double density, const std::string& units)
+void Material::set_density(double density, gsl::cstring_span units)
 {
-  assert(density >= 0.0);
+  Expects(density >= 0.0);
 
   if (nuclide_.empty()) {
     throw std::runtime_error {"No nuclides exist in material yet."};
@@ -1029,15 +1024,12 @@ void Material::set_density(double density, const std::string& units)
     // Recalculate nuclide atom densities based on given density
     atom_density_ *= density;
 
-    // Calculate density in g/cm^3 and charge density in [e/b-cm]
+    // Calculate density in g/cm^3.
     density_gpcc_ = 0.0;
-    charge_density_ = 0.0;
     for (int i = 0; i < nuclide_.size(); ++i) {
       int i_nuc = nuclide_[i];
       double awr = data::nuclides[i_nuc]->awr_;
-      int z = settings::run_CE ? data::nuclides[i_nuc]->Z_ : 0.0;
       density_gpcc_ += atom_density_(i) * awr * MASS_NEUTRON / N_AVOGADRO;
-      charge_density_ += atom_density_(i) * z;
     }
   } else if (units == "g/cm3" || units == "g/cc") {
     // Determine factor by which to change densities
@@ -1048,7 +1040,6 @@ void Material::set_density(double density, const std::string& units)
     density_gpcc_ = density;
     density_ *= f;
     atom_density_ *= f;
-    charge_density_ *= f;
   } else {
     throw std::invalid_argument {
       "Invalid units '" + std::string(units.data()) + "' specified."};
@@ -1059,8 +1050,8 @@ void Material::set_densities(
   const vector<std::string>& name, const vector<double>& density)
 {
   auto n = name.size();
-  assert(n > 0);
-  assert(n == density.size());
+  Expects(n > 0);
+  Expects(n == density.size());
 
   if (n != nuclide_.size()) {
     nuclide_.resize(n);
@@ -1070,7 +1061,7 @@ void Material::set_densities(
   }
 
   double sum_density = 0.0;
-  for (int64_t i = 0; i < n; ++i) {
+  for (gsl::index i = 0; i < n; ++i) {
     const auto& nuc {name[i]};
     if (data::nuclide_map.find(nuc) == data::nuclide_map.end()) {
       int err = openmc_load_nuclide(nuc.c_str(), nullptr, 0);
@@ -1079,7 +1070,7 @@ void Material::set_densities(
     }
 
     nuclide_[i] = data::nuclide_map.at(nuc);
-    assert(density[i] > 0.0);
+    Expects(density[i] > 0.0);
     atom_density_(i) = density[i];
     sum_density += density[i];
 

@@ -14,9 +14,12 @@ if [[ $DAGMC = 'y' ]]; then
     ./tools/ci/gha-install-dagmc.sh
 fi
 
-# Install NCrystal and verify installation
-pip install 'ncrystal>=4.1.0'
-nctool --test
+# Install NCrystal if needed
+if [[ $NCRYSTAL = 'y' ]]; then
+    pip install 'ncrystal>=4.0.0'
+    #Basic quick verification:
+    nctool --test
+fi
 
 # Install vectfit for WMP generation if needed
 if [[ $VECTFIT = 'y' ]]; then
@@ -29,7 +32,7 @@ if [[ $LIBMESH = 'y' ]]; then
 fi
 
 # Install MCPL
-pip install mcpl
+./tools/ci/gha-install-mcpl.sh
 
 # For MPI configurations, make sure mpi4py and h5py are built against the
 # correct version of MPI

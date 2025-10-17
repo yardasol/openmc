@@ -13,7 +13,7 @@ openmc@anl.gov.
 ## Resources
 
 - [GitHub Repository](https://github.com/openmc-dev/openmc)
-- [Documentation](https://docs.openmc.org/en/latest)
+- [Documentation](http://docs.openmc.org/en/latest)
 - [Discussion Forum](https://openmc.discourse.group)
 - [Slack Community](https://openmc.slack.com/signup) (If you don't see your
   domain listed, contact openmc@anl.gov)

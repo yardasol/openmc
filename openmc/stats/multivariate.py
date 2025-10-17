@@ -10,7 +10,7 @@ import numpy as np
 
 import openmc
 import openmc.checkvalue as cv
-from .._xml import get_elem_list, get_text
+from .._xml import get_text
 from ..mesh import MeshBase
 from .univariate import PowerLaw, Uniform, Univariate
 
@@ -152,9 +152,9 @@ class PolarAzimuthal(UnitSphere):
 
         """
         mu_phi = cls()
-        uvw = get_elem_list(elem, "reference_uvw", float)
+        uvw = get_text(elem, 'reference_uvw')
         if uvw is not None:
-            mu_phi.reference_uvw = uvw
+            mu_phi.reference_uvw = [float(x) for x in uvw.split()]
         mu_phi.mu = Univariate.from_xml_element(elem.find('mu'))
         mu_phi.phi = Univariate.from_xml_element(elem.find('phi'))
         return mu_phi
@@ -246,9 +246,9 @@ class Monodirectional(UnitSphere):
 
         """
         monodirectional = cls()
-        uvw = get_elem_list(elem, "reference_uvw", float)
+        uvw = get_text(elem, 'reference_uvw')
         if uvw is not None:
-            monodirectional.reference_uvw = uvw
+            monodirectional.reference_uvw = [float(x) for x in uvw.split()]
         return monodirectional
 
 
@@ -504,7 +504,7 @@ class SphericalIndependent(Spatial):
         r = Univariate.from_xml_element(elem.find('r'))
         cos_theta = Univariate.from_xml_element(elem.find('cos_theta'))
         phi = Univariate.from_xml_element(elem.find('phi'))
-        origin = get_elem_list(elem, "origin", float)
+        origin = [float(x) for x in elem.get('origin').split()]
         return cls(r, cos_theta, phi, origin=origin)
 
 
@@ -626,7 +626,7 @@ class CylindricalIndependent(Spatial):
         r = Univariate.from_xml_element(elem.find('r'))
         phi = Univariate.from_xml_element(elem.find('phi'))
         z = Univariate.from_xml_element(elem.find('z'))
-        origin = get_elem_list(elem, "origin", float)
+        origin = [float(x) for x in elem.get('origin').split()]
         return cls(r, phi, z, origin=origin)
 
 
@@ -743,14 +743,18 @@ class MeshSpatial(Spatial):
 
         """
 
-        mesh_id = int(get_text(elem, "mesh_id"))
+        mesh_id = int(elem.get('mesh_id'))
 
         # check if this mesh has been read in from another location already
         if mesh_id not in meshes:
             raise ValueError(f'Could not locate mesh with ID "{mesh_id}"')
 
+        volume_normalized = elem.get("volume_normalized")
         volume_normalized = get_text(elem, 'volume_normalized').lower() == 'true'
-        strengths = get_elem_list(elem, 'strengths', float)
+        strengths = get_text(elem, 'strengths')
+        if strengths is not None:
+            strengths = [float(b) for b in get_text(elem, 'strengths').split()]
+
         return cls(meshes[mesh_id], strengths, volume_normalized)
 
 
@@ -856,10 +860,12 @@ class PointCloud(Spatial):
 
 
         """
-        coord_data = get_elem_list(elem, 'coords', float)
-        positions = np.array(coord_data).reshape((-1, 3))
+        coord_data = get_text(elem, 'coords')
+        positions = np.array([float(b) for b in coord_data.split()]).reshape((-1, 3))
 
-        strengths = get_elem_list(elem, 'strengths', float)
+        strengths = get_text(elem, 'strengths')
+        if strengths is not None:
+            strengths = [float(b) for b in strengths.split()]
 
         return cls(positions, strengths)
 
@@ -973,7 +979,7 @@ class Box(Spatial):
 
         """
         only_fissionable = get_text(elem, 'type') == 'fission'
-        params = get_elem_list(elem, "parameters", float)
+        params = [float(x) for x in get_text(elem, 'parameters').split()]
         lower_left = params[:len(params)//2]
         upper_right = params[len(params)//2:]
         return cls(lower_left, upper_right, only_fissionable)
@@ -1040,7 +1046,7 @@ class Point(Spatial):
             Point distribution generated from XML element
 
         """
-        xyz = get_elem_list(elem, "parameters", float)
+        xyz = [float(x) for x in get_text(elem, 'parameters').split()]
         return cls(xyz)
 
 

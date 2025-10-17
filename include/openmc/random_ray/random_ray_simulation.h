@@ -20,21 +20,29 @@ public:
   //----------------------------------------------------------------------------
   // Methods
   void compute_segment_correction_factors();
-  void apply_fixed_sources_and_mesh_domains();
-  void prepare_fixed_sources_adjoint();
-  void set_initial_condition();
-  void set_rhs_bd_vectors();
+  void prepare_fixed_sources();
+  void prepare_fixed_sources_adjoint(vector<double>& forward_flux);
   void simulate();
+  void reduce_simulation_statistics();
   void output_simulation_results() const;
   void instability_check(
     int64_t n_hits, double k_eff, double& avg_miss_rate) const;
   void print_results_random_ray(uint64_t total_geometric_intersections,
-    double avg_miss_rate, int negroups, int ndgroups, int64_t n_source_regions,
+    double avg_miss_rate, int negroups, int64_t n_source_regions,
     int64_t n_external_source_regions) const;
 
   //----------------------------------------------------------------------------
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
+
+  //---------------------------------------------------------------------------
+  // Data members
+
+  // Order of BD approximation.
+  static int bd_order_;
+
+  // Random ray eigenvalue
+  double k_eff_ {1.0};
 
 private:
   //----------------------------------------------------------------------------
@@ -53,9 +61,6 @@ private:
   // Number of energy groups
   int negroups_;
 
-  // Number of delay groups
-  int ndgroups_;
-
 }; // class RandomRaySimulation
 
 //============================================================================
@@ -64,21 +69,20 @@ private:
 
 void openmc_run_random_ray();
 void validate_random_ray_inputs();
-void openmc_reset_random_ray();
 
 void openmc_run_random_ray_time_dependent();
 void rename_statepoint_file(int i);
 
-void fill_bd_vector(
-  int64_t vector_size, int n_timesteps, vector<double>& bd_vector);
+void initialize_bd_vector(int64_t vector_size, int n_timesteps,
+  vector<double>& bd_vector, vector<double>& vector);
 
 void compute_rhs_backward_difference(int64_t vector_size,
   int bd_order, vector<double>& bd_vector,
   vector<double>& rhs_bd_vector, int derivative_order);
 
 void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector);
-void get_bd_vector_slice(int64_t vector_size, vector<double>& storage_vector,
-  vector<double>& bd_vector, int neg_timestep_index);
+void normalize_serialized_vector(
+  vector<double>& vector, double normalization_factor);
 
 //==============================================================================
 // Time-dependent global variables
@@ -89,17 +93,17 @@ extern vector<double> source_bd;
 extern vector<double> delayed_fission_source_bd;
 
 extern vector<double> scalar_flux_rhs_bd;
+extern vector<double> precursors_rhs_bd;
 
 extern vector<double> source_rhs_bd;
 extern vector<double> scalar_flux_rhs_bd_2;
 
-extern vector<double> precursors_rhs_bd;
-
-extern vector<double> precursors_im1;
-extern vector<double> delayed_fission_source_im1;
-extern vector<double> delayed_fission_source_im2;
-
 extern double previous_k_eff;
+extern vector<double> previous_scalar_flux;
+extern vector<double> previous_scalar_flux_td;
+extern vector<double> previous_precursors;
+extern vector<double> previous_source;
+extern vector<double> previous_delayed_fission_source;
 
 } // namespace openmc
 

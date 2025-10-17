@@ -49,10 +49,7 @@ sphere_mesh = openmc.SphericalMesh(
 
 def mesh_data(mesh_dims):
     data = 100 * np.arange(np.prod(mesh_dims), dtype=float)
-    # data is returned reshaped with order 'F' to ensure that
-    # the resulting data is interpreted correctly by the
-    # write_data_to_vtk method
-    return data.reshape(*mesh_dims, order='F')
+    return data.reshape(*mesh_dims)
 
 test_data = ((reg_mesh, False, 'regular'),
              (rect_mesh, False, 'rectilinear'),
@@ -86,6 +83,7 @@ def test_mesh_write_vtk(mesh_params, run_in_tmpdir):
 
 # check data writing
 def test_mesh_write_vtk_data(run_in_tmpdir):
+
     data = {'ascending_data': mesh_data(cyl_mesh.dimension)}
     filename_expected = full_path('cyl-data.vtk')
     filename_actual = full_path('cyl-data-actual.vtk')

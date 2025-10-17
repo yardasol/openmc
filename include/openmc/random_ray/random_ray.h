@@ -25,22 +25,14 @@ public:
   //----------------------------------------------------------------------------
   // Methods
   void event_advance_ray();
-  void attenuate_flux(double distance, bool is_active, double offset = 0.0);
-  void attenuate_flux_inner(
-    double distance, bool is_active, int64_t sr, int mesh_bin, Position r);
-  void attenuate_flux_flat_source(
-    SourceRegionHandle& srh, double distance, bool is_active, Position r);
-  void attenuate_flux_flat_source_void(
-    SourceRegionHandle& srh, double distance, bool is_active, Position r);
-  void attenuate_flux_linear_source(
-    SourceRegionHandle& srh, double distance, bool is_active, Position r);
-  void attenuate_flux_linear_source_void(
-    SourceRegionHandle& srh, double distance, bool is_active, Position r);
+  void attenuate_flux(double distance, bool is_active, bool td_transport);
+  void attenuate_flux_flat_source(double distance, bool is_active, bool td_transport);
+  //TODO: implement td transport for linear sources
+  void attenuate_flux_linear_source(double distance, bool is_active);
 
   void initialize_ray(uint64_t ray_id, FlatSourceDomain* domain);
   uint64_t transport_history_based_single_ray();
-  SourceSite sample_prng();
-  SourceSite sample_halton();
+
 
   //----------------------------------------------------------------------------
   // Static data members
@@ -48,10 +40,8 @@ public:
   static double distance_active_;            // Active ray length
   static unique_ptr<Source> ray_source_;     // Starting source for ray sampling
   static RandomRaySourceShape source_shape_; // Flag for linear source
-  static RandomRaySampleMethod sample_method_;   // Flag for sampling method
-  static RandomRayTimeMode time_mode_;           // Flag for time mode
+  static RandomRayTimeMode time_mode_;       // Flag for time mode
   static RandomRayPrecursorMode precursor_mode_; // Flag for precursor mode
-  static int bd_order_; // Order of finite backwards difference approximation
 
   //----------------------------------------------------------------------------
   // Public data members
@@ -68,8 +58,6 @@ private:
   vector<double> delta_psi_td_;
   vector<double> delta_psi_td_prime_;
   vector<MomentArray> delta_moments_;
-  vector<int> mesh_bins_;
-  vector<double> mesh_fractional_lengths_;
 
   int negroups_;
   FlatSourceDomain* domain_ {nullptr}; // pointer to domain that has flat source

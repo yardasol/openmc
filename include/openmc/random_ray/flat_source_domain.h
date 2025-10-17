@@ -4,10 +4,8 @@
 #include "openmc/constants.h"
 #include "openmc/openmp_interface.h"
 #include "openmc/position.h"
-#include "openmc/random_ray/parallel_map.h"
 #include "openmc/random_ray/source_region.h"
 #include "openmc/source.h"
-#include <unordered_map>
 #include <unordered_set>
 
 namespace openmc {
@@ -27,90 +25,48 @@ public:
 
   //----------------------------------------------------------------------------
   // Methods
-  virtual void update_single_neutron_source(SourceRegionHandle& srh);
-  virtual void update_all_neutron_sources();
-  void compute_k_eff();
+  virtual void update_neutron_source(double k_eff);
+  double compute_k_eff(double k_eff_old) const;
   virtual void normalize_scalar_flux_and_volumes(
     double total_active_distance_per_iteration);
 
   int64_t add_source_to_scalar_flux();
   virtual void batch_reset();
-  void convert_source_regions_to_tallies(int64_t start_sr_id);
+  void convert_source_regions_to_tallies();
   void reset_tally_volumes();
   void random_ray_tally();
   virtual void accumulate_iteration_flux();
   void accumulate_iteration_source();
   void output_to_vtk() const;
+  void all_reduce_replicated_source_regions();
   void convert_external_sources();
   void count_external_source_regions();
-  void set_adjoint_sources();
+  void set_adjoint_sources(const vector<double>& forward_flux);
   void flux_swap();
   virtual double evaluate_flux_at_point(Position r, int64_t sr, int g) const;
   double compute_fixed_source_normalization_factor() const;
   void flatten_xs();
   void transpose_scattering_matrix();
   void serialize_final_fluxes(vector<double>& flux);
-  void normalize_final_fluxes(double normalization_factor);
-
-  void apply_meshes();
-  void apply_mesh_to_cell_instances(int32_t i_cell, int32_t mesh_idx,
-    int target_material_id, const vector<int32_t>& instances,
-    bool is_target_void);
-  void apply_mesh_to_cell_and_children(int32_t i_cell, int32_t mesh_idx,
-    int32_t target_material_id, bool is_target_void);
-  SourceRegionHandle get_subdivided_source_region_handle(
-    SourceRegionKey sr_key, Position r, Direction u);
-  void finalize_discovered_source_regions();
-  void apply_transport_stabilization();
-  int64_t n_source_regions() const
-  {
-    return source_regions_.n_source_regions();
-  }
-  int64_t n_source_elements() const
-  {
-    return source_regions_.n_source_regions() * negroups_;
-  }
-  int64_t lookup_base_source_region_idx(const GeometryState& p) const;
-  SourceRegionKey lookup_source_region_key(const GeometryState& p) const;
-  int64_t lookup_mesh_bin(int64_t sr, Position r) const;
-  int lookup_mesh_idx(int64_t sr) const;
+  void serialize_final_sources(vector<double>& source);
 
   //----------------------------------------------------------------------------
   // Time dependent methods
-  int64_t n_delay_elements() const
-  {
-    return source_regions_.n_source_regions() * ndgroups_;
-  }
-  // TODO: make this depend on srh
-  void set_initial_fluxes();
-  void set_initial_fluxes(vector<double>& criticality_flux);
-
-  virtual void update_single_neutron_source_td(SourceRegionHandle& srh);
-  virtual void update_all_neutron_sources_td();
-
-  void compute_single_criticality_precursors(SourceRegionHandle& srh);
-  void compute_single_precursors_via_bd(SourceRegionHandle& srh);
-  void compute_single_delayed_fission_source(SourceRegionHandle& srh);
-  void compute_single_precursors_via_integration(SourceRegionHandle& srh);
-  void compute_all_precursors();
-
-  void compute_single_neutron_source_time_derivative(SourceRegionHandle& srh);
-  void compute_all_neutron_source_time_derivatives();
-
-  void compute_single_scalar_flux_time_derivative_2(SourceRegionHandle& srh);
-  void compute_all_scalar_flux_time_derivatives_2();
-
-  void normalize_and_store_final_sources(
-    vector<double>& bd_vector, double normalization_factor);
-  void normalize_and_store_final_td_fluxes(
-    vector<double>& bd_vector, double normalization_factor);
-  void normalize_and_store_final_td_sources(
-    vector<double>& bd_vector, double normalization_factor);
-  void normalize_and_store_final_precursors(
-    vector<double>& bd_vector, double normalization_factor);
-  void normalize_and_store_final_delayed_fission_sources(
-    vector<double>& bd_vector, double normalization_factor);
-
+  void set_initial_condition(vector<double>& previous_scalar_flux,
+    vector<double>& previous_scalar_flux_td);
+  virtual void update_neutron_source_td(double k_eff);
+  double compute_k_dynamic() const;
+  void compute_criticality_precursors(double k_eff);
+  void compute_precursors(double k_eff);
+  void compute_delayed_fission_source(double k_eff);
+  void compute_precursors_analytic_integration();
+  void compute_neutron_source_time_derivative();
+  void compute_scalar_flux_time_derivative_2();
+  void serialize_final_td_fluxes(vector<double>& flux_td);
+  void serialize_final_td_sources(vector<double>& flux_td);
+  void serialize_final_precursors(vector<double>& precursors);
+  void serialize_final_delayed_fission_source(
+    vector<double>& delayed_fission_source);
   void flux_td_swap();
   void precursors_swap();
   virtual void accumulate_iteration_flux_td();
@@ -123,13 +79,6 @@ public:
   // Static Data members
   static bool volume_normalized_flux_tallies_;
   static bool adjoint_; // If the user wants outputs based on the adjoint flux
-  static double
-    diagonal_stabilization_rho_; // Adjusts strength of diagonal stabilization
-                                 // for transport corrected MGXS data
-
-  // Static variables to store source region meshes and domains
-  static std::unordered_map<int, vector<std::pair<Source::DomainType, int>>>
-    mesh_domain_map_;
 
   //----------------------------------------------------------------------------
   // Static data members
@@ -137,9 +86,9 @@ public:
 
   //----------------------------------------------------------------------------
   // Public Data members
-  double k_eff_ {1.0};              // Eigenvalue
   bool mapped_all_tallies_ {false}; // If all source regions have been visited
 
+  int64_t n_source_regions_ {0}; // Total number of source regions in the model
   int64_t n_external_source_regions_ {0}; // Total number of source regions with
                                           // non-zero external source terms
 
@@ -182,40 +131,6 @@ public:
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;
 
-  // Parallel hash map holding all source regions discovered during
-  // a single iteration. This is a threadsafe data structure that is cleaned
-  // out after each iteration and stored in the "source_regions_" container.
-  // It is keyed with a SourceRegionKey, which combines the base source
-  // region index and the mesh bin.
-  ParallelMap<SourceRegionKey, SourceRegion, SourceRegionKey::HashFunctor>
-    discovered_source_regions_;
-
-  // Map that relates a SourceRegionKey to the index at which the source
-  // region can be found in the "source_regions_" container.
-  std::unordered_map<SourceRegionKey, int64_t, SourceRegionKey::HashFunctor>
-    source_region_map_;
-
-  // Map that relates a SourceRegionKey to the external source index. This map
-  // is used to check if there are any point sources within a subdivided source
-  // region at the time it is discovered.
-  std::unordered_map<SourceRegionKey, vector<int>, SourceRegionKey::HashFunctor>
-    external_point_source_map_;
-
-  // Map that relates a base source region index to the external source index.
-  // This map is used to check if there are any volumetric sources within a
-  // subdivided source region at the time it is discovered.
-  std::unordered_map<int64_t, vector<int>> external_volumetric_source_map_;
-
-  // Map that relates a base source region index to a mesh index. This map
-  // is used to check which subdivision mesh is present in a source region.
-  std::unordered_map<int64_t, int> mesh_map_;
-
-  // If transport corrected MGXS data is being used, there may be negative
-  // in-group scattering cross sections that can result in instability in MOC
-  // and random ray if used naively. This flag enables a stabilization
-  // technique.
-  bool is_transport_stabilization_needed_ {false};
-
   // Pointers to RHS derivative vectors
   vector<double>* scalar_flux_rhs_bd_;
   vector<double>* precursors_rhs_bd_;
@@ -236,19 +151,24 @@ protected:
   //----------------------------------------------------------------------------
   // Methods
   void apply_external_source_to_source_region(
-    int src_idx, SourceRegionHandle& srh);
-  void apply_external_source_to_cell_instances(int32_t i_cell, int src_idx,
-    int target_material_id, const vector<int32_t>& instances);
-  void apply_external_source_to_cell_and_children(
-    int32_t i_cell, int src_idx, int32_t target_material_id);
+    Discrete* discrete, double strength_factor, int64_t sr);
+  void apply_external_source_to_cell_instances(int32_t i_cell,
+    Discrete* discrete, double strength_factor, int target_material_id,
+    const vector<int32_t>& instances);
+  void apply_external_source_to_cell_and_children(int32_t i_cell,
+    Discrete* discrete, double strength_factor, int32_t target_material_id);
   virtual void set_flux_to_flux_plus_source(int64_t sr, double volume, int g);
   void set_flux_to_source(int64_t sr, int g);
   virtual void set_flux_to_old_flux(int64_t sr, int g);
 
   //----------------------------------------------------------------------------
   // Private data members
-  int negroups_; // Number of energy groups in simulation
-  int ndgroups_; // Number of delay groups in simulation
+  int negroups_;                  // Number of energy groups in simulation
+  int ndgroups_;                  // Number of delay groups in simulation
+  int64_t n_source_elements_ {0}; // Total number of source regions in the model
+                                  // times the number of energy groups
+  int64_t n_delay_elements_ {0};  // Total number of source regions in the model
+                                  // times the number of delay groups
 
   double
     simulation_volume_; // Total physical volume of the simulation domain, as

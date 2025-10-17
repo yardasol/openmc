@@ -1,7 +1,5 @@
 #include "openmc/tallies/filter_surface.h"
 
-#include <cassert>
-
 #include <fmt/core.h>
 
 #include "openmc/error.h"
@@ -28,7 +26,7 @@ void SurfaceFilter::from_xml(pugi::xml_node node)
   this->set_surfaces(surfaces);
 }
 
-void SurfaceFilter::set_surfaces(span<int32_t> surfaces)
+void SurfaceFilter::set_surfaces(gsl::span<int32_t> surfaces)
 {
   // Clear existing surfaces
   surfaces_.clear();
@@ -37,8 +35,8 @@ void SurfaceFilter::set_surfaces(span<int32_t> surfaces)
 
   // Update surfaces and mapping
   for (auto& index : surfaces) {
-    assert(index >= 0);
-    assert(index < model::surfaces.size());
+    Expects(index >= 0);
+    Expects(index < model::surfaces.size());
     surfaces_.push_back(index);
     map_[index] = surfaces_.size() - 1;
   }

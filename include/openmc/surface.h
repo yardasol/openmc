@@ -62,7 +62,7 @@ public:
     Position r, Direction u, GeometryState* p = nullptr) const;
 
   virtual Direction diffuse_reflect(
-    Position r, Direction u, uint64_t* seed) const;
+    Position r, Direction u, uint64_t* seed, GeometryState* p = nullptr) const;
 
   //! Evaluate the equation describing the surface.
   //!
@@ -90,17 +90,21 @@ public:
   //! Get the BoundingBox for this surface.
   virtual BoundingBox bounding_box(bool /*pos_side*/) const { return {}; }
 
-  /* Must specify if this is a CSG or DAGMC-type surface. Only
-   * the DAGMC surface should return the DAG type geometry, so
-   * by default, this returns the CSG. The main difference is that
-   * if the geom_type is found to be DAG in the geometry handling code,
-   * some DAGMC-specific operations get carried out like resetting
-   * the particle's intersection history when necessary.
-   */
-  virtual GeometryType geom_type() const { return GeometryType::CSG; }
+  // Accessors
+  const GeometryType& geom_type() const { return geom_type_; }
+  GeometryType& geom_type() { return geom_type_; }
+
+private:
+  GeometryType geom_type_; //!< Geometry type indicator (CSG or DAGMC)
 
 protected:
   virtual void to_hdf5_inner(hid_t group_id) const = 0;
+};
+
+class CSGSurface : public Surface {
+public:
+  explicit CSGSurface(pugi::xml_node surf_node);
+  CSGSurface();
 };
 
 //==============================================================================
@@ -109,7 +113,7 @@ protected:
 //! The plane is described by the equation \f$x - x_0 = 0\f$
 //==============================================================================
 
-class SurfaceXPlane : public Surface {
+class SurfaceXPlane : public CSGSurface {
 public:
   explicit SurfaceXPlane(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -127,7 +131,7 @@ public:
 //! The plane is described by the equation \f$y - y_0 = 0\f$
 //==============================================================================
 
-class SurfaceYPlane : public Surface {
+class SurfaceYPlane : public CSGSurface {
 public:
   explicit SurfaceYPlane(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -145,7 +149,7 @@ public:
 //! The plane is described by the equation \f$z - z_0 = 0\f$
 //==============================================================================
 
-class SurfaceZPlane : public Surface {
+class SurfaceZPlane : public CSGSurface {
 public:
   explicit SurfaceZPlane(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -163,7 +167,7 @@ public:
 //! The plane is described by the equation \f$A x + B y + C z - D = 0\f$
 //==============================================================================
 
-class SurfacePlane : public Surface {
+class SurfacePlane : public CSGSurface {
 public:
   explicit SurfacePlane(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -181,7 +185,7 @@ public:
 //! \f$(y - y_0)^2 + (z - z_0)^2 - R^2 = 0\f$
 //==============================================================================
 
-class SurfaceXCylinder : public Surface {
+class SurfaceXCylinder : public CSGSurface {
 public:
   explicit SurfaceXCylinder(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -200,7 +204,7 @@ public:
 //! \f$(x - x_0)^2 + (z - z_0)^2 - R^2 = 0\f$
 //==============================================================================
 
-class SurfaceYCylinder : public Surface {
+class SurfaceYCylinder : public CSGSurface {
 public:
   explicit SurfaceYCylinder(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -219,7 +223,7 @@ public:
 //! \f$(x - x_0)^2 + (y - y_0)^2 - R^2 = 0\f$
 //==============================================================================
 
-class SurfaceZCylinder : public Surface {
+class SurfaceZCylinder : public CSGSurface {
 public:
   explicit SurfaceZCylinder(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -238,7 +242,7 @@ public:
 //! \f$(x - x_0)^2 + (y - y_0)^2 + (z - z_0)^2 - R^2 = 0\f$
 //==============================================================================
 
-class SurfaceSphere : public Surface {
+class SurfaceSphere : public CSGSurface {
 public:
   explicit SurfaceSphere(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -257,7 +261,7 @@ public:
 //! \f$(y - y_0)^2 + (z - z_0)^2 - R^2 (x - x_0)^2 = 0\f$
 //==============================================================================
 
-class SurfaceXCone : public Surface {
+class SurfaceXCone : public CSGSurface {
 public:
   explicit SurfaceXCone(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -275,7 +279,7 @@ public:
 //! \f$(x - x_0)^2 + (z - z_0)^2 - R^2 (y - y_0)^2 = 0\f$
 //==============================================================================
 
-class SurfaceYCone : public Surface {
+class SurfaceYCone : public CSGSurface {
 public:
   explicit SurfaceYCone(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -293,7 +297,7 @@ public:
 //! \f$(x - x_0)^2 + (y - y_0)^2 - R^2 (z - z_0)^2 = 0\f$
 //==============================================================================
 
-class SurfaceZCone : public Surface {
+class SurfaceZCone : public CSGSurface {
 public:
   explicit SurfaceZCone(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -311,7 +315,7 @@ public:
 //! 0\f$
 //==============================================================================
 
-class SurfaceQuadric : public Surface {
+class SurfaceQuadric : public CSGSurface {
 public:
   explicit SurfaceQuadric(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -329,7 +333,7 @@ public:
 //! \f$(x-x_0)^2/B^2 + (\sqrt{(y-y_0)^2 + (z-z_0)^2} - A)^2/C^2 -1 \f$
 //==============================================================================
 
-class SurfaceXTorus : public Surface {
+class SurfaceXTorus : public CSGSurface {
 public:
   explicit SurfaceXTorus(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -346,7 +350,7 @@ public:
 //! \f$(y-y_0)^2/B^2 + (\sqrt{(x-x_0)^2 + (z-z_0)^2} - A)^2/C^2 -1 \f$
 //==============================================================================
 
-class SurfaceYTorus : public Surface {
+class SurfaceYTorus : public CSGSurface {
 public:
   explicit SurfaceYTorus(pugi::xml_node surf_node);
   double evaluate(Position r) const override;
@@ -363,7 +367,7 @@ public:
 //! \f$(z-z_0)^2/B^2 + (\sqrt{(x-x_0)^2 + (y-y_0)^2} - A)^2/C^2 -1 \f$
 //==============================================================================
 
-class SurfaceZTorus : public Surface {
+class SurfaceZTorus : public CSGSurface {
 public:
   explicit SurfaceZTorus(pugi::xml_node surf_node);
   double evaluate(Position r) const override;

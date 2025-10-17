@@ -37,6 +37,7 @@ Simulation Settings
 
    openmc.read_source_file
    openmc.write_source_file
+   openmc.wwinp_to_wws
 
 Material Specification
 ----------------------
@@ -128,7 +129,6 @@ Constructing Tallies
    openmc.SurfaceFilter
    openmc.MeshFilter
    openmc.MeshBornFilter
-   openmc.MeshMaterialFilter
    openmc.MeshSurfaceFilter
    openmc.EnergyFilter
    openmc.EnergyoutFilter
@@ -143,30 +143,18 @@ Constructing Tallies
    openmc.SpatialLegendreFilter
    openmc.SphericalHarmonicsFilter
    openmc.TimeFilter
-   openmc.WeightFilter
    openmc.ZernikeFilter
    openmc.ZernikeRadialFilter
-   openmc.ParentNuclideFilter
    openmc.ParticleFilter
-   openmc.MeshMaterialVolumes
-   openmc.Trigger
-   openmc.TallyDerivative
-   openmc.Tally
-   openmc.Tallies
-
-Meshes
-------
-
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
-   :template: myclassinherit.rst
-
    openmc.RegularMesh
    openmc.RectilinearMesh
    openmc.CylindricalMesh
    openmc.SphericalMesh
    openmc.UnstructuredMesh
+   openmc.Trigger
+   openmc.TallyDerivative
+   openmc.Tally
+   openmc.Tallies
 
 Geometry Plotting
 -----------------
@@ -177,8 +165,7 @@ Geometry Plotting
    :template: myclass.rst
 
    openmc.Plot
-   openmc.WireframeRayTracePlot
-   openmc.SolidRayTracePlot
+   openmc.ProjectionPlot
    openmc.Plots
 
 Running OpenMC
@@ -258,16 +245,8 @@ Variance Reduction
    :template: myclass
 
    openmc.WeightWindows
-   openmc.WeightWindowsList
    openmc.WeightWindowGenerator
-
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
-   :template: myfunction.rst
-
    openmc.hdf5_to_wws
-   openmc.wwinp_to_wws
 
 
 Coarse Mesh Finite Difference Acceleration

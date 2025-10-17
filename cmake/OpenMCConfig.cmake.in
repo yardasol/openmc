@@ -1,14 +1,25 @@
 get_filename_component(OpenMC_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 
-# Compute the install prefix from this file's location
-get_filename_component(_OPENMC_PREFIX "${OpenMC_CMAKE_DIR}/../../.." ABSOLUTE)
-
-find_package(fmt CONFIG REQUIRED HINTS ${_OPENMC_PREFIX})
-find_package(pugixml CONFIG REQUIRED HINTS ${_OPENMC_PREFIX})
-find_package(xtl CONFIG REQUIRED HINTS ${_OPENMC_PREFIX})
-find_package(xtensor CONFIG REQUIRED HINTS ${_OPENMC_PREFIX})
+find_package(fmt REQUIRED HINTS ${OpenMC_CMAKE_DIR}/../fmt)
+find_package(gsl-lite REQUIRED HINTS ${OpenMC_CMAKE_DIR}/../gsl-lite)
+find_package(pugixml REQUIRED HINTS ${OpenMC_CMAKE_DIR}/../pugixml)
+find_package(xtl REQUIRED HINTS ${OpenMC_CMAKE_DIR}/../xtl)
+find_package(xtensor REQUIRED HINTS ${OpenMC_CMAKE_DIR}/../xtensor)
 if(@OPENMC_USE_DAGMC@)
   find_package(DAGMC REQUIRED HINTS @DAGMC_DIR@)
+endif()
+
+if(@OPENMC_USE_NCRYSTAL@)
+  if(NOT DEFINED "NCrystal_DIR")
+    #Invocation of "ncrystal-config --show cmakedir" is needed to find NCrystal
+    #when it is installed from Python wheels:
+    execute_process(
+      COMMAND "ncrystal-config" "--show" "cmakedir"
+      OUTPUT_VARIABLE "NCrystal_DIR" OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+  endif()
+  find_package(NCrystal REQUIRED)
+  message(STATUS "Found NCrystal: ${NCrystal_DIR} (version ${NCrystal_VERSION})")
 endif()
 
 if(@OPENMC_USE_LIBMESH@)
@@ -30,6 +41,10 @@ endif()
 
 if(@OPENMC_USE_OPENMP@)
   find_package(OpenMP REQUIRED)
+endif()
+
+if(@OPENMC_USE_MCPL@)
+  find_package(MCPL REQUIRED)
 endif()
 
 if(@OPENMC_USE_UWUW@ AND NOT ${DAGMC_BUILD_UWUW})

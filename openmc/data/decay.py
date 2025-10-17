@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from functools import cached_property
 from io import StringIO
 from math import log
 import re
@@ -340,6 +339,7 @@ class Decay(EqualityMixin):
         self.modes = []
         self.spectra = {}
         self.average_energies = {}
+        self._sources = None
 
         # Get head record
         items = get_head_record(file_obj)
@@ -506,9 +506,14 @@ class Decay(EqualityMixin):
         """
         return cls(ev_or_filename)
 
-    @cached_property
+    @property
     def sources(self):
         """Radioactive decay source distributions"""
+        # If property has been computed already, return it
+        # TODO: Replace with functools.cached_property when support is Python 3.9+
+        if self._sources is not None:
+            return self._sources
+
         sources = {}
         name = self.nuclide['name']
         decay_constant = self.decay_constant.n
@@ -566,7 +571,8 @@ class Decay(EqualityMixin):
             merged_sources[particle_type] = combine_distributions(
                 dist_list, [1.0]*len(dist_list))
 
-        return merged_sources
+        self._sources = merged_sources
+        return self._sources
 
 
 _DECAY_PHOTON_ENERGY = {}
@@ -591,7 +597,7 @@ def decay_photon_energy(nuclide: str) -> Univariate | None:
     openmc.stats.Univariate or None
         Distribution of energies in [eV] of photons emitted from decay, or None
         if no photon source exists. Note that the probabilities represent
-        intensities, given as [Bq/atom] (in other words, decay constants).
+        intensities, given as [Bq].
     """
     if not _DECAY_PHOTON_ENERGY:
         chain_file = openmc.config.get('chain_file')
