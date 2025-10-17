@@ -32,9 +32,7 @@ Timer time_initialize_td;
 Timer time_update_bd_vectors_td;
 Timer time_update_src_td;
 Timer time_compute_precursors;
-Timer time_compute_S_fd;
-Timer time_compute_neutron_source_time_derivative;
-Timer time_compute_scalar_time_derivative_2;
+Timer time_compute_sdp_terms;
 
 } // namespace simulation
 
@@ -100,9 +98,7 @@ void reset_timers()
   simulation::time_update_bd_vectors_td.reset();
   simulation::time_update_src_td.reset();
   simulation::time_compute_precursors.reset();
-  simulation::time_compute_S_fd.reset();
-  simulation::time_compute_neutron_source_time_derivative.reset();
-  simulation::time_compute_scalar_time_derivative_2.reset();
+  simulation::time_compute_sdp_terms.reset();
 }
 
 } // namespace openmc

@@ -3,8 +3,54 @@
 
 #include "openmc/error.h"
 #include "openmc/message_passing.h"
+#include "openmc/simulation.h"
 
 namespace openmc {
+
+//==============================================================================
+// SourceRegionHandle implementation
+//==============================================================================
+SourceRegionHandle::SourceRegionHandle(SourceRegion& sr)
+  : negroups_(sr.scalar_flux_old_.size()), material_(&sr.material_),
+    is_small_(&sr.is_small_), n_hits_(&sr.n_hits_),
+    is_linear_(sr.source_gradients_.size() > 0), lock_(&sr.lock_),
+    volume_(&sr.volume_), volume_t_(&sr.volume_t_), volume_sq_(&sr.volume_sq_),
+    volume_sq_t_(&sr.volume_sq_t_), volume_naive_(&sr.volume_naive_),
+    position_recorded_(&sr.position_recorded_),
+    external_source_present_(&sr.external_source_present_),
+    position_(&sr.position_), centroid_(&sr.centroid_),
+    centroid_iteration_(&sr.centroid_iteration_), centroid_t_(&sr.centroid_t_),
+    mom_matrix_(&sr.mom_matrix_), mom_matrix_t_(&sr.mom_matrix_t_),
+    volume_task_(&sr.volume_task_), mesh_(&sr.mesh_),
+    parent_sr_(&sr.parent_sr_), scalar_flux_old_(sr.scalar_flux_old_.data()),
+    scalar_flux_new_(sr.scalar_flux_new_.data()), source_(sr.source_.data()),
+    external_source_(sr.external_source_.data()),
+    scalar_flux_final_(sr.scalar_flux_final_.data()),
+    source_gradients_(sr.source_gradients_.data()),
+    flux_moments_old_(sr.flux_moments_old_.data()),
+    flux_moments_new_(sr.flux_moments_new_.data()),
+    flux_moments_t_(sr.flux_moments_t_.data()),
+    tally_task_(sr.tally_task_.data()), source_final_(sr.source_final_.data()),
+    scalar_flux_td_old_(sr.scalar_flux_td_old_.data()),
+    scalar_flux_td_new_(sr.scalar_flux_td_new_.data()),
+    scalar_flux_td_final_(sr.scalar_flux_td_final_.data()),
+    source_td_(sr.source_td_.data()),
+    source_td_final_(sr.source_td_final_.data()),
+    source_time_derivative_(sr.source_time_derivative_.data()),
+    scalar_flux_time_derivative_2_(sr.scalar_flux_time_derivative_2_.data()),
+    precursors_old_(sr.precursors_old_.data()),
+    precursors_new_(sr.precursors_new_.data()),
+    precursors_final_(sr.precursors_final_.data()),
+    delayed_fission_source_(sr.delayed_fission_source_.data()),
+    delayed_fission_source_final_(sr.delayed_fission_source_final_.data()),
+    scalar_flux_rhs_bd_(sr.scalar_flux_rhs_bd_.data()),
+    precursors_rhs_bd_(sr.precursors_rhs_bd_.data()),
+    source_rhs_bd_(sr.source_rhs_bd_.data()),
+    scalar_flux_rhs_bd_2_(sr.scalar_flux_rhs_bd_2_.data()),
+    precursors_im1_(sr.precursors_im1_.data()),
+    delayed_fission_source_im1_(sr.delayed_fission_source_im1_.data()),
+    delayed_fission_source_im2_(sr.delayed_fission_source_im2_.data())
+{}
 
 //==============================================================================
 // SourceRegion implementation
@@ -39,6 +85,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     precursors_new_.assign(ndgroups, 0.0);
     precursors_final_.assign(ndgroups, 0.0);
     tally_delay_task_.resize(ndgroups);
+
+    scalar_flux_rhs_bd_.resize(negroups);
   }
 
   // SDP arrays
@@ -48,21 +96,29 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
       source_td_final_.assign(negroups, 0.0);
       source_time_derivative_.assign(negroups, 0.0);
       scalar_flux_time_derivative_2_.assign(negroups, 0.0);
+
+      source_rhs_bd_.resize(negroups);
+      scalar_flux_rhs_bd_2_.resize(negroups);
     }
   }
 
-  // Analytic precursor integration arrays
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+  // Precursor integration arrays
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
     delayed_fission_source_.assign(ndgroups, 0.0);
     delayed_fission_source_final_.assign(ndgroups, 0.0);
+
+    precursors_im1_.resize(ndgroups);
+    delayed_fission_source_im1_.resize(ndgroups);
+    delayed_fission_source_im2_.resize(ndgroups);
+  } else {
+    precursors_rhs_bd_.resize(ndgroups);
   }
 
   scalar_flux_new_.assign(negroups, 0.0);
-  source_.resize(negroups);
+  source_.assign(negroups, 0.0);
   scalar_flux_final_.assign(negroups, 0.0);
 
   tally_task_.resize(negroups);
-
   if (is_linear) {
     source_gradients_.resize(negroups);
     flux_moments_old_.resize(negroups);
@@ -74,20 +130,27 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 //==============================================================================
 // SourceRegionContainer implementation
 //==============================================================================
+
 void SourceRegionContainer::push_back(const SourceRegion& sr)
 {
   n_source_regions_++;
 
   // Scalar fields
   material_.push_back(sr.material_);
+  is_small_.push_back(sr.is_small_);
+  n_hits_.push_back(sr.n_hits_);
   lock_.push_back(sr.lock_);
   volume_.push_back(sr.volume_);
   volume_t_.push_back(sr.volume_t_);
+  volume_sq_.push_back(sr.volume_sq_);
+  volume_sq_t_.push_back(sr.volume_sq_t_);
   volume_naive_.push_back(sr.volume_naive_);
   position_recorded_.push_back(sr.position_recorded_);
   external_source_present_.push_back(sr.external_source_present_);
   position_.push_back(sr.position_);
   volume_task_.push_back(sr.volume_task_);
+  mesh_.push_back(sr.mesh_);
+  parent_sr_.push_back(sr.parent_sr_);
 
   // Only store these fields if is_linear_ is true
   if (is_linear_) {
@@ -112,6 +175,8 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       scalar_flux_td_new_.push_back(sr.scalar_flux_td_new_[g]);
       scalar_flux_td_final_.push_back(sr.scalar_flux_td_final_[g]);
       source_td_.push_back(sr.source_td_[g]);
+
+      scalar_flux_rhs_bd_.push_back(sr.scalar_flux_rhs_bd_[g]);
     }
 
     // SDP arrays
@@ -122,6 +187,9 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
         source_time_derivative_.push_back(sr.source_time_derivative_[g]);
         scalar_flux_time_derivative_2_.push_back(
           sr.scalar_flux_time_derivative_2_[g]);
+
+        source_rhs_bd_.push_back(sr.source_rhs_bd_[g]);
+        scalar_flux_rhs_bd_2_.push_back(sr.scalar_flux_rhs_bd_2_[g]);
       }
     }
 
@@ -145,11 +213,21 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       precursors_new_.push_back(sr.precursors_new_[dg]);
       precursors_final_.push_back(sr.precursors_final_[dg]);
       tally_delay_task_.emplace_back(sr.tally_delay_task_[dg]);
-      // Analytic precursor integration arrays
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+
+      // Precursor integration arrays
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
         delayed_fission_source_.push_back(sr.delayed_fission_source_[dg]);
         delayed_fission_source_final_.push_back(
           sr.delayed_fission_source_final_[dg]);
+
+        precursors_im1_.push_back(sr.precursors_im1_[dg]);
+        delayed_fission_source_im1_.push_back(
+          sr.delayed_fission_source_im1_[dg]);
+        delayed_fission_source_im2_.push_back(
+          sr.delayed_fission_source_im2_[dg]);
+        // Backward difference arrays
+      } else {
+        precursors_rhs_bd_.push_back(sr.precursors_rhs_bd_[dg]);
       }
     }
   }
@@ -161,13 +239,19 @@ void SourceRegionContainer::assign(
   // Clear existing data
   n_source_regions_ = 0;
   material_.clear();
+  is_small_.clear();
+  n_hits_.clear();
   lock_.clear();
   volume_.clear();
   volume_t_.clear();
+  volume_sq_.clear();
+  volume_sq_t_.clear();
   volume_naive_.clear();
   position_recorded_.clear();
   external_source_present_.clear();
   position_.clear();
+  mesh_.clear();
+  parent_sr_.clear();
 
   if (is_linear_) {
     centroid_.clear();
@@ -195,6 +279,8 @@ void SourceRegionContainer::assign(
     scalar_flux_td_new_.clear();
     scalar_flux_td_final_.clear();
     source_td_.clear();
+
+    scalar_flux_rhs_bd_.clear();
   }
 
   if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
@@ -202,12 +288,21 @@ void SourceRegionContainer::assign(
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       source_time_derivative_.clear();
       scalar_flux_time_derivative_2_.clear();
+
+      source_rhs_bd_.clear();
+      scalar_flux_rhs_bd_2_.clear();
     }
   }
 
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
     delayed_fission_source_.clear();
     delayed_fission_source_final_.clear();
+
+    precursors_im1_.clear();
+    delayed_fission_source_im1_.clear();
+    delayed_fission_source_im2_.clear();
+  } else {
+    precursors_rhs_bd_.clear();
   }
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT ||
@@ -235,101 +330,197 @@ void SourceRegionContainer::flux_swap()
   }
 }
 
-void SourceRegionContainer::mpi_sync_ranks(bool reduce_position)
+SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
 {
-#ifdef OPENMC_MPI
+  SourceRegionHandle handle;
+  handle.negroups_ = negroups();
+  handle.ndgroups_ = ndgroups();
+  handle.material_ = &material(sr);
+  handle.is_small_ = &is_small(sr);
+  handle.n_hits_ = &n_hits(sr);
+  handle.is_linear_ = is_linear();
+  handle.lock_ = &lock(sr);
+  handle.volume_ = &volume(sr);
+  handle.volume_t_ = &volume_t(sr);
+  handle.volume_sq_ = &volume_sq(sr);
+  handle.volume_sq_t_ = &volume_sq_t(sr);
+  handle.volume_naive_ = &volume_naive(sr);
+  handle.position_recorded_ = &position_recorded(sr);
+  handle.external_source_present_ = &external_source_present(sr);
+  handle.position_ = &position(sr);
+  handle.volume_task_ = &volume_task(sr);
+  handle.mesh_ = &mesh(sr);
+  handle.parent_sr_ = &parent_sr(sr);
+  handle.scalar_flux_old_ = &scalar_flux_old(sr, 0);
+  handle.scalar_flux_new_ = &scalar_flux_new(sr, 0);
+  handle.source_ = &source(sr, 0);
+  if (settings::run_mode == RunMode::FIXED_SOURCE) {
+    handle.external_source_ = &external_source(sr, 0);
+  } else {
+    handle.external_source_ = nullptr;
+  }
+  handle.scalar_flux_final_ = &scalar_flux_final(sr, 0);
+  handle.tally_task_ = &tally_task(sr, 0);
 
-  // The "position_recorded" variable needs to be allreduced (and maxed),
-  // as whether or not a cell was hit will affect some decisions in how the
-  // source is calculated in the next iteration so as to avoid dividing
-  // by zero. We take the max rather than the sum as the hit values are
-  // expected to be zero or 1.
-  MPI_Allreduce(MPI_IN_PLACE, position_recorded_.data(), 1, MPI_INT, MPI_MAX,
-    mpi::intracomm);
+  if (handle.is_linear_) {
+    handle.centroid_ = &centroid(sr);
+    handle.centroid_iteration_ = &centroid_iteration(sr);
+    handle.centroid_t_ = &centroid_t(sr);
+    handle.mom_matrix_ = &mom_matrix(sr);
+    handle.mom_matrix_t_ = &mom_matrix_t(sr);
+    handle.source_gradients_ = &source_gradients(sr, 0);
+    handle.flux_moments_old_ = &flux_moments_old(sr, 0);
+    handle.flux_moments_new_ = &flux_moments_new(sr, 0);
+    handle.flux_moments_t_ = &flux_moments_t(sr, 0);
+  }
 
-  // The position variable is more complicated to reduce than the others,
-  // as we do not want the sum of all positions in each cell, rather, we
-  // want to just pick any single valid position. Thus, we perform a gather
-  // and then pick the first valid position we find for all source regions
-  // that have had a position recorded. This operation does not need to
-  // be broadcast back to other ranks, as this value is only used for the
-  // tally conversion operation, which is only performed on the master rank.
-  // While this is expensive, it only needs to be done for active batches,
-  // and only if we have not mapped all the tallies yet. Once tallies are
-  // fully mapped, then the position vector is fully populated, so this
-  // operation can be skipped.
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    handle.scalar_flux_td_old_ = &scalar_flux_td_old(sr, 0);
+    handle.scalar_flux_td_new_ = &scalar_flux_td_new(sr, 0);
+    handle.scalar_flux_td_final_ = &scalar_flux_td_final(sr, 0);
+    handle.source_td_ = &source_td(sr, 0);
 
-  // Then, we perform the gather of position data, if needed
-  if (reduce_position) {
+    handle.scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd(sr, 0);
+  } else {
+    handle.scalar_flux_td_old_ = nullptr;
+    handle.scalar_flux_td_new_ = nullptr;
+    handle.scalar_flux_td_final_ = nullptr;
 
-    // Master rank will gather results and pick valid positions
-    if (mpi::master) {
-      // Initialize temporary vector for receiving positions
-      vector<vector<Position>> all_position;
-      all_position.resize(mpi::n_procs);
-      for (int i = 0; i < mpi::n_procs; i++) {
-        all_position[i].resize(n_source_regions_);
-      }
+    handle.scalar_flux_rhs_bd_ = nullptr;
+  }
 
-      // Copy master rank data into gathered vector for convenience
-      all_position[0] = position_;
+  // SDP arrays
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      handle.source_td_final_ = &source_final(sr, 0);
+      handle.source_time_derivative_ = &source_time_derivative(sr, 0);
+      handle.scalar_flux_time_derivative_2_ =
+        &scalar_flux_time_derivative_2(sr, 0);
 
-      // Receive all data into gather vector
-      for (int i = 1; i < mpi::n_procs; i++) {
-        MPI_Recv(all_position[i].data(), n_source_regions_ * 3, MPI_DOUBLE, i,
-          0, mpi::intracomm, MPI_STATUS_IGNORE);
-      }
+      handle.source_rhs_bd_ = &source_rhs_bd(sr, 0);
+      handle.scalar_flux_rhs_bd_2_ = &scalar_flux_rhs_bd_2(sr, 0);
 
-      // Scan through gathered data and pick first valid cell posiiton
-      for (int64_t sr = 0; sr < n_source_regions_; sr++) {
-        if (position_recorded_[sr] == 1) {
-          for (int i = 0; i < mpi::n_procs; i++) {
-            if (all_position[i][sr].x != 0.0 || all_position[i][sr].y != 0.0 ||
-                all_position[i][sr].z != 0.0) {
-              position_[sr] = all_position[i][sr];
-              break;
-            }
-          }
-        }
-      }
+      handle.source_final_ = nullptr;
     } else {
-      // Other ranks just send in their data
-      MPI_Send(position_.data(), n_source_regions_ * 3, MPI_DOUBLE, 0, 0,
-        mpi::intracomm);
+      handle.source_final_ = &source_final(sr, 0);
+
+      handle.source_td_final_ = nullptr;
+      handle.source_time_derivative_ = nullptr;
+      handle.scalar_flux_time_derivative_2_ = nullptr;
+
+      handle.source_rhs_bd_ = nullptr;
+      handle.scalar_flux_rhs_bd_2_ = nullptr;
     }
   }
 
-  // For the rest of the source region data, we simply perform an all reduce,
-  // as these values will be needed on all ranks for transport during the
-  // next iteration.
-  MPI_Allreduce(MPI_IN_PLACE, volume_.data(), n_source_regions_, MPI_DOUBLE,
-    MPI_SUM, mpi::intracomm);
+  // Precursor-dependent pointers
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
+    handle.precursors_old_ = &precursors_old(sr, 0);
+    handle.precursors_new_ = &precursors_new(sr, 0);
+    handle.precursors_final_ = &precursors_final(sr, 0);
+    handle.tally_delay_task_ = &tally_delay_task(sr, 0);
+    // Analytic precursor integration arrays
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      handle.delayed_fission_source_ = &delayed_fission_source(sr, 0);
+      handle.delayed_fission_source_final_ =
+        &delayed_fission_source_final(sr, 0);
 
-  MPI_Allreduce(MPI_IN_PLACE, scalar_flux_new_.data(),
-    n_source_regions_ * negroups_, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
+      handle.precursors_im1_ = &precursors_im1(sr, 0);
+      handle.delayed_fission_source_im1_ = &delayed_fission_source_im1(sr, 0);
+      handle.delayed_fission_source_im2_ = &delayed_fission_source_im2(sr, 0);
 
-  if (is_linear_) {
-    // We are going to assume we can safely cast Position, MomentArray,
-    // and MomentMatrix to contiguous arrays of doubles for the MPI
-    // allreduce operation. This is a safe assumption as typically
-    // compilers will at most pad to 8 byte boundaries. If a new FP32
-    // MomentArray type is introduced, then there will likely be padding, in
-    // which case this function will need to become more complex.
-    if (sizeof(MomentArray) != 3 * sizeof(double) ||
-        sizeof(MomentMatrix) != 6 * sizeof(double)) {
-      fatal_error(
-        "Unexpected buffer padding in linear source domain reduction.");
+      handle.precursors_rhs_bd_ = nullptr;
+    } else {
+      handle.precursors_rhs_bd_ = &precursors_rhs_bd(sr, 0);
+
+      handle.delayed_fission_source_ = nullptr;
+      handle.delayed_fission_source_final_ = nullptr;
+
+      handle.precursors_im1_ = nullptr;
+      handle.delayed_fission_source_im1_ = nullptr;
+      handle.delayed_fission_source_im2_ = nullptr;
     }
-
-    MPI_Allreduce(MPI_IN_PLACE, static_cast<void*>(flux_moments_new_.data()),
-      n_source_regions_ * negroups_ * 3, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
-    MPI_Allreduce(MPI_IN_PLACE, static_cast<void*>(mom_matrix_.data()),
-      n_source_regions_ * 6, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
-    MPI_Allreduce(MPI_IN_PLACE, static_cast<void*>(centroid_iteration_.data()),
-      n_source_regions_ * 3, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
+  } else {
+    handle.precursors_old_ = nullptr;
+    handle.precursors_new_ = nullptr;
+    handle.precursors_final_ = nullptr;
+    handle.tally_delay_task_ = nullptr;
   }
 
-#endif
+  return handle;
+}
+
+// TODO: implement for time dependent
+void SourceRegionContainer::adjoint_reset()
+{
+  std::fill(n_hits_.begin(), n_hits_.end(), 0);
+  std::fill(volume_.begin(), volume_.end(), 0.0);
+  std::fill(volume_t_.begin(), volume_t_.end(), 0.0);
+  std::fill(volume_sq_.begin(), volume_sq_.end(), 0.0);
+  std::fill(volume_sq_t_.begin(), volume_sq_t_.end(), 0.0);
+  std::fill(volume_naive_.begin(), volume_naive_.end(), 0.0);
+  std::fill(
+    external_source_present_.begin(), external_source_present_.end(), 0);
+  std::fill(external_source_.begin(), external_source_.end(), 0.0);
+  std::fill(centroid_.begin(), centroid_.end(), Position {0.0, 0.0, 0.0});
+  std::fill(centroid_iteration_.begin(), centroid_iteration_.end(),
+    Position {0.0, 0.0, 0.0});
+  std::fill(centroid_t_.begin(), centroid_t_.end(), Position {0.0, 0.0, 0.0});
+  std::fill(mom_matrix_.begin(), mom_matrix_.end(),
+    MomentMatrix {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+  std::fill(mom_matrix_t_.begin(), mom_matrix_t_.end(),
+    MomentMatrix {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+  if (settings::run_mode == RunMode::FIXED_SOURCE) {
+    std::fill(scalar_flux_old_.begin(), scalar_flux_old_.end(), 0.0);
+  } else {
+    std::fill(scalar_flux_old_.begin(), scalar_flux_old_.end(), 1.0);
+  }
+  std::fill(scalar_flux_new_.begin(), scalar_flux_new_.end(), 0.0);
+  std::fill(source_.begin(), source_.end(), 0.0f);
+  std::fill(external_source_.begin(), external_source_.end(), 0.0f);
+  std::fill(source_gradients_.begin(), source_gradients_.end(),
+    MomentArray {0.0, 0.0, 0.0});
+  std::fill(flux_moments_old_.begin(), flux_moments_old_.end(),
+    MomentArray {0.0, 0.0, 0.0});
+  std::fill(flux_moments_new_.begin(), flux_moments_new_.end(),
+    MomentArray {0.0, 0.0, 0.0});
+  std::fill(flux_moments_t_.begin(), flux_moments_t_.end(),
+    MomentArray {0.0, 0.0, 0.0});
+
+  // Time-dependent arrays
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    std::fill(scalar_flux_td_old_.begin(), scalar_flux_td_old_.end(), 0.0);
+    std::fill(scalar_flux_td_new_.begin(), scalar_flux_td_new_.end(), 0.0);
+    std::fill(precursors_old_.begin(), precursors_old_.end(), 0.0);
+    std::fill(precursors_new_.begin(), precursors_new_.end(), 0.0);
+
+    // BD Vectors
+    std::fill(scalar_flux_rhs_bd_.begin(), scalar_flux_rhs_bd_.end(), 0.0);
+
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      std::fill(
+        source_time_derivative_.begin(), source_time_derivative_.end(), 0.0);
+      std::fill(scalar_flux_time_derivative_2_.begin(),
+        scalar_flux_time_derivative_2_.end(), 0.0);
+
+      std::fill(source_rhs_bd_.begin(), source_rhs_bd_.end(), 0.0);
+      std::fill(
+        scalar_flux_rhs_bd_2_.begin(), scalar_flux_rhs_bd_2_.end(), 0.0);
+    }
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      std::fill(
+        delayed_fission_source_.begin(), delayed_fission_source_.end(), 0.0);
+
+      std::fill(precursors_im1_.begin(), precursors_im1_.end(), 0.0);
+      std::fill(delayed_fission_source_im1_.begin(),
+        delayed_fission_source_im1_.end(), 0.0);
+      std::fill(delayed_fission_source_im2_.begin(),
+        delayed_fission_source_im2_.end(), 0.0);
+    } else {
+      std::fill(precursors_rhs_bd_.begin(), precursors_rhs_bd_.end(), 0.0);
+    }
+  }
 }
 
 // Time-dependent methods
@@ -344,5 +535,14 @@ void SourceRegionContainer::precursors_swap()
   precursors_old_.swap(precursors_new_);
 }
 
+void SourceRegionContainer::time_step_reset()
+{
+  std::fill(scalar_flux_td_final_.begin(), scalar_flux_td_final_.end(), 0.0);
+  std::fill(precursors_final_.begin(), precursors_final_.end(), 0.0);
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+    std::fill(source_td_final_.begin(), source_td_final_.end(), 0.0);
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+    std::fill(delayed_fission_source_final_.begin(), source_final_.end(), 0.0);
+}
+
 } // namespace openmc
-  

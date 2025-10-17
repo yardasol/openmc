@@ -89,6 +89,9 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     // Write out random number seed
     write_dataset(file_id, "seed", openmc_get_seed());
 
+    // Write out random number stride
+    write_dataset(file_id, "stride", openmc_get_stride());
+
     // Write run information
     write_dataset(file_id, "energy_mode",
       settings::run_CE ? "continuous-energy" : "multi-group");
@@ -342,7 +345,7 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
       file_close(file_id);
   }
 
-#if defined(LIBMESH) || defined(DAGMC)
+#if defined(OPENMC_LIBMESH_ENABLED) || defined(OPENMC_DAGMC_ENABLED)
   // write unstructured mesh tally files
   write_unstructured_mesh_results();
 #endif
@@ -404,6 +407,11 @@ extern "C" int openmc_statepoint_load(const char* filename)
   read_dataset(file_id, "seed", seed);
   openmc_set_seed(seed);
 
+  // Read and overwrite random number stride
+  uint64_t stride;
+  read_dataset(file_id, "stride", stride);
+  openmc_set_stride(stride);
+
   // It is not impossible for a state point to be generated from a CE run but
   // to be loaded in to an MG run (or vice versa), check to prevent that.
   read_dataset(file_id, "energy_mode", word);
@@ -433,7 +441,8 @@ extern "C" int openmc_statepoint_load(const char* filename)
   // Read batch number to restart at
   read_dataset(file_id, "current_batch", simulation::restart_batch);
 
-  if (simulation::restart_batch >= settings::n_max_batches) {
+  if (settings::restart_run &&
+      simulation::restart_batch >= settings::n_max_batches) {
     warning(fmt::format(
       "The number of batches specified for simulation ({}) is smaller "
       "than or equal to the number of batches in the restart statepoint file "
@@ -572,7 +581,7 @@ hid_t h5banktype()
   return banktype;
 }
 
-void write_source_point(std::string filename, gsl::span<SourceSite> source_bank,
+void write_source_point(std::string filename, span<SourceSite> source_bank,
   const vector<int64_t>& bank_index, bool use_mcpl)
 {
   std::string ext = use_mcpl ? "mcpl" : "h5";
@@ -589,8 +598,8 @@ void write_source_point(std::string filename, gsl::span<SourceSite> source_bank,
   }
 }
 
-void write_h5_source_point(const char* filename,
-  gsl::span<SourceSite> source_bank, const vector<int64_t>& bank_index)
+void write_h5_source_point(const char* filename, span<SourceSite> source_bank,
+  const vector<int64_t>& bank_index)
 {
   // When using parallel HDF5, the file is written to collectively by all
   // processes. With MPI-only, the file is opened and written by the master
@@ -625,7 +634,7 @@ void write_h5_source_point(const char* filename,
     file_close(file_id);
 }
 
-void write_source_bank(hid_t group_id, gsl::span<SourceSite> source_bank,
+void write_source_bank(hid_t group_id, span<SourceSite> source_bank,
   const vector<int64_t>& bank_index)
 {
   hid_t banktype = h5banktype();

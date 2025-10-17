@@ -1,5 +1,4 @@
 from difflib import unified_diff
-from subprocess import check_call
 import filecmp
 import glob
 import h5py
@@ -444,7 +443,7 @@ class TolerantPyAPITestHarness(PyAPITestHarness):
 class WeightWindowPyAPITestHarness(PyAPITestHarness):
     def _get_results(self):
         """Digest info in the weight window file and return as a string."""
-        ww = openmc.hdf5_to_wws()[0]
+        ww = openmc.WeightWindowsList.from_hdf5()[0]
 
         # Access the weight window bounds
         lower_bound = ww.lower_ww_bounds
@@ -487,8 +486,7 @@ class PlotTestHarness(TestHarness):
 
         # Check that voxel h5 can be converted to vtk
         for voxel_h5_filename in self._voxel_convert_checks:
-            check_call(['../../../scripts/openmc-voxel-to-vtk'] +
-                       glob.glob(voxel_h5_filename))
+            openmc.voxel_to_vtk(voxel_h5_filename)
 
     def _test_output_created(self):
         """Make sure *.png has been created."""

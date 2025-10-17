@@ -15,6 +15,7 @@
 #include "openmc/tallies/tally.h"
 #include "openmc/tallies/tally_scoring.h"
 #include "openmc/timer.h"
+#include "openmc/weight_windows.h"
 
 namespace openmc {
 
@@ -47,62 +48,54 @@ void openmc_run_random_ray()
   if (mpi::master)
     validate_random_ray_inputs();
 
-  // Declare forward flux so that it can be saved for later adjoint simulation
-  vector<double> forward_flux;
-  {
-    // Initialize Random Ray Simulation Object
-    RandomRaySimulation sim;
+  // Initialize Random Ray Simulation Object
+  RandomRaySimulation sim;
 
-    // Initialize fixed sources, if present
-    sim.prepare_fixed_sources();
+  // Initialize fixed sources, if present
+  sim.apply_fixed_sources_and_mesh_domains();
 
-    // Begin main simulation timer
-    simulation::time_total.start();
+  // Begin main simulation timer
+  simulation::time_total.start();
 
-    // Execute random ray simulation
-    sim.simulate();
+  // Execute random ray simulation
+  sim.simulate();
 
-    // End main simulation timer
-    simulation::time_total.stop();
+  // End main simulation timer
+  simulation::time_total.stop();
 
-    // Normalize and save the final forward flux
-    sim.domain()->serialize_final_fluxes(forward_flux);
+  // Normalize and save the final forward flux
+  double normalization_factor =
+    1.0 / (settings::n_batches - settings::n_inactive);
+  double source_normalization_factor =
+    sim.domain()->compute_fixed_source_normalization_factor() *
+    normalization_factor;
 
-    double normalization_factor =
-      1.0 / (settings::n_batches - settings::n_inactive);
-    double source_normalization_factor =
-      sim.domain()->compute_fixed_source_normalization_factor() *
-      normalization_factor;
+  sim.domain()->normalize_final_fluxes(source_normalization_factor);
 
-    normalize_serialized_vector(forward_flux, source_normalization_factor);
+  // Finalize OpenMC
+  openmc_simulation_finalize();
 
-    // Finalize OpenMC
-    openmc_simulation_finalize();
+  // Output all simulation results
+  sim.output_simulation_results();
 
-    // Reduce variables across MPI ranks
-    sim.reduce_simulation_statistics();
+  // Extract initial conditions for time-dependent simulation
+  if (settings::is_initial_condition) {
+    previous_k_eff = simulation::keff;
 
-    // Output all simulation results
-    sim.output_simulation_results();
+    sim.domain()->serialize_final_fluxes(scalar_flux_bd);
 
-    // Extract flux and source for initial condition for time-dependent
-    // simulation
-    if (settings::is_initial_condition) {
-      previous_k_eff = simulation::keff;
-      previous_scalar_flux = forward_flux;
-
-      sim.domain()->serialize_final_precursors(previous_precursors);
-      normalize_serialized_vector(previous_precursors, normalization_factor);
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-        sim.domain()->serialize_final_sources(previous_source);
-        normalize_serialized_vector(previous_source, normalization_factor);
-      }
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        sim.domain()->serialize_final_delayed_fission_source(
-          previous_delayed_fission_source);
-        normalize_serialized_vector(
-          previous_delayed_fission_source, normalization_factor);
-      }
+    precursors_bd.resize(sim.domain()->n_delay_elements());
+    sim.domain()->normalize_and_store_final_precursors(
+      precursors_bd, normalization_factor);
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      source_bd.resize(sim.domain()->n_source_elements());
+      sim.domain()->normalize_and_store_final_sources(
+        source_bd, normalization_factor);
+    }
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      delayed_fission_source_bd.resize(sim.domain()->n_delay_elements());
+      sim.domain()->normalize_and_store_final_delayed_fission_sources(
+        delayed_fission_source_bd, normalization_factor);
     }
   }
 
@@ -110,48 +103,46 @@ void openmc_run_random_ray()
   // Run adjoint simulation (if enabled)
   //////////////////////////////////////////////////////////
 
-  if (adjoint_needed) {
-    reset_timers();
-
-    // Configure the domain for adjoint simulation
-    FlatSourceDomain::adjoint_ = true;
-
-    if (mpi::master)
-      header("ADJOINT FLUX SOLVE", 3);
-
-    // Initialize OpenMC general data structures
-    openmc_simulation_init();
-
-    // Initialize Random Ray Simulation Object
-    RandomRaySimulation adjoint_sim;
-
-    // Initialize adjoint fixed sources, if present
-    adjoint_sim.prepare_fixed_sources_adjoint(forward_flux);
-
-    // Transpose scattering matrix
-    adjoint_sim.domain()->transpose_scattering_matrix();
-
-    // Swap nu_sigma_f and chi
-    adjoint_sim.domain()->nu_sigma_f_.swap(adjoint_sim.domain()->chi_);
-
-    // Begin main simulation timer
-    simulation::time_total.start();
-
-    // Execute random ray simulation
-    adjoint_sim.simulate();
-
-    // End main simulation timer
-    simulation::time_total.stop();
-
-    // Finalize OpenMC
-    openmc_simulation_finalize();
-
-    // Reduce variables across MPI ranks
-    adjoint_sim.reduce_simulation_statistics();
-
-    // Output all simulation results
-    adjoint_sim.output_simulation_results();
+  if (!adjoint_needed) {
+    return;
   }
+
+  reset_timers();
+
+  // Configure the domain for adjoint simulation
+  FlatSourceDomain::adjoint_ = true;
+
+  if (mpi::master)
+    header("ADJOINT FLUX SOLVE", 3);
+
+  // Initialize OpenMC general data structures
+  openmc_simulation_init();
+
+  sim.domain()->k_eff_ = 1.0;
+
+  // Initialize adjoint fixed sources, if present
+  sim.prepare_fixed_sources_adjoint();
+
+  // Transpose scattering matrix
+  sim.domain()->transpose_scattering_matrix();
+
+  // Swap nu_sigma_f and chi
+  sim.domain()->nu_sigma_f_.swap(sim.domain()->chi_);
+
+  // Begin main simulation timer
+  simulation::time_total.start();
+
+  // Execute random ray simulation
+  sim.simulate();
+
+  // End main simulation timer
+  simulation::time_total.stop();
+
+  // Finalize OpenMC
+  openmc_simulation_finalize();
+
+  // Output all simulation results
+  sim.output_simulation_results();
 }
 
 //==============================================================================
@@ -165,27 +156,27 @@ vector<double> delayed_fission_source_bd;
 
 // 1D RHS BD arrays
 vector<double> scalar_flux_rhs_bd;
-vector<double> precursors_rhs_bd;
 
 vector<double> source_rhs_bd;
 vector<double> scalar_flux_rhs_bd_2;
 
-double previous_k_eff;
-vector<double> previous_scalar_flux;
-vector<double> previous_scalar_flux_td;
-vector<double> previous_precursors;
-vector<double> previous_source;
-vector<double> previous_delayed_fission_source;
+vector<double> precursors_rhs_bd;
 
-void initialize_bd_vector(int64_t vector_size, int n_timesteps,
-  vector<double>& bd_vector, vector<double>& vector)
+vector<double> precursors_im1;
+vector<double> delayed_fission_source_im1;
+vector<double> delayed_fission_source_im2;
+
+double previous_k_eff;
+
+void fill_bd_vector(
+  int64_t vector_size, int n_timesteps, vector<double>& bd_vector)
 {
-  bd_vector.assign(vector_size * n_timesteps, 0.0);
+  bd_vector.resize(vector_size * n_timesteps);
 #pragma omp parallel for
-  for (int t = 0; t < n_timesteps - 1; t++) {
+  for (int t = 1; t < n_timesteps - 1; t++) {
     for (int i = 0; i < vector_size; i++)
-      bd_vector[t * vector_size + i] = vector[i];
-  } 
+      bd_vector[t * vector_size + i] = bd_vector[i];
+  }
 }
 
 void compute_rhs_backward_difference(int64_t vector_size,
@@ -205,12 +196,13 @@ void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector)
   update_bd_vector(bd_vector, vector_blank, true);
 }
 
-void normalize_serialized_vector(
-  vector<double>& vector, double normalization_factor)
+void get_bd_vector_slice(int64_t vector_size, vector<double>& storage_vector,
+  vector<double>& bd_vector, int neg_timestep_index)
 {
+  storage_vector.assign(vector_size, 0.0);
 #pragma omp parallel for
-  for (uint64_t i = 0; i < vector.size(); i++)
-    vector[i] *= normalization_factor;
+  for (int i = 0; i < vector_size; i++)
+    storage_vector[i] = bd_vector[vector_size * neg_timestep_index + i];
 }
 
 void openmc_run_random_ray_time_dependent()
@@ -243,29 +235,24 @@ void openmc_run_random_ray_time_dependent()
   settings::statepoint_batch.insert(settings::n_batches);
 
   settings::is_initial_condition = false;
-  int64_t n_source_elements = previous_scalar_flux.size();
+  int64_t n_source_elements = scalar_flux_bd.size();
   int64_t n_source_regions = n_source_elements / data::mg.num_energy_groups_;
   int64_t n_delay_elements = n_source_regions * data::mg.num_delayed_groups_;
-  int64_t n_material_elements =
-    data::mg.macro_xs_.size() * data::mg.num_energy_groups_;
 
-  initialize_bd_vector(n_source_elements, RandomRaySimulation::bd_order_ + 2,
-    scalar_flux_bd, previous_scalar_flux);
-  initialize_bd_vector(n_delay_elements, RandomRaySimulation::bd_order_ + 1,
-    precursors_bd, previous_precursors);
+  fill_bd_vector(n_source_elements, RandomRay::bd_order_ + 2, scalar_flux_bd);
+  fill_bd_vector(n_delay_elements, RandomRay::bd_order_ + 1, precursors_bd);
   if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
-    initialize_bd_vector(n_source_elements, RandomRaySimulation::bd_order_ + 1,
-      source_bd, previous_source);
+    fill_bd_vector(n_source_elements, RandomRay::bd_order_ + 1, source_bd);
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+    fill_bd_vector(n_delay_elements, 3, delayed_fission_source_bd);
 
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-    initialize_bd_vector(n_delay_elements, 3, delayed_fission_source_bd,
-      previous_delayed_fission_source);
+  RandomRaySimulation sim_td;
 
   simulation::time_initialize_td.stop();
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
-    settings::current_timestep = i;
+    settings::current_timestep = i + 1;
 
     // Print simulation information
     if (mpi::master) {
@@ -275,55 +262,49 @@ void openmc_run_random_ray_time_dependent()
       header(msg, 3);
     }
 
+    // TODO: Move this to a better place
     reset_timers();
 
     // Initialize OpenMC general data structures
     openmc_simulation_init();
 
-    RandomRaySimulation sim_td;
-    sim_td.domain()->bd_order_ = RandomRaySimulation::bd_order_;
-    sim_td.k_eff_ = previous_k_eff;
-    sim_td.domain()->set_initial_condition(
-      previous_scalar_flux, scalar_flux_bd);
+    sim_td.domain()->k_eff_ = previous_k_eff;
+    sim_td.set_initial_condition();
 
     // TODO: Consider using the same time-ordering for this vector instead of
-    // rotating it!!!
-    // Increment BD vectors to a zero-valued solution to be filled in.
+    // rotating it!!! Increment BD vectors to a zero-valued solution to be
+    // filled in.
     simulation::time_update_bd_vectors_td.start();
     increment_bd_vector(n_source_elements, &scalar_flux_bd);
     increment_bd_vector(n_delay_elements, &precursors_bd);
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
       increment_bd_vector(n_source_elements, &source_bd);
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
       increment_bd_vector(n_delay_elements, &delayed_fission_source_bd);
     simulation::time_update_bd_vectors_td.stop();
 
     // Compute RHS backward differences to be used later
-    compute_rhs_backward_difference(n_source_elements,
-      RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd, 1);
-    sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
-
-    compute_rhs_backward_difference(n_delay_elements,
-      RandomRaySimulation::bd_order_, precursors_bd, precursors_rhs_bd, 1);
-    sim_td.domain()->precursors_rhs_bd_ = &precursors_rhs_bd;
+    compute_rhs_backward_difference(n_source_elements, RandomRay::bd_order_,
+      scalar_flux_bd, scalar_flux_rhs_bd, 1);
 
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-      simulation::time_compute_neutron_source_time_derivative.start();
-      compute_rhs_backward_difference(n_source_elements,
-        RandomRaySimulation::bd_order_, source_bd, source_rhs_bd, 1);
-      simulation::time_compute_neutron_source_time_derivative.stop();
-      sim_td.domain()->source_rhs_bd_ = &source_rhs_bd;
-
-      simulation::time_compute_scalar_time_derivative_2.start();
-      compute_rhs_backward_difference(n_source_elements,
-        RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd_2,
-        2);
-      simulation::time_compute_scalar_time_derivative_2.stop();
-      sim_td.domain()->scalar_flux_rhs_bd_2_ = &scalar_flux_rhs_bd_2;
+      simulation::time_compute_sdp_terms.start();
+      compute_rhs_backward_difference(
+        n_source_elements, RandomRay::bd_order_, source_bd, source_rhs_bd, 1);
+      compute_rhs_backward_difference(n_source_elements, RandomRay::bd_order_,
+        scalar_flux_bd, scalar_flux_rhs_bd_2, 2);
+      simulation::time_compute_sdp_terms.stop();
     }
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-      sim_td.domain()->precursors_bd_ = &precursors_bd;
-      sim_td.domain()->delayed_fission_source_bd_ = &delayed_fission_source_bd;
+
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      get_bd_vector_slice(n_delay_elements, precursors_im1, precursors_bd, 1);
+      get_bd_vector_slice(
+        n_delay_elements, delayed_fission_source_im1, precursors_bd, 1);
+      get_bd_vector_slice(
+        n_delay_elements, delayed_fission_source_im2, precursors_bd, 2);
+    } else {
+      compute_rhs_backward_difference(n_delay_elements, RandomRay::bd_order_,
+        precursors_bd, precursors_rhs_bd, 1);
     }
 
     // Update time dependent cross section based on the density
@@ -341,14 +322,11 @@ void openmc_run_random_ray_time_dependent()
     // Finalize OpenMC
     openmc_simulation_finalize();
 
-    // Reduce variables across MPI ranks
-    sim_td.reduce_simulation_statistics();
-
     // Output all simulation results
     sim_td.output_simulation_results();
 
     // Rename statepoint file
-    rename_statepoint_file(i + 1);
+    rename_statepoint_file(settings::current_timestep);
 
     // Compute normalization factors
     double normalization_factor =
@@ -360,33 +338,18 @@ void openmc_run_random_ray_time_dependent()
     // Save the converged keff in previous_k_eff
     previous_k_eff = simulation::keff;
 
-    // Serialize quantities
-    sim_td.domain()->serialize_final_fluxes(previous_scalar_flux);
-    normalize_serialized_vector(
-      previous_scalar_flux, source_normalization_factor);
-
-    sim_td.domain()->serialize_final_td_fluxes(previous_scalar_flux_td);
-    normalize_serialized_vector(
-      previous_scalar_flux_td, source_normalization_factor);
-    update_bd_vector(&scalar_flux_bd, previous_scalar_flux_td, false);
-
-    sim_td.domain()->serialize_final_precursors(previous_precursors);
-    normalize_serialized_vector(previous_precursors, normalization_factor);
-    update_bd_vector(&precursors_bd, previous_precursors, false);
-
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-      sim_td.domain()->serialize_final_td_sources(previous_source);
-      normalize_serialized_vector(previous_source, normalization_factor);
-      update_bd_vector(&source_bd, previous_source, false);
-    }
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-      sim_td.domain()->serialize_final_delayed_fission_source(
-        previous_delayed_fission_source);
-      normalize_serialized_vector(
-        previous_delayed_fission_source, normalization_factor);
-      update_bd_vector(
-        &delayed_fission_source_bd, previous_delayed_fission_source, false);
-    }
+    // Normalize final quantities and update BD vectors
+    sim_td.domain()->normalize_final_fluxes(source_normalization_factor);
+    sim_td.domain()->normalize_and_store_final_td_fluxes(
+      scalar_flux_bd, source_normalization_factor);
+    sim_td.domain()->normalize_and_store_final_precursors(
+      precursors_bd, normalization_factor);
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+      sim_td.domain()->normalize_and_store_final_td_sources(
+        source_bd, normalization_factor);
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+      sim_td.domain()->normalize_and_store_final_delayed_fission_sources(
+        delayed_fission_source_bd, normalization_factor);
   }
 }
 
@@ -486,8 +449,25 @@ void validate_random_ray_inputs()
                   "supported in random ray mode.");
     }
     if (material.get_xsdata().size() > 1) {
-      fatal_error("Non-isothermal MGXS detected. Only isothermal XS data sets "
-                  "supported in random ray mode.");
+      warning("Non-isothermal MGXS detected. Only isothermal XS data sets "
+              "supported in random ray mode. Using lowest temperature.");
+    }
+    for (int g = 0; g < data::mg.num_energy_groups_; g++) {
+      if (material.exists_in_model) {
+        // Temperature and angle indices, if using multiple temperature
+        // data sets and/or anisotropic data sets.
+        // TODO: Currently assumes we are only using single temp/single angle
+        // data.
+        const int t = 0;
+        const int a = 0;
+        double sigma_t =
+          material.get_xs(MgxsType::TOTAL, g, NULL, NULL, NULL, t, a);
+        if (sigma_t <= 0.0) {
+          fatal_error("No zero or negative total macroscopic cross sections "
+                      "allowed in random ray mode. If the intention is to make "
+                      "a void material, use a cell fill of 'None' instead.");
+        }
+      }
     }
   }
 
@@ -554,10 +534,21 @@ void validate_random_ray_inputs()
           "allowed in random ray mode.");
       }
 
-      // Validate that a domain ID was specified
-      if (is->domain_ids().size() == 0) {
-        fatal_error("Fixed sources must be specified by domain "
-                    "id (cell, material, or universe) in random ray mode.");
+      // Validate that a domain ID was specified OR that it is a point source
+      auto sp = dynamic_cast<SpatialPoint*>(is->space());
+      if (is->domain_ids().size() == 0 && !sp) {
+        fatal_error("Fixed sources must be point source or spatially "
+                    "constrained by domain id (cell, material, or universe) in "
+                    "random ray mode.");
+      } else if (is->domain_ids().size() > 0 && sp) {
+        // If both a domain constraint and a non-default point source location
+        // are specified, notify user that domain constraint takes precedence.
+        if (sp->r().x == 0.0 && sp->r().y == 0.0 && sp->r().z == 0.0) {
+          warning("Fixed source has both a domain constraint and a point "
+                  "type spatial distribution. The domain constraint takes "
+                  "precedence in random ray mode -- point source coordinate "
+                  "will be ignored.");
+        }
       }
 
       // Check that a discrete energy distribution was used
@@ -576,20 +567,21 @@ void validate_random_ray_inputs()
   for (int p = 0; p < model::plots.size(); p++) {
 
     // Get handle to OpenMC plot object
-    Plot* openmc_plot = dynamic_cast<Plot*>(model::plots[p].get());
+    const auto& openmc_plottable = model::plots[p];
+    Plot* openmc_plot = dynamic_cast<Plot*>(openmc_plottable.get());
 
     // Random ray plots only support voxel plots
     if (!openmc_plot) {
       warning(fmt::format(
         "Plot {} will not be used for end of simulation data plotting -- only "
         "voxel plotting is allowed in random ray mode.",
-        p));
+        openmc_plottable->id()));
       continue;
     } else if (openmc_plot->type_ != Plot::PlotType::voxel) {
       warning(fmt::format(
         "Plot {} will not be used for end of simulation data plotting -- only "
         "voxel plotting is allowed in random ray mode.",
-        p));
+        openmc_plottable->id()));
       continue;
     }
   }
@@ -599,20 +591,39 @@ void validate_random_ray_inputs()
 #ifdef OPENMC_MPI
   if (mpi::n_procs > 1) {
     warning(
-      "Domain replication in random ray is supported, but suffers from poor "
-      "scaling of source all-reduce operations. Performance may severely "
-      "degrade beyond just a few MPI ranks. Domain decomposition may be "
-      "implemented in the future to provide efficient scaling.");
+      "MPI parallelism is not supported by the random ray solver. All work "
+      "will be performed by rank 0. Domain decomposition may be implemented in "
+      "the future to provide efficient MPI scaling.");
   }
 #endif
+
+  // Warn about instability resulting from linear sources in small regions
+  // when generating weight windows with FW-CADIS and an overlaid mesh.
+  ///////////////////////////////////////////////////////////////////
+  if (RandomRay::source_shape_ == RandomRaySourceShape::LINEAR &&
+      variance_reduction::weight_windows.size() > 0) {
+    warning(
+      "Linear sources may result in negative fluxes in small source regions "
+      "generated by mesh subdivision. Negative sources may result in low "
+      "quality FW-CADIS weight windows. We recommend you use flat source mode "
+      "when generating weight windows with an overlaid mesh tally.");
+  }
+}
+
+void openmc_reset_random_ray()
+{
+  FlatSourceDomain::volume_estimator_ = RandomRayVolumeEstimator::HYBRID;
+  FlatSourceDomain::volume_normalized_flux_tallies_ = false;
+  FlatSourceDomain::adjoint_ = false;
+  FlatSourceDomain::mesh_domain_map_.clear();
+  RandomRay::ray_source_.reset();
+  RandomRay::source_shape_ = RandomRaySourceShape::FLAT;
+  RandomRay::sample_method_ = RandomRaySampleMethod::PRNG;
 }
 
 //==============================================================================
 // RandomRaySimulation implementation
 //==============================================================================
-
-// Static variable declaration
-int RandomRaySimulation::bd_order_ {1};
 
 RandomRaySimulation::RandomRaySimulation()
   : negroups_(data::mg.num_energy_groups_)
@@ -642,8 +653,9 @@ RandomRaySimulation::RandomRaySimulation()
   domain_->flatten_xs(); 
 }
 
-void RandomRaySimulation::prepare_fixed_sources()
+void RandomRaySimulation::apply_fixed_sources_and_mesh_domains()
 {
+  domain_->apply_meshes();
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
     // Transfer external source user inputs onto random ray source regions
     domain_->convert_external_sources();
@@ -651,11 +663,48 @@ void RandomRaySimulation::prepare_fixed_sources()
   }
 }
 
-void RandomRaySimulation::prepare_fixed_sources_adjoint(
-  vector<double>& forward_flux)
+void RandomRaySimulation::prepare_fixed_sources_adjoint()
 {
+  domain_->source_regions_.adjoint_reset();
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
-    domain_->set_adjoint_sources(forward_flux);
+    domain_->set_adjoint_sources();
+  }
+}
+
+void RandomRaySimulation::set_initial_condition()
+{
+  domain_->source_regions_.adjoint_reset();
+  if (settings::current_timestep > 1)
+    domain_->set_initial_fluxes(scalar_flux_bd);
+  else
+    domain_->set_initial_fluxes();
+  set_rhs_bd_vectors();
+  domain_->source_regions_.time_step_reset();
+}
+
+void RandomRaySimulation::set_rhs_bd_vectors()
+{
+#pragma omp parallel for
+  for (int64_t se = 0; se < domain_->n_source_elements(); se++) {
+    domain_->source_regions_.scalar_flux_rhs_bd(se) = scalar_flux_rhs_bd[se];
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      domain_->source_regions_.source_rhs_bd(se) = source_rhs_bd[se];
+      domain_->source_regions_.scalar_flux_rhs_bd_2(se) =
+        scalar_flux_rhs_bd_2[se];
+    }
+  }
+
+#pragma omp parallel for
+  for (int64_t de = 0; de < domain_->n_delay_elements(); de++) {
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      domain_->source_regions_.precursors_im1(de) = precursors_im1[de];
+      domain_->source_regions_.delayed_fission_source_im1(de) =
+        delayed_fission_source_im1[de];
+      domain_->source_regions_.delayed_fission_source_im2(de) =
+        delayed_fission_source_im2[de];
+    } else {
+      domain_->source_regions_.precursors_rhs_bd(de) = precursors_rhs_bd[de];
+    }
   }
 }
 
@@ -663,141 +712,128 @@ void RandomRaySimulation::simulate()
 {
   // Random ray power iteration loop
   while (simulation::current_batch < settings::n_batches) {
-
     // Initialize the current batch
     initialize_batch();
     initialize_generation();
 
-    // Reset total starting particle weight used for normalizing tallies
-    simulation::total_weight = 1.0;
+    // MPI not supported in random ray solver, so all work is done by rank 0
+    // TODO: Implement domain decomposition for MPI parallelism
+    if (mpi::master) {
 
-    // Compute precursors
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        domain_->compute_delayed_fission_source(k_eff_);
-        domain_->compute_precursors_analytic_integration();
-      } else {
-        domain_->compute_precursors(k_eff_);
+      // Reset total starting particle weight used for normalizing tallies
+      simulation::total_weight = 1.0;
+
+      // Compute precursors
+      if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+          settings::is_initial_condition)
+        domain_->compute_all_precursors();
+
+      // Update source term (scattering + fission)
+      domain_->update_all_neutron_sources();
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        domain_->update_all_neutron_sources_td();
+        if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+          domain_->compute_all_neutron_source_time_derivatives();
+          domain_->compute_all_scalar_flux_time_derivatives_2();
+        }
       }
-    } else if (settings::is_initial_condition) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-        domain_->compute_delayed_fission_source(k_eff_);
-      domain_->compute_criticality_precursors(k_eff_);
-    }
 
-    // Compute 2nd order flux time derivative for SDP
-    if (settings::run_mode == RunMode::TIME_DEPENDENT &&
-        RandomRay::time_mode_ == RandomRayTimeMode::SDP)
-      domain_->compute_scalar_flux_time_derivative_2();
+      // Reset scalar fluxes, iteration volume tallies, and region hit flags
+      // to zero
+      domain_->batch_reset();
 
-    // Update source term (scattering + fission)
-    domain_->update_neutron_source(k_eff_);
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      domain_->update_neutron_source_td(k_eff_);
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
-        domain_->compute_neutron_source_time_derivative();
-    }
+      // At the beginning of the simulation, if mesh subdivision is in use, we
+      // need to swap the main source region container into the base container,
+      // as the main source region container will be used to hold the true
+      // subdivided source regions. The base container will therefore only
+      // contain the external source region information, the mesh indices,
+      // material properties, and initial guess values for the flux/source.
 
-    // Reset scalar fluxes, iteration volume tallies, and region hit flags to
-    // zero
-    domain_->batch_reset();
+      // Start timer for transport
+      simulation::time_transport.start();
 
-    // Start timer for transport
-    simulation::time_transport.start();
-
-    // This SHOULD be the same for each timestep in TD simulations, but I need
-    // to verify
+      // This SHOULD be the same for each timestep in TD simulations, but I need
+      // to verify
 // Transport sweep over all random rays for the iteration
 #pragma omp parallel for schedule(dynamic)                                     \
   reduction(+ : total_geometric_intersections_)
-    for (int i = 0; i < simulation::work_per_rank; i++) {
-      RandomRay ray(i, domain_.get());
-      total_geometric_intersections_ +=
-        ray.transport_history_based_single_ray();
-    }
-
-    simulation::time_transport.stop();
-
-    // If using multiple MPI ranks, perform all reduce on all transport results
-    domain_->all_reduce_replicated_source_regions();
-
-    // Normalize scalar flux and update volumes
-    domain_->normalize_scalar_flux_and_volumes(
-      settings::n_particles * RandomRay::distance_active_);
-
-    // Add source to scalar flux, compute number of FSR hits
-    int64_t n_hits = domain_->add_source_to_scalar_flux(); 
-
-    if (settings::run_mode == RunMode::EIGENVALUE ||
-        settings::run_mode == RunMode::TIME_DEPENDENT) {
-      // Compute random ray k-eff
-      k_eff_ = domain_->compute_k_eff(k_eff_);
-
-      // Store random ray k-eff into OpenMC's native k-eff variable
-      global_tally_tracklength = k_eff_;
-    }
-
-    // Execute all tallying tasks, if this is an active batch
-    if (simulation::current_batch > settings::n_inactive) {
-
-      // Add this iteration's scalar flux estimate to final accumulated estimate
-      domain_->accumulate_iteration_flux();
-      if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-          settings::is_initial_condition)
-        domain_->accumulate_iteration_precursors();
-      if (settings::run_mode == RunMode::TIME_DEPENDENT)
-        domain_->accumulate_iteration_flux_td();
-
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-          domain_->accumulate_iteration_source_td();
-        } else if (settings::is_initial_condition) {
-          domain_->accumulate_iteration_source();
-        }
+      for (int i = 0; i < settings::n_particles; i++) {
+        RandomRay ray(i, domain_.get());
+        total_geometric_intersections_ +=
+          ray.transport_history_based_single_ray();
       }
 
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        domain_->accumulate_iteration_delayed_fission_source();
+      simulation::time_transport.stop();
+
+      // Add any newly discovered source regions to the main source region
+      // container.
+      domain_->finalize_discovered_source_regions();
+
+      // Normalize scalar flux and update volumes
+      domain_->normalize_scalar_flux_and_volumes(
+        settings::n_particles * RandomRay::distance_active_);
+
+      // Add source to scalar flux, compute number of FSR hits
+      int64_t n_hits = domain_->add_source_to_scalar_flux();
+
+      // Apply transport stabilization factors
+      domain_->apply_transport_stabilization();
+
+      if (settings::run_mode == RunMode::EIGENVALUE ||
+          settings::run_mode == RunMode::TIME_DEPENDENT) {
+        // Compute random ray k-eff
+        domain_->compute_k_eff();
+
+        // Store random ray k-eff into OpenMC's native k-eff variable
+        global_tally_tracklength = domain_->k_eff_;
       }
 
-      if (mpi::master) {
-        // Generate mapping between source regions and tallies
-        if (!domain_->mapped_all_tallies_) {
-          domain_->convert_source_regions_to_tallies();
+      // Execute all tallying tasks, if this is an active batch
+      if (simulation::current_batch > settings::n_inactive) {
+
+        // Add this iteration's scalar flux estimate to final accumulated
+        // estimate
+        domain_->accumulate_iteration_flux();
+
+        // Accunulate time-dependent quantities
+        if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+            settings::is_initial_condition)
+          domain_->accumulate_iteration_precursors();
+        if (settings::run_mode == RunMode::TIME_DEPENDENT)
+          domain_->accumulate_iteration_flux_td();
+
+        if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+          if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+            domain_->accumulate_iteration_source_td();
+          } else if (settings::is_initial_condition) {
+            domain_->accumulate_iteration_source();
+          }
         }
 
-        // Use above mapping to contribute FSR flux data to appropriate tallies
+        if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+          domain_->accumulate_iteration_delayed_fission_source();
+        }
+
+        // Use above mapping to contribute FSR flux data to appropriate
+        // tallies
         domain_->random_ray_tally();
       }
-    }
 
-    // Set phi_old = phi_new
-    domain_->flux_swap();
-    if (settings::run_mode == RunMode::TIME_DEPENDENT)
-      domain_->flux_td_swap();
+      // Set phi_old = phi_new
+      domain_->flux_swap();
+      if (settings::run_mode == RunMode::TIME_DEPENDENT)
+        domain_->flux_td_swap();
 
-
-    // Check for any obvious insabilities/nans/infs
-    instability_check(n_hits, k_eff_, avg_miss_rate_);
+      // Check for any obvious insabilities/nans/infs
+      instability_check(n_hits, domain_->k_eff_, avg_miss_rate_);
+    } // End MPI master work
 
     // Finalize the current batch
     finalize_generation();
     finalize_batch();
   } // End random ray power iteration loop
-}
 
-void RandomRaySimulation::reduce_simulation_statistics()
-{
-  // Reduce number of intersections
-#ifdef OPENMC_MPI
-  if (mpi::n_procs > 1) {
-    uint64_t total_geometric_intersections_reduced = 0;
-    MPI_Reduce(&total_geometric_intersections_,
-      &total_geometric_intersections_reduced, 1, MPI_UNSIGNED_LONG, MPI_SUM, 0,
-      mpi::intracomm);
-    total_geometric_intersections_ = total_geometric_intersections_reduced;
-  }
-#endif
+  domain_->count_external_source_regions();
 }
 
 void RandomRaySimulation::output_simulation_results() const
@@ -805,8 +841,8 @@ void RandomRaySimulation::output_simulation_results() const
   // Print random ray results
   if (mpi::master) {
     print_results_random_ray(total_geometric_intersections_,
-      avg_miss_rate_ / settings::n_batches, negroups_,
-      domain_->n_source_regions_, domain_->n_external_source_regions_);
+      avg_miss_rate_ / settings::n_batches, negroups_, ndgroups_,
+      domain_->n_source_regions(), domain_->n_external_source_regions_);
     if (model::plots.size() > 0) {
       domain_->output_to_vtk();
     }
@@ -818,8 +854,8 @@ void RandomRaySimulation::output_simulation_results() const
 void RandomRaySimulation::instability_check(
   int64_t n_hits, double k_eff, double& avg_miss_rate) const
 {
-  double percent_missed = ((domain_->n_source_regions_ - n_hits) /
-                            static_cast<double>(domain_->n_source_regions_)) *
+  double percent_missed = ((domain_->n_source_regions() - n_hits) /
+                            static_cast<double>(domain_->n_source_regions())) *
                           100.0;
   avg_miss_rate += percent_missed;
 
@@ -838,7 +874,7 @@ void RandomRaySimulation::instability_check(
     }
 
     if (k_eff > 10.0 || k_eff < 0.01 || !(std::isfinite(k_eff))) {
-      fatal_error("Instability detected");
+      fatal_error(fmt::format("Instability detected: k-eff = {:.5f}", k_eff));
     }
   }
 }
@@ -846,7 +882,8 @@ void RandomRaySimulation::instability_check(
 // Print random ray simulation results
 void RandomRaySimulation::print_results_random_ray(
   uint64_t total_geometric_intersections, double avg_miss_rate, int negroups,
-  int64_t n_source_regions, int64_t n_external_source_regions) const
+  int ndgroups, int64_t n_source_regions,
+  int64_t n_external_source_regions) const
 {
   using namespace simulation;
 
@@ -857,21 +894,40 @@ void RandomRaySimulation::print_results_random_ray(
     double misc_time = time_total.elapsed() - time_update_src.elapsed() -
                        time_transport.elapsed() - time_tallies.elapsed() -
                        time_bank_sendrecv.elapsed();
+    if (settings::is_initial_condition) {
+      misc_time -= time_compute_precursors.elapsed();
+    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      misc_time -=
+        time_initialize_td.elapsed() + time_update_bd_vectors_td.elapsed() +
+        time_update_src_td.elapsed() + time_compute_precursors.elapsed();
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+        misc_time -= time_compute_sdp_terms.elapsed();
+    }
+
     header("Simulation Statistics", 4);
     fmt::print(
       " Total Iterations                  = {}\n", settings::n_batches);
-    fmt::print(" Flat Source Regions (FSRs)        = {}\n", n_source_regions);
     fmt::print(
-      " FSRs Containing External Sources  = {}\n", n_external_source_regions);
+      " Number of Rays per Iteration      = {}\n", settings::n_particles);
+    fmt::print(" Inactive Distance                 = {} cm\n",
+      RandomRay::distance_inactive_);
+    fmt::print(" Active Distance                   = {} cm\n",
+      RandomRay::distance_active_);
+    fmt::print(" Source Regions (SRs)              = {}\n", n_source_regions);
+    fmt::print(
+      " SRs Containing External Sources   = {}\n", n_external_source_regions);
     fmt::print(" Total Geometric Intersections     = {:.4e}\n",
       static_cast<double>(total_geometric_intersections));
     fmt::print("   Avg per Iteration               = {:.4e}\n",
       static_cast<double>(total_geometric_intersections) / settings::n_batches);
-    fmt::print("   Avg per Iteration per FSR       = {:.2f}\n",
+    fmt::print("   Avg per Iteration per SR        = {:.2f}\n",
       static_cast<double>(total_geometric_intersections) /
         static_cast<double>(settings::n_batches) / n_source_regions);
-    fmt::print(" Avg FSR Miss Rate per Iteration   = {:.4f}%\n", avg_miss_rate);
+    fmt::print(" Avg SR Miss Rate per Iteration    = {:.4f}%\n", avg_miss_rate);
     fmt::print(" Energy Groups                     = {}\n", negroups);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+        settings::is_initial_condition)
+      fmt::print(" Delay Groups                      = {}\n", ndgroups);
     fmt::print(
       " Total Integrations                = {:.4e}\n", total_integrations);
     fmt::print("   Avg per Iteration               = {:.4e}\n",
@@ -896,8 +952,50 @@ void RandomRaySimulation::print_results_random_ray(
     std::string adjoint_true = (FlatSourceDomain::adjoint_) ? "ON" : "OFF";
     fmt::print(" Adjoint Flux Mode                 = {}\n", adjoint_true);
 
+    std::string shape;
+    switch (RandomRay::source_shape_) {
+    case RandomRaySourceShape::FLAT:
+      shape = "Flat";
+      break;
+    case RandomRaySourceShape::LINEAR:
+      shape = "Linear";
+      break;
+    case RandomRaySourceShape::LINEAR_XY:
+      shape = "Linear XY";
+      break;
+    default:
+      fatal_error("Invalid random ray source shape");
+    }
+    fmt::print(" Source Shape                      = {}\n", shape);
+    std::string sample_method =
+      (RandomRay::sample_method_ == RandomRaySampleMethod::PRNG) ? "PRNG"
+                                                                 : "Halton";
+    fmt::print(" Sample Method                     = {}\n", sample_method);
+
+    if (domain_->is_transport_stabilization_needed_) {
+      fmt::print(" Transport XS Stabilization Used   = YES (rho = {:.3f})\n",
+        FlatSourceDomain::diagonal_stabilization_rho_);
+    } else {
+      fmt::print(" Transport XS Stabilization Used   = NO\n");
+    }
+
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      std::string time_mode =
+        (RandomRay::time_mode_ == RandomRayTimeMode::TI) ? "TI" : "SDP";
+      fmt::print(" Time Mode                         = {}\n", time_mode);
+
+      std::string precursor_mode =
+        (RandomRay::precursor_mode_ == RandomRayPrecursorMode::BD)
+          ? "BD"
+          : "INTEGRATION";
+      fmt::print(" Precursor Mode                    = {}\n", precursor_mode);
+      fmt::print(
+        " Backwards Difference Order        = {}\n", RandomRay::bd_order_);
+    }
+
     header("Timing Statistics", 4);
-    show_time("Total time for initialization", time_initialize.elapsed());
+    show_time("Total time for initialization",
+      time_initialize.elapsed() + time_initialize_td.elapsed());
     show_time("Reading cross sections", time_read_xs.elapsed(), 1);
     show_time("Total simulation time", time_total.elapsed());
     show_time("Transport sweep only", time_transport.elapsed(), 1);
@@ -910,10 +1008,8 @@ void RandomRaySimulation::print_results_random_ray(
       show_time(
         "Precursor computation only", time_compute_precursors.elapsed(), 1);
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-      show_time("Source time derivaitve computation only",
-        time_compute_neutron_source_time_derivative.elapsed(), 1);
-      show_time("Scalar flux time derivative computation only",
-        time_compute_scalar_time_derivative_2.elapsed(), 1);
+      show_time(
+        "SDP term computation only", time_compute_sdp_terms.elapsed(), 1);
     }
     show_time("Tally conversion only", time_tallies.elapsed(), 1);
     show_time("MPI source reductions only", time_bank_sendrecv.elapsed(), 1);
