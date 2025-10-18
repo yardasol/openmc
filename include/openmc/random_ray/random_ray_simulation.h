@@ -37,7 +37,7 @@ public:
   void increment_bd_vectors();
   void compute_rhs_bd_vectors();
   void store_rhs_bd_vectors();
-  void normalize_and_store_quantities(double source_normalization_factor);
+  void normalize_and_store_quantities();
 
   //----------------------------------------------------------------------------
   // Accessors

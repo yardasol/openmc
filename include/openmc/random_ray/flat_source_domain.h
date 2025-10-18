@@ -99,6 +99,7 @@ public:
   void compute_single_scalar_flux_time_derivative_2(SourceRegionHandle& srh);
   void compute_all_scalar_flux_time_derivatives_2();
 
+  void normalize_final_td_fluxes(double normalization_factor);
   void flux_td_swap();
   void precursors_swap();
   virtual void accumulate_iteration_flux_td();

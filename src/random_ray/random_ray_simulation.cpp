@@ -145,6 +145,7 @@ void openmc_run_random_ray()
 //==============================================================================
 // Time-dependent global variables
 //==============================================================================
+// TODO: IMPLEMENT THESE AS PART OF THE SOURCE REGION
 // 2D time solution arrays
 vector<double> scalar_flux_bd;
 vector<double> source_bd;
@@ -214,8 +215,8 @@ void openmc_run_random_ray_time_dependent()
   // Initialize sim_td object
   RandomRaySimulation sim_td(false);
   sim_td.domain_ = move(source_domain);
-  set_time_dependent_settings();
   sim_td.initialize_bd_vectors();
+  set_time_dependent_settings();
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
@@ -278,8 +279,11 @@ void openmc_run_random_ray_time_dependent()
     // Normalize flux of unperturbed system for k-eff calaculations
     sim_td.domain()->normalize_final_fluxes(source_normalization_factor);
 
+    // Normalize flux of perturbed system for transient calaculations
+    sim_td.domain()->normalize_final_td_fluxes(source_normalization_factor);
+
     // Normalize quantities of perturbed system and store in BD vectors
-    sim_td.normalize_and_store_quantities(source_normalization_factor);
+    sim_td.normalize_and_store_quantities();
   }
 }
 
@@ -981,7 +985,7 @@ void RandomRaySimulation::initialize_bd_vectors()
     delayed_fission_source_bd.resize(domain_->n_delay_elements());
 
   // Get IC quantities
-  normalize_and_store_quantities(0.0);
+  normalize_and_store_quantities();
 
   // Duplicate quantities backwards in time as needed based on the BD order
   fill_bd_vector(
@@ -1066,8 +1070,7 @@ void RandomRaySimulation::store_rhs_bd_vectors()
   }
 }
 
-void RandomRaySimulation::normalize_and_store_quantities(
-  double source_normalization_factor)
+void RandomRaySimulation::normalize_and_store_quantities()
 {
   double normalization_factor =
     1.0 / (settings::n_batches - settings::n_inactive);
@@ -1078,12 +1081,12 @@ void RandomRaySimulation::normalize_and_store_quantities(
       domain_->source_regions_.get_source_region_handle(sr);
 
     for (int g = 0; g < negroups_; g++) {
-      if (settings::is_initial_condition) {
+      // Store the normalized SS flux if coming from an IC
+      if (settings::is_initial_condition)
         scalar_flux_bd[sr * negroups_ + g] = srh.scalar_flux_final(g);
-      } else {
-        scalar_flux_bd[sr * negroups_ + g] =
-          srh.scalar_flux_td_final(g) * source_normalization_factor;
-      }
+      // Otherwise store the normalized TD flux
+      else
+        scalar_flux_bd[sr * negroups_ + g] = srh.scalar_flux_td_final(g);
       if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
         if (settings::is_initial_condition) {
           source_bd[sr * negroups_ + g] =

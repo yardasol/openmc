@@ -533,6 +533,7 @@ void SourceRegionContainer::precursors_swap()
 
 void SourceRegionContainer::time_step_reset()
 {
+  std::fill(scalar_flux_final_.begin(), scalar_flux_final_.end(), 0.0);
   std::fill(scalar_flux_td_final_.begin(), scalar_flux_td_final_.end(), 0.0);
   std::fill(precursors_final_.begin(), precursors_final_.end(), 0.0);
   if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)

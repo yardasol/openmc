@@ -2337,6 +2337,13 @@ void FlatSourceDomain::compute_all_scalar_flux_time_derivatives_2()
   simulation::time_compute_sdp_terms.stop();
 }
 
+void FlatSourceDomain::normalize_final_td_fluxes(double normalization_factor)
+{
+#pragma omp parallel for
+  for (uint64_t se = 0; se < n_source_elements(); se++)
+    source_regions_.scalar_flux_td_final(se) *= normalization_factor;
+}
+
 void FlatSourceDomain::flux_td_swap()
 {
   source_regions_.flux_td_swap();
