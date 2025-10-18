@@ -652,10 +652,6 @@ void FlatSourceDomain::convert_source_regions_to_tallies(int64_t start_sr_id)
               // then add it to the list of tally tasks for this source element.
               TallyTask task(i_tally, filter_index, score, score_bin);
               source_regions_.tally_delay_task(sr, dg).push_back(task);
-
-              // Also add this task to the list of volume tasks for this source
-              // region.
-              source_regions_.volume_task(sr).insert(task);
             }
           }
         }
@@ -894,6 +890,11 @@ void FlatSourceDomain::random_ray_tally()
           case SCORE_EVENTS:
             break;
 
+          // TODO: figure out how to make these volume normalized
+          // The scalar flux used to calculate these should be multiplied by the
+          // volume, and we want to propogate this to the score. Unfortunately
+          // we cannot just multiply the score by the volume to get what we want
+          // :(
           case SCORE_PRECURSORS:
             if (material != MATERIAL_VOID) {
               score = source_regions_.precursors_new(sr, dg);
