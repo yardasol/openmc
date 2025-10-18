@@ -2034,11 +2034,10 @@ void FlatSourceDomain::propagate_final_fluxes()
   }
 }
 
-void FlatSourceDomain::set_initial_fluxes(
-  vector<double>& initial_flux, int64_t n_source_regions)
+void FlatSourceDomain::set_initial_fluxes(vector<double>& initial_flux)
 {
 #pragma omp parallel for
-  for (int64_t sr = 0; sr < n_source_regions; sr++) {
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
     for (int g = 0; g < negroups_; g++) {
       srh.scalar_flux_old(g) = initial_flux[sr * negroups_ + g];
@@ -2047,14 +2046,14 @@ void FlatSourceDomain::set_initial_fluxes(
   }
 }
 
-void FlatSourceDomain::set_rhs_bd_vectors(int64_t n_source_regions,
-  vector<double>& scalar_flux_rhs_bd, vector<double>& source_rhs_bd,
-  vector<double>& scalar_flux_rhs_bd_2, vector<double>& precursors_rhs_bd,
-  vector<double>& precursors_im1, vector<double>& delayed_fission_source_im1,
+void FlatSourceDomain::set_rhs_bd_vectors(vector<double>& scalar_flux_rhs_bd,
+  vector<double>& source_rhs_bd, vector<double>& scalar_flux_rhs_bd_2,
+  vector<double>& precursors_rhs_bd, vector<double>& precursors_im1,
+  vector<double>& delayed_fission_source_im1,
   vector<double>& delayed_fission_source_im2)
 {
 #pragma omp parallel for
-  for (int64_t sr = 0; sr < n_source_regions; sr++) {
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
     for (int g = 0; g < negroups_; g++) {
       srh.scalar_flux_rhs_bd(g) = scalar_flux_rhs_bd[sr * negroups_ + g];

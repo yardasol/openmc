@@ -66,6 +66,8 @@ void validate_random_ray_inputs();
 void openmc_reset_random_ray();
 
 void openmc_run_random_ray_time_dependent();
+void initialize_bd_vectors(RandomRaySimulation sim_td);
+void increment_bd_vectors(RandomRaySimulation sim_td);
 void rename_statepoint_file(int i);
 
 void fill_bd_vector(
