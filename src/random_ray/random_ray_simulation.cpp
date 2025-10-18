@@ -213,6 +213,7 @@ void openmc_run_random_ray_time_dependent()
   rename_statepoint_file(0);
 
   // Initialize sim_td object
+  reset_timers();
   RandomRaySimulation sim_td(false);
   sim_td.domain_ = move(source_domain);
   sim_td.initialize_bd_vectors();
@@ -230,7 +231,8 @@ void openmc_run_random_ray_time_dependent()
       header(msg, 3);
     }
 
-    reset_timers();
+    if (settings::current_timestep > 1)
+      reset_timers();
 
     // Initialize OpenMC general data structures
     openmc_simulation_init();
@@ -935,6 +937,8 @@ void RandomRaySimulation::print_results_random_ray(
     show_time("Total time for initialization",
       time_initialize.elapsed() + time_initialize_td.elapsed());
     show_time("Reading cross sections", time_read_xs.elapsed(), 1);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT)
+      show_time("Initializing BD arrays", time_initialize_td.elapsed(), 1);
     show_time("Total simulation time", time_total.elapsed());
     show_time("Transport sweep only", time_transport.elapsed(), 1);
     show_time("Source update only", time_update_src.elapsed(), 1);
@@ -974,6 +978,7 @@ void RandomRaySimulation::print_results_random_ray(
 void RandomRaySimulation::initialize_bd_vectors()
 {
   simulation::time_initialize_td.start();
+
   // Allocate memory for BD vectors
   scalar_flux_bd.resize(domain_->n_source_elements());
   precursors_bd.resize(domain_->n_delay_elements());
