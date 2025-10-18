@@ -618,10 +618,6 @@ void FlatSourceDomain::convert_source_regions_to_tallies()
               // then add it to the list of tally tasks for this source element.
               TallyTask task(i_tally, filter_index, score_index, score_bin);
               source_regions_.tally_delay_task(sr, dg).push_back(task);
-
-              // Also add this task to the list of volume tasks for this source
-              // region.
-              source_regions_.volume_task(sr).insert(task);
             }
           }
         }
@@ -1475,6 +1471,7 @@ void FlatSourceDomain::compute_criticality_precursors(double k_eff)
 void FlatSourceDomain::compute_precursors(double k_eff)
 {
   simulation::time_compute_precursors.start();
+  double inverse_k_eff = 1.0 / k_eff;
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1490,7 +1487,7 @@ void FlatSourceDomain::compute_precursors(double k_eff)
           double flux_td = source_regions_.scalar_flux_td_old(sr, g_in);
           delayed_fission_source += flux_td * nu_d_sigma_f;
         }
-        delayed_fission_source /= k_eff;
+        delayed_fission_source *= inverse_k_eff;
 
         double precursor_rhs_bd = (*precursors_rhs_bd_)[dindex(sr, dg)];
 
