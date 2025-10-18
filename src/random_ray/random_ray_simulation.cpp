@@ -64,11 +64,9 @@ void openmc_run_random_ray()
   simulation::time_total.stop();
 
   // Normalize and save the final forward flux
-  double normalization_factor =
-    1.0 / (settings::n_batches - settings::n_inactive);
   double source_normalization_factor =
-    sim.domain()->compute_fixed_source_normalization_factor() *
-    normalization_factor;
+    sim.domain()->compute_fixed_source_normalization_factor() /
+    (settings::n_batches - settings::n_inactive);
 
   sim.domain()->normalize_final_fluxes(source_normalization_factor);
 
@@ -168,9 +166,6 @@ vector<double> delayed_fission_source_im2;
 unique_ptr<FlatSourceDomain> source_domain;
 
 double previous_k_eff;
-int64_t n_source_elements;
-int64_t n_source_regions;
-int64_t n_delay_elements;
 
 void fill_bd_vector(
   int64_t vector_size, int n_timesteps, vector<double>& bd_vector)
@@ -216,40 +211,11 @@ void openmc_run_random_ray_time_dependent()
   openmc_run_random_ray();
   rename_statepoint_file(0);
 
-  /////////////////////////////////
-  // Settings for timestepping loop
-  /////////////////////////////////
-
-  simulation::time_initialize_td.start();
-
-  settings::run_mode = RunMode::TIME_DEPENDENT;
-  settings::is_initial_condition = false;
-
-  // Reset run_mode and batches
-  settings::n_batches = settings::n_batches_td;
-  settings::n_inactive = settings::n_inactive_td;
-  settings::n_max_batches = settings::n_batches_td;
-
-  // Reset k_generation and entropy
-  int m = settings::n_max_batches * settings::gen_per_batch;
-  simulation::k_generation.clear();
-  simulation::k_generation.reserve(m);
-  simulation::entropy.clear();
-  simulation::entropy.reserve(m);
-
-  // Reset statepoint_batch for statepoint writing
-  settings::statepoint_batch.clear();
-  settings::statepoint_batch.insert(settings::n_batches);
-
+  // Initialize sim_td object
   RandomRaySimulation sim_td(false);
   sim_td.domain_ = move(source_domain);
-
-  int64_t n_source_elements = sim_td.domain()->n_source_elements();
-  int64_t n_delay_elements = sim_td.domain()->n_delay_elements();
-
-  initialize_bd_vectors(sim_td);
-
-  simulation::time_initialize_td.stop();
+  set_time_dependent_settings();
+  sim_td.initialize_bd_vectors();
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
@@ -263,7 +229,6 @@ void openmc_run_random_ray_time_dependent()
       header(msg, 3);
     }
 
-    // TODO: Move this to a better place
     reset_timers();
 
     // Initialize OpenMC general data structures
@@ -273,15 +238,13 @@ void openmc_run_random_ray_time_dependent()
     sim_td.set_initial_condition();
 
     // TODO: Consider using the same time-ordering for this vector instead of
-    // rotating it!!! Increment BD vectors to a zero-valued solution to be
-    // filled in.
-    increment_bd_vectors(sim_td);
+    // rotating it!!!
+    // Increment BD vectors to a zero-valued solution to be filled in.
+    sim_td.increment_bd_vectors();
 
-    compute_rhs_bd_vectors(sim_td);
-
-    sim_td.domain()->set_rhs_bd_vectors(scalar_flux_rhs_bd, source_rhs_bd,
-      scalar_flux_rhs_bd_2, precursors_rhs_bd, precursors_im1,
-      delayed_fission_source_im1, delayed_fission_source_im2);
+    // Compute and store RHS BD vectors
+    sim_td.compute_rhs_bd_vectors();
+    sim_td.store_rhs_bd_vectors();
 
     // Update time dependent cross section based on the density
     sim_td.domain()->update_material_density(i);
@@ -289,7 +252,7 @@ void openmc_run_random_ray_time_dependent()
     // Begin main simulation timer
     simulation::time_total.start();
 
-    // Execute random ray simulation
+    // Execute time-dependent random ray simulation
     sim_td.simulate();
 
     // End main simulation timer
@@ -304,106 +267,43 @@ void openmc_run_random_ray_time_dependent()
     // Rename statepoint file
     rename_statepoint_file(settings::current_timestep);
 
-    // Compute normalization factors
-    double normalization_factor =
-      1.0 / (settings::n_batches - settings::n_inactive);
-    double source_normalization_factor =
-      sim_td.domain()->compute_fixed_source_normalization_factor() *
-      normalization_factor;
-
     // Save the converged keff in previous_k_eff
     previous_k_eff = simulation::keff;
 
-    // Normalize final quantities and update BD vectors
+    // Compute source normalization factor
+    double source_normalization_factor =
+      sim_td.domain()->compute_fixed_source_normalization_factor() /
+      (settings::n_batches - settings::n_inactive);
+
+    // Normalize flux of unperturbed system for k-eff calaculations
     sim_td.domain()->normalize_final_fluxes(source_normalization_factor);
-    sim_td.domain()->normalize_and_store_final_td_fluxes(
-      scalar_flux_bd, source_normalization_factor);
-    sim_td.domain()->normalize_and_store_final_precursors(
-      precursors_bd, normalization_factor);
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
-      sim_td.domain()->normalize_and_store_final_td_sources(
-        source_bd, normalization_factor);
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
-      sim_td.domain()->normalize_and_store_final_delayed_fission_sources(
-        delayed_fission_source_bd, normalization_factor);
+
+    // Normalize quantities of perturbed system and store in BD vectors
+    sim_td.normalize_and_store_quantities(source_normalization_factor);
   }
 }
 
-void initialize_bd_vectors(RandomRaySimulation sim_td)
+void set_time_dependent_settings()
 {
-  int64_t n_source_elements = sim_td.domain()->n_source_elements();
-  int64_t n_delay_elements = sim_td.domain()->n_delay_elements();
+  // Reset flags
+  settings::run_mode = RunMode::TIME_DEPENDENT;
+  settings::is_initial_condition = false;
 
-  // Get previous solution
-  sim_td.domain()->serialize_final_fluxes(scalar_flux_bd);
+  // Set batches
+  settings::n_batches = settings::n_batches_td;
+  settings::n_inactive = settings::n_inactive_td;
+  settings::n_max_batches = settings::n_batches_td;
 
-  precursors_bd.resize(sim_td.domain()->n_delay_elements());
-  sim_td.domain()->normalize_and_store_final_precursors(
-    precursors_bd, normalization_factor);
+  // Reset k_generation and entropy
+  int m = settings::n_max_batches * settings::gen_per_batch;
+  simulation::k_generation.clear();
+  simulation::k_generation.reserve(m);
+  simulation::entropy.clear();
+  simulation::entropy.reserve(m);
 
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-    source_bd.resize(n_source_elements);
-    sim_td.domain()->normalize_and_store_final_sources(
-      source_bd, normalization_factor);
-  }
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
-    delayed_fission_source_bd.resize(n_delay_elements);
-    sim_td.domain()->normalize_and_store_final_delayed_fission_sources(
-      delayed_fission_source_bd, normalization_factor);
-  }
-
-  // Duplicate solution backwards in time as needed based on the BD order
-  fill_bd_vector(n_source_elements, RandomRay::bd_order_ + 2, scalar_flux_bd);
-  fill_bd_vector(n_delay_elements, RandomRay::bd_order_ + 1, precursors_bd);
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
-    fill_bd_vector(n_source_elements, RandomRay::bd_order_ + 1, source_bd);
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
-    fill_bd_vector(n_delay_elements, 3, delayed_fission_source_bd);
-}
-
-void increment_bd_vectors(RandomRaySimulation sim_td)
-{
-  int64_t n_source_elements = sim_td.domain()->n_source_elements();
-  int64_t n_delay_elements = sim_td.domain()->n_delay_elements();
-
-  simulation::time_update_bd_vectors_td.start();
-
-  increment_bd_vector(n_source_elements, &scalar_flux_bd);
-  increment_bd_vector(n_delay_elements, &precursors_bd);
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
-    increment_bd_vector(n_source_elements, &source_bd);
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
-    increment_bd_vector(n_delay_elements, &delayed_fission_source_bd);
-
-  simulation::time_update_bd_vectors_td.stop();
-}
-
-void compute_rhs_bd_vectors(RandomRaySimulation sim_td)
-{
-  int64_t n_source_elements = sim_td.domain()->n_source_elements();
-  int64_t n_delay_elements = sim_td.domain()->n_delay_elements();
-
-  // Compute and store RHS backward differences to be used later
-  compute_rhs_backward_difference(n_source_elements, RandomRay::bd_order_,
-    scalar_flux_bd, scalar_flux_rhs_bd, 1);
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-    simulation::time_compute_sdp_terms.start();
-    compute_rhs_backward_difference(
-      n_source_elements, RandomRay::bd_order_, source_bd, source_rhs_bd, 1);
-    compute_rhs_backward_difference(n_source_elements, RandomRay::bd_order_,
-      scalar_flux_bd, scalar_flux_rhs_bd_2, 2);
-    simulation::time_compute_sdp_terms.stop();
-  }
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
-    get_bd_vector_slice(n_delay_elements, precursors_im1, precursors_bd, 1);
-    get_bd_vector_slice(
-      n_delay_elements, delayed_fission_source_im1, precursors_bd, 1);
-    get_bd_vector_slice(
-      n_delay_elements, delayed_fission_source_im2, precursors_bd, 2);
-  } else {
-    compute_rhs_backward_difference(n_delay_elements, RandomRay::bd_order_,
-      precursors_bd, precursors_rhs_bd, 1);
-  }
+  // Reset statepoint_batch for statepoint writing
+  settings::statepoint_batch.clear();
+  settings::statepoint_batch.insert(settings::n_batches);
 }
 
 void rename_statepoint_file(int i)
@@ -731,7 +631,7 @@ void RandomRaySimulation::set_initial_condition()
 { 
   domain_->source_regions_.adjoint_reset();
   if (settings::current_timestep == 1)
-    domain_->set_initial_fluxes(scalar_flux_bd, n_source_regions);
+    domain_->set_initial_fluxes(scalar_flux_bd);
   else
     domain_->propagate_final_fluxes();
   domain_->source_regions_.time_step_reset();
@@ -1061,6 +961,146 @@ void RandomRaySimulation::print_results_random_ray(
     header("Results", 4);
     fmt::print(" k-effective                       = {:.5f} +/- {:.5f}\n",
       simulation::keff, simulation::keff_std);
+  }
+}
+
+//------------------------------------------------------------------------------
+// Time Dependent Methods
+//
+void RandomRaySimulation::initialize_bd_vectors()
+{
+  simulation::time_initialize_td.start();
+  // Allocate memory for BD vectors
+  scalar_flux_bd.resize(domain_->n_source_elements());
+  precursors_bd.resize(domain_->n_delay_elements());
+  // source (SDP only)
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+    source_bd.resize(domain_->n_source_elements());
+  // delayed fission source (precursor integration only)
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+    delayed_fission_source_bd.resize(domain_->n_delay_elements());
+
+  // Get IC quantities
+  normalize_and_store_quantities(0.0);
+
+  // Duplicate quantities backwards in time as needed based on the BD order
+  fill_bd_vector(
+    domain_->n_source_elements(), RandomRay::bd_order_ + 2, scalar_flux_bd);
+  fill_bd_vector(
+    domain_->n_delay_elements(), RandomRay::bd_order_ + 1, precursors_bd);
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+    fill_bd_vector(
+      domain_->n_source_elements(), RandomRay::bd_order_ + 1, source_bd);
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+    fill_bd_vector(domain_->n_delay_elements(), 3, delayed_fission_source_bd);
+
+  simulation::time_initialize_td.stop();
+}
+
+void RandomRaySimulation::increment_bd_vectors()
+{
+  simulation::time_update_bd_vectors_td.start();
+
+  increment_bd_vector(domain_->n_source_elements(), &scalar_flux_bd);
+  increment_bd_vector(domain_->n_delay_elements(), &precursors_bd);
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+    increment_bd_vector(domain_->n_source_elements(), &source_bd);
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+    increment_bd_vector(
+      domain_->n_delay_elements(), &delayed_fission_source_bd);
+
+  simulation::time_update_bd_vectors_td.stop();
+}
+
+void RandomRaySimulation::compute_rhs_bd_vectors()
+{
+  // Compute and store RHS backward differences to be used later
+  compute_rhs_backward_difference(domain_->n_source_elements(),
+    RandomRay::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd, 1);
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    simulation::time_compute_sdp_terms.start();
+    compute_rhs_backward_difference(domain_->n_source_elements(),
+      RandomRay::bd_order_, source_bd, source_rhs_bd, 1);
+    compute_rhs_backward_difference(domain_->n_source_elements(),
+      RandomRay::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd_2, 2);
+    simulation::time_compute_sdp_terms.stop();
+  }
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+    get_bd_vector_slice(
+      domain_->n_delay_elements(), precursors_im1, precursors_bd, 1);
+    get_bd_vector_slice(domain_->n_delay_elements(), delayed_fission_source_im1,
+      precursors_bd, 1);
+    get_bd_vector_slice(domain_->n_delay_elements(), delayed_fission_source_im2,
+      precursors_bd, 2);
+  } else {
+    compute_rhs_backward_difference(domain_->n_delay_elements(),
+      RandomRay::bd_order_, precursors_bd, precursors_rhs_bd, 1);
+  }
+}
+
+void RandomRaySimulation::store_rhs_bd_vectors()
+{
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < domain_->n_source_regions(); sr++) {
+    SourceRegionHandle srh =
+      domain_->source_regions_.get_source_region_handle(sr);
+    for (int g = 0; g < negroups_; g++) {
+      srh.scalar_flux_rhs_bd(g) = scalar_flux_rhs_bd[sr * negroups_ + g];
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        srh.source_rhs_bd(g) = source_rhs_bd[sr * negroups_ + g];
+        srh.scalar_flux_rhs_bd_2(g) = scalar_flux_rhs_bd_2[sr * negroups_ + g];
+      }
+    }
+
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+        srh.precursors_im1(dg) = precursors_im1[sr * ndgroups_ + dg];
+        srh.delayed_fission_source_im1(dg) =
+          delayed_fission_source_im1[sr * ndgroups_ + dg];
+        srh.delayed_fission_source_im2(dg) =
+          delayed_fission_source_im2[sr * ndgroups_ + dg];
+      } else {
+        srh.precursors_rhs_bd(dg) = precursors_rhs_bd[sr * ndgroups_ + dg];
+      }
+    }
+  }
+}
+
+void RandomRaySimulation::normalize_and_store_quantities(
+  double source_normalization_factor)
+{
+  double normalization_factor =
+    1.0 / (settings::n_batches - settings::n_inactive);
+
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < domain_->n_source_regions(); sr++) {
+    SourceRegionHandle srh =
+      domain_->source_regions_.get_source_region_handle(sr);
+
+    for (int g = 0; g < negroups_; g++) {
+      if (settings::is_initial_condition) {
+        scalar_flux_bd[sr * negroups_ + g] = srh.scalar_flux_final(g);
+      } else {
+        scalar_flux_bd[sr * negroups_ + g] =
+          srh.scalar_flux_td_final(g) * source_normalization_factor;
+      }
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        if (settings::is_initial_condition) {
+          source_bd[sr * negroups_ + g] =
+            srh.source_final(g) * normalization_factor;
+        } else {
+          source_bd[sr * negroups_ + g] =
+            srh.source_td_final(g) * normalization_factor;
+        }
+      }
+    }
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      precursors_bd[sr * ndgroups_ + dg] =
+        srh.precursors_final(dg) * normalization_factor;
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+        delayed_fission_source_bd[sr * negroups_ + dg] =
+          srh.delayed_fission_source_final(dg) * normalization_factor;
+    }
   }
 }
 

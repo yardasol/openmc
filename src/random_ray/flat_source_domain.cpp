@@ -2046,37 +2046,6 @@ void FlatSourceDomain::set_initial_fluxes(vector<double>& initial_flux)
   }
 }
 
-void FlatSourceDomain::set_rhs_bd_vectors(vector<double>& scalar_flux_rhs_bd,
-  vector<double>& source_rhs_bd, vector<double>& scalar_flux_rhs_bd_2,
-  vector<double>& precursors_rhs_bd, vector<double>& precursors_im1,
-  vector<double>& delayed_fission_source_im1,
-  vector<double>& delayed_fission_source_im2)
-{
-#pragma omp parallel for
-  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
-    SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
-    for (int g = 0; g < negroups_; g++) {
-      srh.scalar_flux_rhs_bd(g) = scalar_flux_rhs_bd[sr * negroups_ + g];
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-        srh.source_rhs_bd(g) = source_rhs_bd[sr * negroups_ + g];
-        srh.scalar_flux_rhs_bd_2(g) = scalar_flux_rhs_bd_2[sr * negroups_ + g];
-      }
-    }
-
-    for (int dg = 0; dg < ndgroups_; dg++) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
-        srh.precursors_im1(dg) = precursors_im1[sr * ndgroups_ + dg];
-        srh.delayed_fission_source_im1(dg) =
-          delayed_fission_source_im1[sr * ndgroups_ + dg];
-        srh.delayed_fission_source_im2(dg) =
-          delayed_fission_source_im2[sr * ndgroups_ + dg];
-      } else {
-        srh.precursors_rhs_bd(dg) = precursors_rhs_bd[sr * ndgroups_ + dg];
-      }
-    }
-  }
-}
-
 // Compute new estimate of scattering + fission sources in each source region
 // based on the flux estimate from the previous iteration.
 void FlatSourceDomain::update_single_neutron_source_td(SourceRegionHandle& srh)
@@ -2366,59 +2335,6 @@ void FlatSourceDomain::compute_all_scalar_flux_time_derivatives_2()
   }
 
   simulation::time_compute_sdp_terms.stop();
-}
-
-// NOTE: Only used for time-dependent simulaions using SDP
-void FlatSourceDomain::normalize_and_store_final_sources(
-  vector<double>& bd_vector, double normalization_factor)
-{
-  // Serialize the final sources for output
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements(); se++) {
-    bd_vector[se] = source_regions_.source_final(se) * normalization_factor;
-  }
-}
-
-void FlatSourceDomain::normalize_and_store_final_td_fluxes(
-  vector<double>& bd_vector, double normalization_factor)
-{
-// Serialize the final fluxes for output
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements(); se++) {
-    bd_vector[se] =
-      source_regions_.scalar_flux_td_final(se) * normalization_factor;
-  }
-}
-
-void FlatSourceDomain::normalize_and_store_final_td_sources(
-  vector<double>& bd_vector, double normalization_factor)
-{
-  // Serialize the final sources for output
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements(); se++) {
-    bd_vector[se] = source_regions_.source_td_final(se) * normalization_factor;
-  }
-}
-
-void FlatSourceDomain::normalize_and_store_final_precursors(
-  vector<double>& bd_vector, double normalization_factor)
-{
-// Serialize the precursors for output
-#pragma omp parallel for
-  for (int64_t de = 0; de < n_delay_elements(); de++) {
-    bd_vector[de] = source_regions_.precursors_final(de) * normalization_factor;
-  }
-}
-
-void FlatSourceDomain::normalize_and_store_final_delayed_fission_sources(
-  vector<double>& bd_vector, double normalization_factor)
-{
-// Serialize delayed_fission_source for output
-#pragma omp parallel for
-  for (int64_t de = 0; de < n_delay_elements(); de++) {
-    bd_vector[de] =
-      source_regions_.delayed_fission_source_final(de) * normalization_factor;
-  }
 }
 
 void FlatSourceDomain::flux_td_swap()

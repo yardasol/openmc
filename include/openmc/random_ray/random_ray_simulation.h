@@ -32,6 +32,14 @@ public:
     int64_t n_external_source_regions) const;
 
   //----------------------------------------------------------------------------
+  // Time Dependent Methods
+  void initialize_bd_vectors();
+  void increment_bd_vectors();
+  void compute_rhs_bd_vectors();
+  void store_rhs_bd_vectors();
+  void normalize_and_store_quantities(double source_normalization_factor);
+
+  //----------------------------------------------------------------------------
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
 
@@ -66,8 +74,7 @@ void validate_random_ray_inputs();
 void openmc_reset_random_ray();
 
 void openmc_run_random_ray_time_dependent();
-void initialize_bd_vectors(RandomRaySimulation sim_td);
-void increment_bd_vectors(RandomRaySimulation sim_td);
+void set_time_dependent_settings();
 void rename_statepoint_file(int i);
 
 void fill_bd_vector(
@@ -78,6 +85,7 @@ void compute_rhs_backward_difference(int64_t vector_size,
   vector<double>& rhs_bd_vector, int derivative_order);
 
 void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector);
+
 void get_bd_vector_slice(int64_t vector_size, vector<double>& storage_vector,
   vector<double>& bd_vector, int neg_timestep_index);
 
@@ -103,9 +111,6 @@ extern vector<double> delayed_fission_source_im2;
 extern unique_ptr<FlatSourceDomain> source_domain;
 
 extern double previous_k_eff;
-extern int64_t n_source_elements;
-extern int64_t n_source_regions;
-extern int64_t n_delay_elements;
 
 } // namespace openmc
 

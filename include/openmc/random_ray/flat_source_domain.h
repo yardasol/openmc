@@ -81,14 +81,8 @@ public:
   {
     return source_regions_.n_source_regions() * ndgroups_;
   }
-  // TODO: make this depend on srh
   void propagate_final_fluxes();
   void set_initial_fluxes(vector<double>& initial_flux);
-  void set_rhs_bd_vectors(vector<double>& scalar_flux_rhs_bd,
-    vector<double>& source_rhs_bd, vector<double>& scalar_flux_rhs_bd_2,
-    vector<double>& precursors_rhs_bd, vector<double>& precursors_im1,
-    vector<double>& delayed_fission_source_im1,
-    vector<double>& delayed_fission_source_im2);
 
   virtual void update_single_neutron_source_td(SourceRegionHandle& srh);
   virtual void update_all_neutron_sources_td();
@@ -104,17 +98,6 @@ public:
 
   void compute_single_scalar_flux_time_derivative_2(SourceRegionHandle& srh);
   void compute_all_scalar_flux_time_derivatives_2();
-
-  void normalize_and_store_final_sources(
-    vector<double>& bd_vector, double normalization_factor);
-  void normalize_and_store_final_td_fluxes(
-    vector<double>& bd_vector, double normalization_factor);
-  void normalize_and_store_final_td_sources(
-    vector<double>& bd_vector, double normalization_factor);
-  void normalize_and_store_final_precursors(
-    vector<double>& bd_vector, double normalization_factor);
-  void normalize_and_store_final_delayed_fission_sources(
-    vector<double>& bd_vector, double normalization_factor);
 
   void flux_td_swap();
   void precursors_swap();
