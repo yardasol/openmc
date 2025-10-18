@@ -2038,12 +2038,9 @@ void FlatSourceDomain::set_initial_fluxes(
   vector<double>& initial_flux, int64_t n_source_regions)
 {
 #pragma omp parallel for
-  for (int64_t sr = 0; sr < n_source_regions; sr++) {
-    SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
-    for (int g = 0; g < negroups_; g++) {
-      srh.scalar_flux_old(g) = initial_flux[sr * negroups_ + g];
-      srh.scalar_flux_td_old(g) = initial_flux[sr * negroups_ + g];
-    }
+  for (int64_t se = 0; se < n_source_elements(); se++) {
+      source_regions_.scalar_flux_old(se) = initial_flux[se];
+      source_regions_.scalar_flux_td_old(se) = initial_flux[se];
   }
 }
 
@@ -2054,25 +2051,23 @@ void FlatSourceDomain::set_rhs_bd_vectors(int64_t n_source_regions,
   vector<double>& delayed_fission_source_im2)
 {
 #pragma omp parallel for
-  for (int64_t sr = 0; sr < n_source_regions; sr++) {
-    SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
-    for (int g = 0; g < negroups_; g++) {
-      srh.scalar_flux_rhs_bd(g) = scalar_flux_rhs_bd[sr * negroups_ + g];
+  for (int64_t se = 0; se < n_source_elements(); se++) {
+      source_regions_.scalar_flux_rhs_bd(se) = scalar_flux_rhs_bd[se];
       if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-        srh.source_rhs_bd(g) = source_rhs_bd[sr * negroups_ + g];
-        srh.scalar_flux_rhs_bd_2(g) = scalar_flux_rhs_bd_2[sr * negroups_ + g];
-      }
+        source_regions_.source_rhs_bd(se) = source_rhs_bd[se];
+        source_regions_.scalar_flux_rhs_bd_2(se) = scalar_flux_rhs_bd_2[se];
     }
 
-    for (int dg = 0; dg < ndgroups_; dg++) {
+#pragma omp parallel for
+    for (int de = 0; de < n_delay_elements(); de++) {
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
-        srh.precursors_im1(dg) = precursors_im1[sr * ndgroups_ + dg];
-        srh.delayed_fission_source_im1(dg) =
-          delayed_fission_source_im1[sr * ndgroups_ + dg];
-        srh.delayed_fission_source_im2(dg) =
-          delayed_fission_source_im2[sr * ndgroups_ + dg];
+        source_regions_.precursors_im1(de) = precursors_im1[de];
+        source_regions_.delayed_fission_source_im1(de) =
+          delayed_fission_source_im1[de];
+        source_regions_.delayed_fission_source_im2(de) =
+          delayed_fission_source_im2[de];
       } else {
-        srh.precursors_rhs_bd(dg) = precursors_rhs_bd[sr * ndgroups_ + dg];
+        source_regions_.precursors_rhs_bd(de) = precursors_rhs_bd[de];
       }
     }
   }
