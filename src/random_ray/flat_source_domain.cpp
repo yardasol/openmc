@@ -883,7 +883,7 @@ void FlatSourceDomain::random_ray_tally()
         }
         if (settings::run_mode == RunMode::TIME_DEPENDENT ||
             settings::is_initial_condition) {
-          if (task.score_type == PRECURSORS) {
+          if (task.score_type == SCORE_PRECURSORS) {
 #pragma omp atomic
             tally_volumes_[task.tally_idx](task.filter_idx, task.score_idx) +=
               volume;
@@ -891,7 +891,6 @@ void FlatSourceDomain::random_ray_tally()
         }
       }
     }
-  }
   } // end FSR loop
 
   // Normalize any flux scores by the total volume of the FSRs scoring to that
@@ -907,9 +906,9 @@ void FlatSourceDomain::random_ray_tally()
         for (int score_idx = 0; score_idx < tally.n_scores(); score_idx++) {
           auto score_type = tally.scores_[score_idx];
           if (score_type == SCORE_FLUX || score_type == SCORE_PRECURSORS) {
-          double vol = tally_volumes_[i](bin, score_idx);
-          if (vol > 0.0)
-            tally.results_(bin, score_idx, TallyResult::VALUE) /= vol;
+            double vol = tally_volumes_[i](bin, score_idx);
+            if (vol > 0.0)
+              tally.results_(bin, score_idx, TallyResult::VALUE) /= vol;
           }
         }
       }
