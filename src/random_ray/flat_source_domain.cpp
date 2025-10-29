@@ -616,8 +616,13 @@ void FlatSourceDomain::convert_source_regions_to_tallies()
                 break;
               // If a valid tally, filter, and score combination has been found,
               // then add it to the list of tally tasks for this source element.
-              TallyTask task(i_tally, filter_index, score_index, score_bin);
+              TallyTask task(
+                i_tally, filter_index + dg, score_index, score_bin);
               source_regions_.tally_delay_task(sr, dg).push_back(task);
+
+              // Also add this task to the list of volume tasks for this source
+              // region.
+              source_regions_.volume_task(sr).insert(task);
             }
           }
         }
@@ -846,7 +851,8 @@ void FlatSourceDomain::random_ray_tally()
             break;
 
           case SCORE_PRECURSORS:
-            score = source_regions_.precursors_new(sr, dg);
+            score = source_regions_.precursors_new(sr, dg) *
+                    source_normalization_factor * volume;
             break;
 
           default:
@@ -859,7 +865,7 @@ void FlatSourceDomain::random_ray_tally()
           // Apply score to the appropriate tally bin
           Tally& tally {*model::tallies[task.tally_idx]};
 #pragma omp atomic
-          tally.results_(task.filter_idx + dg, task.score_idx, TallyResult::VALUE) +=
+          tally.results_(task.filter_idx, task.score_idx, TallyResult::VALUE) +=
             score;
         }
       }
@@ -875,8 +881,17 @@ void FlatSourceDomain::random_ray_tally()
           tally_volumes_[task.tally_idx](task.filter_idx, task.score_idx) +=
             volume;
         }
+        if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+            settings::is_initial_condition) {
+          if (task.score_type == PRECURSORS) {
+#pragma omp atomic
+            tally_volumes_[task.tally_idx](task.filter_idx, task.score_idx) +=
+              volume;
+          }
+        }
       }
     }
+  }
   } // end FSR loop
 
   // Normalize any flux scores by the total volume of the FSRs scoring to that
@@ -891,11 +906,10 @@ void FlatSourceDomain::random_ray_tally()
       for (int bin = 0; bin < tally.n_filter_bins(); bin++) {
         for (int score_idx = 0; score_idx < tally.n_scores(); score_idx++) {
           auto score_type = tally.scores_[score_idx];
-          if (score_type == SCORE_FLUX) {
-            double vol = tally_volumes_[i](bin, score_idx);
-            if (vol > 0.0) {
-              tally.results_(bin, score_idx, TallyResult::VALUE) /= vol;
-            }
+          if (score_type == SCORE_FLUX || score_type == SCORE_PRECURSORS) {
+          double vol = tally_volumes_[i](bin, score_idx);
+          if (vol > 0.0)
+            tally.results_(bin, score_idx, TallyResult::VALUE) /= vol;
           }
         }
       }
