@@ -30,6 +30,11 @@ public:
   void print_results_random_ray(uint64_t total_geometric_intersections,
     double avg_miss_rate, int negroups, int64_t n_source_regions,
     int64_t n_external_source_regions) const;
+  bool compare_window_averaged_rms_error();
+
+  //----------------------------------------------------------------------------
+  // Time Dependent Methods
+  void compute_and_store_batch_fission_source(bool shift_window = true);
 
   //----------------------------------------------------------------------------
   // Accessors
