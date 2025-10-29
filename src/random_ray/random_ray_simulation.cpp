@@ -183,6 +183,8 @@ vector<double> previous_precursors;
 vector<double> previous_source;
 vector<double> previous_delayed_fission_source;
 
+dequeue<double> batchwise_fission_source;
+
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
   vector<double>& bd_vector, vector<double>& vector)
 {
@@ -681,8 +683,24 @@ void RandomRaySimulation::simulate()
     // Compute precursors
     domain_->compute_precursors(k_eff_);
 
+    // Determine if the source is converged
+    bool converged;
+    if (simulation::current_batch >= settings::convergence_window_size) {
+      compute_and_store_batch_fission_source();
+      converged = compare_window_averaged_rms_error();
+    } else {
+      compute_and_store_batch_fission_source(false);
+      converged = false;
+    }
+
     // Execute all tallying tasks, if this is an active batch
-    if (simulation::current_batch > settings::n_inactive) {
+    //    if (simulation::current_batch > settings::n_inactive) {
+    if (!converged) {
+      // TODO: increment current batch?
+      // TODO: increment total batches?
+      settings::statepoint_batch.clear();
+      settings::statepoint_batch.insert(settings::n_batches);
+    } else {
 
       // TODO: add helper function
       // domain_->accumulation_iteration_quantities()
@@ -889,7 +907,72 @@ void RandomRaySimulation::print_results_random_ray(
 
 //------------------------------------------------------------------------------
 // Time Dependent Methods
-//
+
+void RandomRaySimulation::compute_and_store_batch_fission_source(
+  bool shift_window)
+{
+  // Compute the window-averaged RMS error
+  for (int64_t sr = 0; sr < domain_->n_source_regions(); sr++) {
+    int material = source_regions_.material(sr);
+    double F_sr = 0.0;
+#pragma omp parallel for
+    for (int g = 0; g < negroups_; g++) {
+      double sigma_t;
+      double flux;
+      if (settings::is_initial_condition) {
+        sigma_f = domain_->sigma_f_[material * negroups_ + g];
+        flux = domain_->source_regions_.scalar_flux_old(sr, g);
+      } else {
+        sigma_f = domain_->sigma_f_td_[material * negroups_ + g];
+        flux = domain_->source_regions_.scalar_flux_td_old(sr, g);
+      }
+      F_sr += sigma_t * flux;
+    }
+    // Vector of vectors
+    domain_->batchwise_fission_source(sr).push_back(F_sr);
+    // Remove the first n_source_regions_ * negroups_ elements
+    // if we move the window
+    if (shift_window)
+      domain_->batchwise_fission_source(sr).pop_front();
+  }
+}
+
+void RandomRaySimulation::compare_window_averaged_rms_error()
+{
+  // Compute the window-averaged RMS error
+  int half_window = int(0.5 * settings::convergence_window_size);
+  double rms = 0.0;
+  double W_fissile = 0.0;
+  for (int64_t sr = 0; sr < domain_->n_source_regions(); sr++) {
+    SourceRegionHandle srh =
+      domain_->source_regions_.get_source_region_handle(sr);
+    int material = source_regions_.material(sr);
+    if (domain_->sigma_f_[material * negroups_] != 0.0)
+      W_fissile += 1;
+    else
+      continue;
+    double F_sr_new = 0.0;
+    double F_sr_old = 0.0;
+#pragma omp parallel for
+    for (int g = 0; g < negroups_; g++) {
+      for (int b = half_window; b < B_w; b++)
+        F_sr_new +=
+          batchwise_fission_source[b * n_source_elements_ + sr * negroups_ + g];
+      for (int b = 0; b < half_window; b++)
+        F_sr_new +=
+          batchwise_fission_source[b * n_source_elements_ + sr * negroups_ + g];
+    }
+    F_sr_new /= half_window;
+    F_sr_old /= half_window;
+    rms += pow(F_sr_new - F_sr_old) / F_sr_new, 2;
+  }
+  rms /= W_fissile;
+
+  if rms
+    <= (settings::source_convergence_threshold) return true;
+  else
+    return false;
+}
 
 // TODO: Remove the zero-valued solution from the BD vectors
 // TODO: Perform bd_vector shifting inside the source region. This would
@@ -1000,6 +1083,5 @@ void RandomRaySimulation::normalize_and_store_quantities()
     update_bd_vector(
       &delayed_fission_source_bd, previous_delayed_fission_source, false);
   }
-}
 
 } // namespace openmc

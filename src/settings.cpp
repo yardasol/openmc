@@ -140,6 +140,9 @@ double weight_survive {1.0};
 // Time-dependent variables
 int n_batches_td;
 int32_t n_inactive_td {0};
+int convergence_window_size;
+double source_convergence_threshold;
+double solution_convergence_threshold;
 int n_timesteps;
 double dt;
 int current_timestep;
@@ -364,6 +367,24 @@ void get_run_parameters(pugi::xml_node node_base)
         }
       } else {
         fatal_error("Specify BD approximation order in settings XML");
+      }
+      if (check_for_node(random_ray_node, "convergence_window_size")) {
+        convergence_window_size =
+          std::stoi(get_node_value(random_ray_node, "convergence_window_size"));
+      } else {
+        fatal_error("Specify convergence window size in settings XML");
+      }
+      if (check_for_node(random_ray_node, "source_convergence_threshold")) {
+        source_convergence_threshold = std::stod(
+          get_node_value(random_ray_node, "source_convergence_threshold"));
+      } else {
+        fatal_error("Specify source convergence threshold in settings XML");
+      }
+      if (check_for_node(random_ray_node, "solution_convergence_threshold")) {
+        solution_convergence_threshold = std::stod(
+          get_node_value(random_ray_node, "solution_convergence_threshold"));
+      } else {
+        fatal_error("Specify solution convergence threshold in settings XML");
       }
       if (check_for_node(random_ray_node, "time_mode")) {
         std::string temp_str =
