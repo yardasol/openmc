@@ -284,7 +284,7 @@ void openmc_run_random_ray_time_dependent()
     sim_td.domain()->bd_order_ = RandomRaySimulation::bd_order_;
     sim_td.k_eff_ = previous_k_eff;
     sim_td.domain()->set_initial_condition(
-      previous_scalar_flux, scalar_flux_bd, previous_precursors);
+      previous_scalar_flux, scalar_flux_bd);
 
     // TODO: Consider using the same time-ordering for this vector instead of
     // rotating it!!!
@@ -671,6 +671,20 @@ void RandomRaySimulation::simulate()
     // Reset total starting particle weight used for normalizing tallies
     simulation::total_weight = 1.0;
 
+    // Compute precursors
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+        domain_->compute_delayed_fission_source(k_eff_);
+        domain_->compute_precursors_analytic_integration();
+      } else {
+        domain_->compute_precursors(k_eff_);
+      }
+    } else if (settings::is_initial_condition) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+        domain_->compute_delayed_fission_source(k_eff_);
+      domain_->compute_criticality_precursors(k_eff_);
+    }
+
     // Compute 2nd order flux time derivative for SDP
     if (settings::run_mode == RunMode::TIME_DEPENDENT &&
         RandomRay::time_mode_ == RandomRayTimeMode::SDP)
@@ -723,20 +737,6 @@ void RandomRaySimulation::simulate()
       global_tally_tracklength = k_eff_;
     }
 
-    // Compute precursors
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        domain_->compute_delayed_fission_source(k_eff_);
-        domain_->compute_precursors_analytic_integration();
-      } else {
-        domain_->compute_precursors(k_eff_);
-      }
-    } else if (settings::is_initial_condition) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-        domain_->compute_delayed_fission_source(k_eff_);
-      domain_->compute_criticality_precursors(k_eff_);
-    }
-
     // Execute all tallying tasks, if this is an active batch
     if (simulation::current_batch > settings::n_inactive) {
 
@@ -773,10 +773,9 @@ void RandomRaySimulation::simulate()
 
     // Set phi_old = phi_new
     domain_->flux_swap();
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    if (settings::run_mode == RunMode::TIME_DEPENDENT)
       domain_->flux_td_swap();
-      domain_->precursors_swap();
-    }
+
 
     // Check for any obvious insabilities/nans/infs
     instability_check(n_hits, k_eff_, avg_miss_rate_);
