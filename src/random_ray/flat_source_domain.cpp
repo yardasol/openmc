@@ -876,18 +876,10 @@ void FlatSourceDomain::random_ray_tally()
     // We only contribute to each volume tally bin once per FSR.
     if (volume_normalized_flux_tallies_) {
       for (const auto& task : source_regions_.volume_task(sr)) {
-        if (task.score_type == SCORE_FLUX) {
+        if (task.score_type == SCORE_FLUX || task.score_type == SCORE_PRECURSORS) {
 #pragma omp atomic
           tally_volumes_[task.tally_idx](task.filter_idx, task.score_idx) +=
             volume;
-        }
-        if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-            settings::is_initial_condition) {
-          if (task.score_type == SCORE_PRECURSORS) {
-#pragma omp atomic
-            tally_volumes_[task.tally_idx](task.filter_idx, task.score_idx) +=
-              volume;
-          }
         }
       }
     }
