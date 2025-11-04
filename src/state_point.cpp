@@ -14,6 +14,7 @@
 #include "openmc/eigenvalue.h"
 #include "openmc/error.h"
 #include "openmc/file_utils.h"
+#include "openmc/flat_source_domain.h"
 #include "openmc/hdf5_interface.h"
 #include "openmc/mcpl_interface.h"
 #include "openmc/mesh.h"
@@ -21,6 +22,7 @@
 #include "openmc/mgxs_interface.h"
 #include "openmc/nuclide.h"
 #include "openmc/output.h"
+#include "openmc/random_ray.h"
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
 #include "openmc/tallies/derivative.h"
@@ -92,6 +94,10 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     // Write run information
     write_dataset(file_id, "energy_mode",
       settings::run_CE ? "continuous-energy" : "multi-group");
+    if (!settings::run_CE) {
+      write_dataset(file_id, "n_energy_groups", data::mg.num_energy_groups_);
+      write_dataset(file_id, "n_delay_groups", data::mg.num_delay_groups_);
+    }
     switch (settings::run_mode) {
     case RunMode::FIXED_SOURCE:
       write_dataset(file_id, "run_mode", "fixed source");
@@ -105,9 +111,62 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     default:
       break;
     }
+    switch (settings::solver_type) {
+    case SolverType::MONTE_CARLO:
+      write_dataset(file_id, "solver type", "monte carlo");
+      break;
+    case SolverType::RANDOM_RAY:
+      write_dataset(file_id, "solver type", "random ray");
+      break;
+    default:
+      break;
+    }
     write_attribute(file_id, "photon_transport", settings::photon_transport);
     write_dataset(file_id, "n_particles", settings::n_particles);
     write_dataset(file_id, "n_batches", settings::n_batches);
+
+    // Write random ray attributes
+    if (settings::solver_type == SolverType::RANDOM_RAY) {
+      hid_t random_ray_group = create_group(file_id, "random ray ");
+      write_dataset(
+        random_ray_group, "distance active", RandomRay::distance_active_);
+      write_dataset(
+        random_ray_group, "distance inactive", RandomRay::distance_inactive_);
+      write_attribute(random_ray_group, "volume normalized flux tallies",
+        FlatSourceDomain::volume_normalized_flux_tallies_);
+      write_attribute(random_ray_group, "adjoint", FlatSourceDomain::adjoint_);
+      write_dataset(
+        random_ray_group, "average miss rate", simulation::avg_miss_rate);
+      write_dataset(random_ray_group, "total geometric intersections",
+        simulation::total_geometric_intersections);
+      switch (FlatSourceDomain::volume_estimator_) {
+      case RandomRayVolumeEstimator::SIMULATION_AVERAGED:
+        write_dataset(
+          random_ray_group, "volume estimator", "simulation averaged");
+        break;
+      case RandomRayVolumeEstimator::NAIVE:
+        write_dataset(random_ray_group, "volume estimator", "naive");
+        break;
+      case RandomRayVolumeEstimator::HYBRID:
+        write_dataset(random_ray_group, "volume estimator", "hybrid");
+        break;
+      default:
+        break;
+      }
+      switch (RandomRay::source_shape_) {
+      case RandomRaySourceShape::FLAT:
+        write_dataset(random_ray_group, "source region shape", "flat");
+        break;
+      case RandomRaySourceShape::LINEAR:
+        write_dataset(random_ray_group, "source region shape", "linear");
+        break;
+      case RandomRaySourceShape::LINEAR_XY:
+        write_dataset(random_ray_group, "source region shape", "linear xy");
+        break;
+      default:
+        break;
+      }
+    }
 
     // Write out current batch number
     write_dataset(file_id, "current_batch", simulation::current_batch);
@@ -309,6 +368,9 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
       write_dataset(runtime_group, "inactive batches", time_inactive.elapsed());
     }
     write_dataset(runtime_group, "active batches", time_active.elapsed());
+    if (settings::solver_type == SolverType::RANDOM_RAY) {
+      write_dataset(runtime_group, "source_update", time_update_src.elapsed());
+    }
     if (settings::run_mode == RunMode::EIGENVALUE) {
       write_dataset(
         runtime_group, "synchronizing fission bank", time_bank.elapsed());

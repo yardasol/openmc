@@ -807,6 +807,10 @@ void RandomRaySimulation::output_simulation_results() const
     print_results_random_ray(total_geometric_intersections_,
       avg_miss_rate_ / settings::n_batches, negroups_,
       domain_->n_source_regions_, domain_->n_external_source_regions_);
+
+    // Store certain variables in external simulation namespace
+    simulation::total_geometric_intersections = total_geometric_intersections_;
+    simulation::avg_miss_rate = avg_miss_rate_;
     if (model::plots.size() > 0) {
       domain_->output_to_vtk();
     }
