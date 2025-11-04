@@ -83,9 +83,20 @@ Material::Material(pugi::xml_node node)
                       "density unit");
         } else {
           density_timeseries_ = get_node_array<double>(density_node, "timeseries");
-          if (density_timeseries_.size() != settings::n_timesteps) {
-            fatal_error("Size mismatch between density_timeseries and "
-                        "timesteps.");
+          if (density_timeseries_.size() >= settings::n_timesteps) {
+            warning(fmt::format(
+              "Material {} has a density_timeseries (size={}) longer than "
+              "n_timesteps ({}). Only the first {} entries of the density "
+              "timeseries "
+              "will be simulated.",
+              this->id(), density_timeseries_.size(), settings::n_timesteps,
+              settings::n_timesteps));
+          } else {
+            fatal_error(
+              fmt::format("Material {} has a density_timeseries (size={}) "
+                          "shorter than n_timesteps ({}). Not all "
+                          "time steps can be simulated. Aborting.",
+                this->id(), density_timeseries_.size(), settings::n_timesteps));
           }
         }
       }
