@@ -320,10 +320,6 @@ const RegularMesh* ufs_mesh {nullptr};
 vector<double> k_generation;
 vector<int64_t> work_index;
 
-// Random Ray Variables
-double avg_miss_rate;
-uint64_t total_geometric_intersections;
-
 } // namespace simulation
 
 //==============================================================================

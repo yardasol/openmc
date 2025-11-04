@@ -136,10 +136,7 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
       write_attribute(random_ray_group, "volume_normalized_flux_tallies",
         FlatSourceDomain::volume_normalized_flux_tallies_);
       write_attribute(random_ray_group, "adjoint", FlatSourceDomain::adjoint_);
-      write_dataset(
-        random_ray_group, "average_miss_rate", simulation::avg_miss_rate);
-      write_dataset(random_ray_group, "total_geometric_intersections",
-        simulation::total_geometric_intersections);
+      // TODO: Add avg_miss_rate and total_geometric_intersections
       switch (FlatSourceDomain::volume_estimator_) {
       case RandomRayVolumeEstimator::SIMULATION_AVERAGED:
         write_dataset(

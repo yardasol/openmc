@@ -48,11 +48,6 @@ extern const RegularMesh* ufs_mesh;
 extern vector<double> k_generation;
 extern vector<int64_t> work_index;
 
-// Random Ray external variables
-extern double avg_miss_rate; //!< Average RR source region miss rate
-extern uint64_t total_geometric_intersections; //!< Total number of geometric
-                                               //!< intersections by all ray
-
 } // namespace simulation
 
 //==============================================================================
