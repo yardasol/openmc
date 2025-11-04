@@ -906,18 +906,24 @@ void RandomRaySimulation::print_results_random_ray(
     show_time("Total simulation time", time_total.elapsed());
     show_time("Transport sweep only", time_transport.elapsed(), 1);
     show_time("Source update only", time_update_src.elapsed(), 1);
-    if (settings::run_mode == RunMode::TIME_DEPENDENT)
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       show_time(
         "Time-dependent source update only", time_update_src_td.elapsed(), 1);
+      misc_time -= time_update_src_td.elapsed();
+    }
     if (settings::is_initial_condition ||
-        settings::run_mode == RunMode::TIME_DEPENDENT)
+        settings::run_mode == RunMode::TIME_DEPENDENT) {
       show_time(
         "Precursor computation only", time_compute_precursors.elapsed(), 1);
+      misc_time -= time_compute_precursors.elapsed();
+    }
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
       show_time("Source time derivaitve computation only",
         time_compute_neutron_source_time_derivative.elapsed(), 1);
+      misc_time -= time_compute_neutron_source_time_derivative.elapsed();
       show_time("Scalar flux time derivative computation only",
         time_compute_scalar_time_derivative_2.elapsed(), 1);
+      misc_time -= time_compute_scalar_time_derivative_2.elapsed();
     }
     show_time("Tally conversion only", time_tallies.elapsed(), 1);
     show_time("MPI source reductions only", time_bank_sendrecv.elapsed(), 1);

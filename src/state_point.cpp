@@ -23,6 +23,7 @@
 #include "openmc/nuclide.h"
 #include "openmc/output.h"
 #include "openmc/random_ray.h"
+#include "openmc/random_ray_simulation.h"
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
 #include "openmc/tallies/derivative.h"
@@ -166,6 +167,41 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
       default:
         break;
       }
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+        write_dataset(
+          random_ray_group, "bd order", RandomRaySimulation::bd_order_);
+        switch (RandomRay::precursor_mode_) {
+        case RandomRayPrecursorMode::BD:
+          write_attribute(
+            random_ray_group, "precursor mode", "backwards difference");
+          break;
+        case RandomRayPrecursorMode::ANALYTIC:
+          write_attribute(random_ray_group, "precursor mode", "analytic");
+          break;
+        default:
+          break;
+        }
+        switch (RandomRay::time_mode_) {
+        case RandomRayTimeMode::TI:
+          write_attribute(random_ray_group, "time mode", "ti");
+          break;
+        case RadnomRayTimeMode::SDP:
+          write_attribute(random_ray_group, "time mode", "sdp");
+          break;
+        default:
+          break;
+        }
+      }
+    }
+
+    //
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      hid_t time_dependent_group = create_group(file_id, "time dependent");
+      write_dataset(time_dependent_group, "dt", settings::dt);
+      write_dataset(
+        time_dependent_group, "current timestep", settings::current_timestep);
+      write_attribute(
+        time_dependent_group, "n_timesteps", settings::n_timesteps);
     }
 
     // Write out current batch number
@@ -370,6 +406,12 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     write_dataset(runtime_group, "active batches", time_active.elapsed());
     if (settings::solver_type == SolverType::RANDOM_RAY) {
       write_dataset(runtime_group, "source_update", time_update_src.elapsed());
+      if (settings::run_mode == RunMode::TIME_DEPENDENT {
+        write_dataset(
+          runtime_group, "source_td_update", time_update_src_td.elapsed());
+        write_dataset(
+          runtime_group, "precursor_update", time_compute_precursors.elapsed());
+      }
     }
     if (settings::run_mode == RunMode::EIGENVALUE) {
       write_dataset(
