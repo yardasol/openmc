@@ -133,9 +133,9 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
         random_ray_group, "distance_active", RandomRay::distance_active_);
       write_dataset(
         random_ray_group, "distance_inactive", RandomRay::distance_inactive_);
-      write_attribute(random_ray_group, "volume_normalized_flux_tallies",
+      write_dataset(random_ray_group, "volume_normalized_flux_tallies",
         FlatSourceDomain::volume_normalized_flux_tallies_);
-      write_attribute(random_ray_group, "adjoint", FlatSourceDomain::adjoint_);
+      write_dataset(random_ray_group, "adjoint", FlatSourceDomain::adjoint_);
       // TODO: Add avg_miss_rate and total_geometric_intersections
       switch (FlatSourceDomain::volume_estimator_) {
       case RandomRayVolumeEstimator::SIMULATION_AVERAGED:
@@ -169,21 +169,21 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
           random_ray_group, "bd_order", RandomRaySimulation::bd_order_);
         switch (RandomRay::precursor_mode_) {
         case RandomRayPrecursorMode::BD:
-          write_attribute(
+          write_dataset(
             random_ray_group, "precursor_mode", "backwards difference");
           break;
         case RandomRayPrecursorMode::ANALYTIC:
-          write_attribute(random_ray_group, "precursor_mode", "analytic");
+          write_dataset(random_ray_group, "precursor_mode", "analytic");
           break;
         default:
           break;
         }
         switch (RandomRay::time_mode_) {
         case RandomRayTimeMode::TI:
-          write_attribute(random_ray_group, "time_mode", "ti");
+          write_dataset(random_ray_group, "time_mode", "ti");
           break;
         case RandomRayTimeMode::SDP:
-          write_attribute(random_ray_group, "time_mode", "sdp");
+          write_dataset(random_ray_group, "time_mode", "sdp");
           break;
         default:
           break;
@@ -197,8 +197,7 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
       write_dataset(time_dependent_group, "dt", settings::dt);
       write_dataset(
         time_dependent_group, "current_timestep", settings::current_timestep);
-      write_attribute(
-        time_dependent_group, "n_timesteps", settings::n_timesteps);
+      write_dataset(time_dependent_group, "n_timesteps", settings::n_timesteps);
     }
 
     // Write out current batch number
