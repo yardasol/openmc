@@ -14,7 +14,6 @@
 #include "openmc/eigenvalue.h"
 #include "openmc/error.h"
 #include "openmc/file_utils.h"
-#include "openmc/flat_source_domain.h"
 #include "openmc/hdf5_interface.h"
 #include "openmc/mcpl_interface.h"
 #include "openmc/mesh.h"
@@ -22,8 +21,9 @@
 #include "openmc/mgxs_interface.h"
 #include "openmc/nuclide.h"
 #include "openmc/output.h"
-#include "openmc/random_ray.h"
-#include "openmc/random_ray_simulation.h"
+#include "openmc/random_ray/flat_source_domain.h"
+#include "openmc/random_ray/random_ray.h"
+#include "openmc/random_ray/random_ray_simulation.h"
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
 #include "openmc/tallies/derivative.h"
@@ -97,7 +97,7 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
       settings::run_CE ? "continuous-energy" : "multi-group");
     if (!settings::run_CE) {
       write_dataset(file_id, "n_energy_groups", data::mg.num_energy_groups_);
-      write_dataset(file_id, "n_delay_groups", data::mg.num_delay_groups_);
+      write_dataset(file_id, "n_delay_groups", data::mg.num_delayed_groups_);
     }
     switch (settings::run_mode) {
     case RunMode::FIXED_SOURCE:
@@ -114,10 +114,10 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     }
     switch (settings::solver_type) {
     case SolverType::MONTE_CARLO:
-      write_dataset(file_id, "solver type", "monte carlo");
+      write_dataset(file_id, "solver_type", "monte carlo");
       break;
     case SolverType::RANDOM_RAY:
-      write_dataset(file_id, "solver type", "random ray");
+      write_dataset(file_id, "solver_type", "random ray");
       break;
     default:
       break;
@@ -128,65 +128,65 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
 
     // Write random ray attributes
     if (settings::solver_type == SolverType::RANDOM_RAY) {
-      hid_t random_ray_group = create_group(file_id, "random ray ");
+      hid_t random_ray_group = create_group(file_id, "random_ray");
       write_dataset(
-        random_ray_group, "distance active", RandomRay::distance_active_);
+        random_ray_group, "distance_active", RandomRay::distance_active_);
       write_dataset(
-        random_ray_group, "distance inactive", RandomRay::distance_inactive_);
-      write_attribute(random_ray_group, "volume normalized flux tallies",
+        random_ray_group, "distance_inactive", RandomRay::distance_inactive_);
+      write_attribute(random_ray_group, "volume_normalized_flux_tallies",
         FlatSourceDomain::volume_normalized_flux_tallies_);
       write_attribute(random_ray_group, "adjoint", FlatSourceDomain::adjoint_);
       write_dataset(
-        random_ray_group, "average miss rate", simulation::avg_miss_rate);
-      write_dataset(random_ray_group, "total geometric intersections",
+        random_ray_group, "average_miss_rate", simulation::avg_miss_rate);
+      write_dataset(random_ray_group, "total_geometric_intersections",
         simulation::total_geometric_intersections);
       switch (FlatSourceDomain::volume_estimator_) {
       case RandomRayVolumeEstimator::SIMULATION_AVERAGED:
         write_dataset(
-          random_ray_group, "volume estimator", "simulation averaged");
+          random_ray_group, "volume_estimator", "simulation averaged");
         break;
       case RandomRayVolumeEstimator::NAIVE:
-        write_dataset(random_ray_group, "volume estimator", "naive");
+        write_dataset(random_ray_group, "volume_estimator", "naive");
         break;
       case RandomRayVolumeEstimator::HYBRID:
-        write_dataset(random_ray_group, "volume estimator", "hybrid");
+        write_dataset(random_ray_group, "volume_estimator", "hybrid");
         break;
       default:
         break;
       }
       switch (RandomRay::source_shape_) {
       case RandomRaySourceShape::FLAT:
-        write_dataset(random_ray_group, "source region shape", "flat");
+        write_dataset(random_ray_group, "source_region_shape", "flat");
         break;
       case RandomRaySourceShape::LINEAR:
-        write_dataset(random_ray_group, "source region shape", "linear");
+        write_dataset(random_ray_group, "source_region_shape", "linear");
         break;
       case RandomRaySourceShape::LINEAR_XY:
-        write_dataset(random_ray_group, "source region shape", "linear xy");
+        write_dataset(random_ray_group, "source_region_shape", "linear xy");
         break;
       default:
         break;
       }
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         write_dataset(
-          random_ray_group, "bd order", RandomRaySimulation::bd_order_);
+          random_ray_group, "bd_order", RandomRaySimulation::bd_order_);
         switch (RandomRay::precursor_mode_) {
         case RandomRayPrecursorMode::BD:
           write_attribute(
-            random_ray_group, "precursor mode", "backwards difference");
+            random_ray_group, "precursor_mode", "backwards difference");
           break;
         case RandomRayPrecursorMode::ANALYTIC:
-          write_attribute(random_ray_group, "precursor mode", "analytic");
+          write_attribute(random_ray_group, "precursor_mode", "analytic");
           break;
         default:
           break;
         }
         switch (RandomRay::time_mode_) {
         case RandomRayTimeMode::TI:
-          write_attribute(random_ray_group, "time mode", "ti");
+          write_attribute(random_ray_group, "time_mode", "ti");
           break;
-        case RadnomRayTimeMode::SDP:
-          write_attribute(random_ray_group, "time mode", "sdp");
+        case RandomRayTimeMode::SDP:
+          write_attribute(random_ray_group, "time_mode", "sdp");
           break;
         default:
           break;
@@ -196,10 +196,10 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
 
     //
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      hid_t time_dependent_group = create_group(file_id, "time dependent");
+      hid_t time_dependent_group = create_group(file_id, "time_dependent");
       write_dataset(time_dependent_group, "dt", settings::dt);
       write_dataset(
-        time_dependent_group, "current timestep", settings::current_timestep);
+        time_dependent_group, "current_timestep", settings::current_timestep);
       write_attribute(
         time_dependent_group, "n_timesteps", settings::n_timesteps);
     }
@@ -406,7 +406,7 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     write_dataset(runtime_group, "active batches", time_active.elapsed());
     if (settings::solver_type == SolverType::RANDOM_RAY) {
       write_dataset(runtime_group, "source_update", time_update_src.elapsed());
-      if (settings::run_mode == RunMode::TIME_DEPENDENT {
+      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
         write_dataset(
           runtime_group, "source_td_update", time_update_src_td.elapsed());
         write_dataset(

@@ -98,6 +98,10 @@ class StatePoint:
         and whose values are time values in seconds.
     seed : int
         Pseudorandom number generator seed
+    sovler_type : str
+        'monte carlo', 'random ray' 
+
+        .. versionadded:: 0.15.2
     source : numpy.ndarray of compound datatype
         Array of source sites. The compound datatype has fields 'r', 'u',
         'E', 'wgt', 'delayed_group', 'surf_id', and 'particle', corresponding to
