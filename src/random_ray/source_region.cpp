@@ -308,6 +308,11 @@ void SourceRegionContainer::mpi_sync_ranks(bool reduce_position)
   MPI_Allreduce(MPI_IN_PLACE, scalar_flux_new_.data(),
     n_source_regions_ * negroups_, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
 
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    MPI_Allreduce(MPI_IN_PLACE, scalar_flux_td_new_.data(),
+      n_source_regions_ * negroups_, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
+  }
+
   if (is_linear_) {
     // We are going to assume we can safely cast Position, MomentArray,
     // and MomentMatrix to contiguous arrays of doubles for the MPI
