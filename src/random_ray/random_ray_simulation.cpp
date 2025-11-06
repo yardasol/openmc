@@ -219,6 +219,9 @@ void openmc_run_random_ray_time_dependent()
   settings::run_mode = RunMode::EIGENVALUE;
   openmc_run_random_ray();
   rename_statepoint_file(0);
+  if (settings::output_tallies) {
+    rename_tallies_file(0);
+  }
 
   /////////////////////////////////
   // Settings for timestepping loop
@@ -347,8 +350,11 @@ void openmc_run_random_ray_time_dependent()
     // Output all simulation results
     sim_td.output_simulation_results();
 
-    // Rename statepoint file
+    // Rename statepoint and tallies file
     rename_statepoint_file(i + 1);
+    if (settings::output_tallies) {
+      rename_tallies_file(i + 1);
+    }
 
     // Compute normalization factors
     double normalization_factor =
@@ -397,6 +403,19 @@ void rename_statepoint_file(int i)
     "{0}statepoint.{1}.h5", settings::path_output, settings::n_batches);
   std::string new_filename_ =
     fmt::format("{0}openmc_td_simulation_{1}.h5", settings::path_output, i);
+
+  const char* old_fname = old_filename_.c_str();
+  const char* new_fname = new_filename_.c_str();
+  std::rename(old_fname, new_fname);
+}
+
+void rename_tallies_file(int i)
+{
+  // Rename tallies file
+  std::string old_filename_ =
+    fmt::format("{0}tallies.out", settings::path_output);
+  std::string new_filename_ =
+    fmt::format("{0}tallies_{1}.out", settings::path_output, i);
 
   const char* old_fname = old_filename_.c_str();
   const char* new_fname = new_filename_.c_str();

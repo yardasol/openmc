@@ -69,7 +69,7 @@ class TestHarness:
         if config['mpi']:
             mpi_args = [config['mpiexec'], '-n', config['mpi_np']]
             openmc.run(openmc_exec=config['exe'], mpi_args=mpi_args,
-              event_based=config['event'])
+                       event_based=config['event'])
         else:
             openmc.run(openmc_exec=config['exe'], event_based=config['event'])
 
@@ -88,9 +88,12 @@ class TestHarness:
         """Digest info in the statepoint and return as a string."""
         # Read the statepoint file.
         statepoint = glob.glob(self._sp_name)[0]
+        return self._write_tallies(statepoint, hash_output, ['eigenvalue'])
+
+    def _write_tallies(self, statepoint, hash_output, run_modes):
         with openmc.StatePoint(statepoint) as sp:
             outstr = ''
-            if sp.run_mode == 'eigenvalue':
+            if sp.run_mode in run_modes:
                 # Write out k-combined.
                 outstr += 'k-combined:\n'
                 form = '{0:12.6E} {1:12.6E}\n'
@@ -112,7 +115,6 @@ class TestHarness:
             sha512 = hashlib.sha512()
             sha512.update(outstr.encode('utf-8'))
             outstr = sha512.hexdigest()
-
         return outstr
 
     @property
@@ -146,6 +148,109 @@ class TestHarness:
         output = glob.glob('statepoint.*.h5')
         output += ['tallies.out', 'results_test.dat', 'summary.h5']
         output += glob.glob('volume_*.h5')
+        for f in output:
+            if os.path.exists(f):
+                os.remove(f)
+
+
+class TestHarnessTD(TestHarness):
+    """General class for running OpenMC time-dependent regression tests."""
+
+    def __init__(self, n_timesteps):
+        self._sp_base = "openmc_td_simulation"
+        self._n_timesteps = n_timesteps
+
+    def main(self):
+        """Accept commandline arguments and either run or update tests."""
+        if config['update']:
+            self.update_results()
+        else:
+            self.execute_test()
+
+    def execute_test(self):
+        """Run time_dependent OpenMC test with the appropriate arguments and check the outputs."""
+        try:
+            self._run_openmc()
+            self._harness_td_loop("test")
+        finally:
+            self._cleanup()
+
+    def update_results(self):
+        """Update the results_true using the current version of OpenMC."""
+        try:
+            self._run_openmc()
+            self._harness_td_loop("update")
+        finally:
+            self._cleanup()
+
+    def _harness_td_loop(self, loop_type):
+        statepoint = glob.glob(self._sp_base + "*")
+        assert len(statepoint) == self._n_timesteps, f"Found {len(statepoint)} statepoint files exist" \
+            f" but expected {self._n_timesteps}."
+        for i in range(self._n_timesteps):
+            self._test_output_created(i)
+            results = self._get_results(i)
+            self._write_results(results, i)
+            if loop_type == "test":
+                self._compare_results(i)
+            elif loop_type == "update":
+                self._overwrite_results(i)
+            else:
+                raise ValueError(
+                    f"Invalid loop_type ({loop_type}) passed to _harness_td_loop")
+
+    def _test_output_created(self, index):
+        """Make sure statepoint.* and tallies.out have been created."""
+        statepoint = glob.glob(self._sp_base + f"_{index}*")
+        assert statepoint[0].endswith('h5'), \
+            f"Statepoint file {statepoint[0]} is not a HDF5 file."
+        if os.path.exists('tallies.xml'):
+            assert os.path.exists(f"tallies_{index}.out"), \
+                f"Tally output file tallies_{index}.out does not exist."
+
+    def _get_results(self, index, hash_output=False):
+        """Digest info in the statepoints and return as a string."""
+        # Read the statepoint files.
+        statepoint = glob.glob(self._sp_base + f"_{index}*")[0]
+        return self._write_tallies(statepoint, hash_output, ['eigenvalue', 'time dependent'])
+
+    @property
+    def statepoint_name(self, i):
+        return self._sp_base + f"_{i}.h5"
+
+    def _write_results(self, results_string, index):
+        """Write the results to an ASCII file."""
+        with open(f'results_test_{index}.dat', 'w') as fh:
+            fh.write(results_string)
+
+    def _overwrite_results(self, index):
+        """Overwrite the results_true with the results_test."""
+        shutil.copyfile(f'results_test_{index}.dat',
+                        f'results_true_{index}.dat')
+
+    def _compare_results(self, index):
+        """Make sure the current results agree with the reference."""
+        compare = filecmp.cmp(
+            f'results_test_{index}.dat', 'results_true_{index}.dat')
+        if not compare:
+            expected = open(f'results_true_{index}.dat').readlines()
+            actual = open(f'results_test_{index}.dat').readlines()
+            diff = unified_diff(expected, actual, f'results_true_{index}.dat',
+                                f'results_test_{index}.dat')
+            print(f'Timestep {index} result differences:')
+            print(''.join(colorize(diff)))
+            os.rename(f'results_test_{index}.dat',
+                      f'results_error_{index}.dat')
+        assert compare, 'Results do not agree'
+
+    def _cleanup(self):
+        """Delete statepoints, tally, and test files."""
+        output = glob.glob('statepoint.*.h5')
+        output += ['summary.h5', 'tallies.out']
+        output += glob.glob('tallies_*.out')
+        output += glob.glob('results_test_*.dat')
+        output += glob.glob('volume_*.h5')
+        output += glob.glob(f'{self._sp_base}_*.h5')
         for f in output:
             if os.path.exists(f):
                 os.remove(f)
@@ -378,6 +483,48 @@ class PyAPITestHarness(TestHarness):
                 os.remove(f)
 
 
+class PyAPITestHarnessTD(TestHarnessTD, PyAPITestHarness):
+    def __init__(self, model, n_timesteps, inputs_true=None):
+        super().__init__(n_timesteps)
+        self._model = model
+        self._model.plots = []
+
+        self.inputs_true = "inputs_true.dat" if not inputs_true else inputs_true
+
+    def execute_test(self):
+        """Build input XMLs, run OpenMC, and verify correct results."""
+        try:
+            self._build_inputs()
+            inputs = self._get_inputs()
+            self._write_inputs(inputs)
+            self._compare_inputs()
+            self._run_openmc()
+            self._harness_td_loop("test")
+        finally:
+            self._cleanup()
+
+    def update_results(self):
+        """Update results_true.dat and inputs_true.dat"""
+        try:
+            self._build_inputs()
+            inputs = self._get_inputs()
+            self._write_inputs(inputs)
+            self._overwrite_inputs()
+            self._run_openmc()
+            self._harness_td_loop("update")
+        finally:
+            self._cleanup()
+
+    def _cleanup(self):
+        """Delete XMLs, statepoints, tally, and test files."""
+        super()._cleanup()
+        output = ['materials.xml', 'geometry.xml', 'settings.xml',
+                  'tallies.xml', 'plots.xml', 'inputs_test.dat', 'model.xml']
+        for f in output:
+            if os.path.exists(f):
+                os.remove(f)
+
+
 class HashedPyAPITestHarness(PyAPITestHarness):
     def _get_results(self):
         """Digest info in the statepoint and return as a string."""
@@ -390,6 +537,7 @@ class TolerantPyAPITestHarness(PyAPITestHarness):
     due to single precision usage (e.g., as in the random ray solver).
 
     """
+
     def _are_files_equal(self, actual_path, expected_path, tolerance):
         def isfloat(value):
             try:
@@ -429,16 +577,32 @@ class TolerantPyAPITestHarness(PyAPITestHarness):
 
     def _compare_results(self):
         """Make sure the current results agree with the reference."""
-        compare = self._are_files_equal('results_test.dat', 'results_true.dat', 1e-6)
+        self._compare_files('results_test.dat', 'results_true.dat', 1e-6)
+
+    def _compare_files(self, file_test, file_true, tol):
+        compare = self._are_files_equal(file_test, file_true, 1e-6)
         if not compare:
-            expected = open('results_true.dat').readlines()
-            actual = open('results_test.dat').readlines()
-            diff = unified_diff(expected, actual, 'results_true.dat',
-                                'results_test.dat')
+            expected = open(file_true).readlines()
+            actual = open(file_test).readlines()
+            diff = unified_diff(expected, actual, file_true,
+                                file_test)
             print('Result differences:')
             print(''.join(colorize(diff)))
-            os.rename('results_test.dat', 'results_error.dat')
+            os.rename(file_test, f'results_error_{i}.dat')
         assert compare, 'Results do not agree'
+
+
+class TolerantPyAPITestHarnessTD(PyAPITestHarnessTD, TolerantPyAPITestHarness):
+    """Specialized harness for running tests that involve significant levels
+    of floating point non-associativity when using shared memory parallelism
+    due to single precision usage (e.g., as in the random ray solver).
+
+    """
+
+    def _compare_results(self, i):
+        """Make sure the current results agree with the reference."""
+        self._compare_files(
+            f'results_test_{i}.dat', f'results_true_{i}.dat', 1e-6)
 
 
 class WeightWindowPyAPITestHarness(PyAPITestHarness):
@@ -477,6 +641,94 @@ class WeightWindowPyAPITestHarness(PyAPITestHarness):
 
 class PlotTestHarness(TestHarness):
     """Specialized TestHarness for running OpenMC plotting tests."""
+
+    def __init__(self, plot_names, voxel_convert_checks=[]):
+        super().__init__(None)
+        self._plot_names = plot_names
+        self._voxel_convert_checks = voxel_convert_checks
+
+    def _run_openmc(self):
+        openmc.plot_geometry(openmc_exec=config['exe'])
+
+        # Check that voxel h5 can be converted to vtk
+        for voxel_h5_filename in self._voxel_convert_checks:
+            check_call(['../../../scripts/openmc-voxel-to-vtk'] +
+                       glob.glob(voxel_h5_filename))
+
+    def _test_output_created(self):
+        """Make sure *.png has been created."""
+        for fname in self._plot_names:
+            assert os.path.exists(fname), 'Plot output file does not exist.'
+
+    def _cleanup(self):
+        super()._cleanup()
+        for fname in self._plot_names:
+            if os.path.exists(fname):
+                os.remove(fname)
+
+    def _get_results(self):
+        """Return a string hash of the plot files."""
+        outstr = bytes()
+
+        for fname in self._plot_names:
+            if fname.endswith('.png'):
+                # Add PNG output to results
+                with open(fname, 'rb') as fh:
+                    outstr += fh.read()
+            elif fname.endswith('.h5'):
+                # Add voxel data to results
+                with h5py.File(fname, 'r') as fh:
+                    outstr += fh.attrs['filetype']
+                    outstr += fh.attrs['num_voxels'].tobytes()
+                    outstr += fh.attrs['lower_left'].tobytes()
+                    outstr += fh.attrs['voxel_width'].tobytes()
+                    outstr += fh['data'][()].tobytes()
+
+        # Hash the information and return.
+        sha512 = hashlib.sha512()
+        sha512.update(outstr)
+        outstr = sha512.hexdigest()
+
+        return outstr
+
+
+class WeightWindowPyAPITestHarness(PyAPITestHarness):
+    def _get_results(self):
+        """Digest info in the weight window file and return as a string."""
+        ww = openmc.hdf5_to_wws()[0]
+
+        # Access the weight window bounds
+        lower_bound = ww.lower_ww_bounds
+        upper_bound = ww.upper_ww_bounds
+
+        # Flatten both arrays
+        flattened_lower_bound = lower_bound.flatten()
+        flattened_upper_bound = upper_bound.flatten()
+
+        # Convert each element to a string in scientific notation with 2 decimal places
+        formatted_lower_bound = [f'{x:.2e}' for x in flattened_lower_bound]
+        formatted_upper_bound = [f'{x:.2e}' for x in flattened_upper_bound]
+
+        # Concatenate the formatted arrays
+        concatenated_strings = ["Lower Bounds"] + formatted_lower_bound + \
+            ["Upper Bounds"] + formatted_upper_bound
+
+        # Join the concatenated strings into a single string with newline characters
+        final_string = '\n'.join(concatenated_strings)
+
+        # Prepend the mesh text description and return final string
+        return str(ww.mesh) + final_string
+
+    def _cleanup(self):
+        super()._cleanup()
+        f = 'weight_windows.h5'
+        if os.path.exists(f):
+            os.remove(f)
+
+
+class PlotTestHarness(TestHarness):
+    """Specialized TestHarness for running OpenMC plotting tests."""
+
     def __init__(self, plot_names, voxel_convert_checks=[]):
         super().__init__(None)
         self._plot_names = plot_names

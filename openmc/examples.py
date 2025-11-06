@@ -5,7 +5,6 @@ import numpy as np
 import openmc
 
 
-
 def pwr_pin_cell() -> openmc.Model:
     """Create a PWR pin-cell model.
 
@@ -655,12 +654,17 @@ def slab_mg(num_regions=1, mat_names=None, mgxslib_name='2g.h5') -> openmc.Model
     return model
 
 
-def random_ray_lattice() -> openmc.Model:
+def random_ray_lattice(time_dependent=False) -> openmc.Model:
     """Create a 2x2 PWR pincell asymmetrical lattic eexample.
 
     This model is a 2x2 reflective lattice of fuel pins with one of the lattice
     locations having just moderator instead of a fuel pin. It uses 7 group
     cross section data.
+
+    Parameters
+    ----------
+    time_dependent : bool
+        Flag to generate a time-dependent model or not.
 
     Returns
     -------
@@ -677,8 +681,18 @@ def random_ray_lattice() -> openmc.Model:
     group_edges = [1e-5, 0.0635, 10.0, 1.0e2, 1.0e3, 0.5e6, 1.0e6, 20.0e6]
     groups = openmc.mgxs.EnergyGroups(group_edges)
 
+    # Number of delayed groups for a time-dependent simulation
+    # Delayed cross section values
+    # come from Hou et al., "OECD/NEA benchmark for time-dependnet neutron
+    # transport calculations without homogeniztaion"
+    # DOI: 10.1016/j.nucengdes.2017.02.008
+    if time_dependent:
+        n_dg = 8
+    else:
+        n_dg = 0
+
     # Instantiate the 7-group (C5G7) cross section data
-    uo2_xsdata = openmc.XSdata('UO2', groups)
+    uo2_xsdata = openmc.XSdata('UO2', groups, num_delayed_groups=n_dg)
     uo2_xsdata.order = 0
     uo2_xsdata.set_total(
         [0.1779492, 0.3298048, 0.4803882, 0.5543674, 0.3118013, 0.3951678,
@@ -703,13 +717,68 @@ def random_ray_lattice() -> openmc.Model:
     uo2_xsdata.set_fission([7.21206e-03, 8.19301e-04, 6.45320e-03,
                             1.85648e-02, 1.78084e-02, 8.30348e-02,
                             2.16004e-01])
-    uo2_xsdata.set_nu_fission([2.005998e-02, 2.027303e-03, 1.570599e-02,
-                               4.518301e-02, 4.334208e-02, 2.020901e-01,
-                               5.257105e-01])
+    nu_fission = np.array([2.005998e-02, 2.027303e-03, 1.570599e-02,
+                           4.518301e-02, 4.334208e-02, 2.020901e-01,
+                           5.257105e-01])
+    uo2_xsdata.set_nu_fission(nu_fission)
     uo2_xsdata.set_chi([5.8791e-01, 4.1176e-01, 3.3906e-04, 1.1761e-07, 0.0000e+00,
                         0.0000e+00, 0.0000e+00])
 
-    h2o_xsdata = openmc.XSdata('LWTR', groups)
+    # Delayed and prompt cross sections for time-dependent simulation
+    if time_dependent:
+
+        # Table A2 in Hou et. al
+        beta = np.array([[2.13333e-04, 2.13333e-04, 2.13333e-04, 2.13333e-04, 2.13333e-04, 2.13333e-04, 2.13333e-04],
+                         [1.04514e-03, 1.04514e-03, 1.04514e-03, 1.04514e-03,
+                             1.04514e-03, 1.04514e-03, 1.04514e-03],
+                         [6.03969e-04, 6.03969e-04, 6.03969e-04, 6.03969e-04,
+                             6.03969e-04, 6.03969e-04, 6.03969e-04],
+                         [1.33963e-03, 1.33963e-03, 1.33963e-03, 1.33963e-03,
+                          1.33963e-03, 1.33963e-03, 1.33963e-03],
+                         [2.29386e-03, 2.29386e-03, 2.29386e-03, 2.29386e-03,
+                          2.29386e-03, 2.29386e-03, 2.29386e-03],
+                         [7.05174e-04, 7.05174e-04, 7.05174e-04, 7.05174e-04,
+                          7.05174e-04, 7.05174e-04, 7.05174e-04],
+                         [6.00381e-04, 6.00381e-04, 6.00381e-04, 6.00381e-04,
+                          6.00381e-04, 6.00381e-04, 6.00381e-04],
+                         [2.07736e-04, 2.07736e-04, 2.07736e-04, 2.07736e-04, 2.07736e-04, 2.07736e-04, 2.07736e-04]])
+        # the actual tot is 7.009223e-03
+        beta_tot = 7.00922e-03
+
+        # Table A2 in Hou et. al
+        uo2_xsdata.set_decay_rate([1.247e-02, 2.829e-02, 4.252e-02,
+                                   1.330e-01, 2.925e-01, 6.665e-01,
+                                   1.635e+00, 3.555e+00])
+        # Derived from manipulating eq. B-3 in Hou et al.
+        # chi_prompt = (chi - np.sum(chi_delayed * beta, 0)) / (1 - beta_tot)
+        uo2_xsdata.set_chi_prompt([5.91741e-01, 4.07977e-01, 2.91169e-04,
+                                   1.18440e-07, 0.00000e+00, 0.00000e+00,
+                                   0.00000e+00])
+        # Table A3 in Hou et al.
+        chi_delayed = np.array([[0.00075, 0.98512, 0.01413, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00],
+                                [0.03049, 0.96907, 0.00044, 0.0000e+00,
+                                    0.0000e+00, 0.0000e+00, 0.0000e+00],
+                                [0.00457, 0.97401, 0.02142, 0.0000e+00,
+                                    0.0000e+00, 0.0000e+00, 0.0000e+00],
+                                [0.02002, 0.97271, 0.00727, 0.0000e+00,
+                                    0.0000e+00, 0.0000e+00, 0.0000e+00],
+                                [0.05601, 0.93818, 0.00581, 0.0000e+00,
+                                    0.0000e+00, 0.0000e+00, 0.0000e+00],
+                                [0.06098, 0.93444, 0.00458, 0.0000e+00,
+                                    0.0000e+00, 0.0000e+00, 0.0000e+00],
+                                [0.10635, 0.88298, 0.01067, 0.0000e+00,
+                                    0.0000e+00, 0.0000e+00, 0.0000e+00],
+                                [0.09346, 0.9026, 0.00394, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00]])
+        uo2_xsdata.set_chi_delayed(chi_delayed)
+        # Table A4 in Hou et al.
+        velocities = np.array([2.23466e+09, 5.07347e+08, 3.86595e+07,
+                              5.13931e+06, 1.67734e+06, 7.28603e+05, 2.92902e+05])
+        uo2_xsdata.set_inverse_velocity(1 / velocities)
+        # We need to set these so XsData::fission_matrix_beta_from_hdf5 is set
+        uo2_xsdata.set_prompt_nu_fission((1 - beta_tot) * nu_fission)
+        uo2_xsdata.set_delayed_nu_fission(beta * nu_fission)
+
+    h2o_xsdata = openmc.XSdata('LWTR', groups, num_delayed_groups=n_dg)
     h2o_xsdata.order = 0
     h2o_xsdata.set_total([0.15920605, 0.412969593, 0.59030986, 0.58435,
                           0.718, 1.2544497, 2.650379])
@@ -732,7 +801,13 @@ def random_ray_lattice() -> openmc.Model:
     scatter_matrix = np.rollaxis(scatter_matrix, 0, 3)
     h2o_xsdata.set_scatter_matrix(scatter_matrix)
 
-    mg_cross_sections = openmc.MGXSLibrary(groups)
+    if time_dependent:
+        # Table A4 in Hou et al.
+        velocities = np.array([2.23517E+09, 4.98880E+08, 3.84974E+07,
+                              5.12639E+06, 1.67542E+06, 7.26031E+05, 2.81629E+05])
+        h2o_xsdata.set_inverse_velocity(1 / velocities)
+
+    mg_cross_sections = openmc.MGXSLibrary(groups, num_delayed_groups=n_dg)
     mg_cross_sections.add_xsdatas([uo2_xsdata, h2o_xsdata])
     mg_cross_sections.export_to_hdf5('mgxs.h5')
 
@@ -744,8 +819,13 @@ def random_ray_lattice() -> openmc.Model:
     uo2.set_density('macro', 1.0)
     uo2.add_macroscopic('UO2')
 
+    if time_dependent:
+        densities = np.linspace(1, 0.95, 100)[:2]
+    else:
+        densities = None
+
     water = openmc.Material(name='Water')
-    water.set_density('macro', 1.0)
+    water.set_density('macro', 1.0, densities)
     water.add_macroscopic('LWTR')
 
     # Instantiate a Materials collection and export to XML
@@ -800,7 +880,8 @@ def random_ray_lattice() -> openmc.Model:
     for i in range(8):
         azimuthal_cell = openmc.Cell(name=f'azimuthal_cell_{i}')
         azimuthal_cell.fill = pincell_base
-        azimuthal_cell.region = +azimuthal_planes[i] & -azimuthal_planes[(i+1) % 8]
+        azimuthal_cell.region = + \
+            azimuthal_planes[i] & -azimuthal_planes[(i+1) % 8]
         azimuthal_cells.append(azimuthal_cell)
 
     # Create a geometry with the azimuthal universes
@@ -864,6 +945,17 @@ def random_ray_lattice() -> openmc.Model:
     settings.random_ray['distance_inactive'] = 20.0
     settings.random_ray['ray_source'] = rr_source
     settings.random_ray['volume_normalized_flux_tallies'] = True
+    if time_dependent:
+        settings.random_ray['bd_order'] = 2
+        settings.random_ray['time_mode'] = 'ti'
+        settings.random_ray['precursor_mode'] = 'bd'
+
+        settings.run_mode = "time dependent"
+        settings.time_dependent = {
+            "dt": 0.01,
+            "n_timesteps": 2,
+            "timestep_units": "s",
+        }
 
     ###########################################################################
     # Define tallies
@@ -889,6 +981,13 @@ def random_ray_lattice() -> openmc.Model:
 
     # Instantiate a Tallies collection and export to XML
     tallies = openmc.Tallies([tally])
+
+    if time_dependent:
+        delay_filter = openmc.DelayedGroupFilter(np.arange(1, n_dg+1, 1))
+        tally = openmc.Tally(name="Mesh delayed tally")
+        tally.filters = [mesh_filter, delay_filter]
+        tally.scores += ['precursors']
+        tallies.append(tally)
 
     ###########################################################################
     #                   Exporting to OpenMC model

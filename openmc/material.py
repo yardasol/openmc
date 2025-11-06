@@ -1459,7 +1459,7 @@ class Material(IDManagerMixin):
             subelement.set("units", self._density_units)
             if self._density_timeseries is not None:
                 timeseries_text = " ".join(str(x) for x in self._density_timeseries)
-                subelement.set("timeseries", timeseries_text)
+                subelement.set("value_timeseries", timeseries_text)
         else:
             raise ValueError(f'Density has not been set for material {self.id}!')
 
@@ -1639,7 +1639,7 @@ class Material(IDManagerMixin):
             mat.set_density(units)
         else:
             value = float(density.get('value'))
-            text = get_text(density, 'timeseries')
+            text = get_text(density, 'value_timeseries')
             if text is not None:
                 density_timeseries = [float(x) for x in text.split()]
             else:

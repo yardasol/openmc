@@ -72,6 +72,7 @@ void validate_random_ray_inputs();
 
 void openmc_run_random_ray_time_dependent();
 void rename_statepoint_file(int i);
+void rename_tallies_file(int i);
 
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
   vector<double>& bd_vector, vector<double>& vector);

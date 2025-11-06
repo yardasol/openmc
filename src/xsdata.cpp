@@ -139,6 +139,8 @@ void XsData::fission_vector_beta_from_hdf5(
 
   // Now every incoming group in prompt_chi and delayed_chi is the normalized
   // chi we just made
+  // TODO: This is incorrect as it makes chi_prompt and chi_delayed identical.
+  // Fix it
   chi_prompt = xt::view(temp_chi, xt::all(), xt::newaxis(), xt::all());
   chi_delayed =
     xt::view(temp_chi, xt::all(), xt::newaxis(), xt::newaxis(), xt::all());
