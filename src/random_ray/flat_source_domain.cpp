@@ -1457,7 +1457,6 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
 
 void FlatSourceDomain::compute_criticality_precursors(double k_eff)
 {
-  simulation::time_compute_precursors.start();
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1475,12 +1474,10 @@ void FlatSourceDomain::compute_criticality_precursors(double k_eff)
       }
     }
   }
-  simulation::time_compute_precursors.stop();
 }
 
 void FlatSourceDomain::compute_precursors(double k_eff)
 {
-  simulation::time_compute_precursors.start();
   double inverse_k_eff = 1.0 / k_eff;
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
@@ -1509,12 +1506,10 @@ void FlatSourceDomain::compute_precursors(double k_eff)
       }
     }
   }
-  simulation::time_compute_precursors.stop();
 }
 
 void FlatSourceDomain::compute_delayed_fission_source(double k_eff)
 {
-  simulation::time_compute_precursors.start();
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1538,12 +1533,10 @@ void FlatSourceDomain::compute_delayed_fission_source(double k_eff)
       }
     }
   }
-  simulation::time_compute_precursors.stop();
 }
 
-void FlatSourceDomain::compute_precursors_analytic_integration()
+void FlatSourceDomain::compute_precursors_via_analytic_integration()
 {
-  simulation::time_compute_precursors.start();
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int mat = source_regions_.material(sr);
@@ -1571,6 +1564,23 @@ void FlatSourceDomain::compute_precursors_analytic_integration()
         source_regions_.precursors_new(sr, dg) += C_nm1 * omega0(lam_tilde);
       }
     }
+  }
+}
+
+void FlatSourceDomain::compute_precursors(double k_eff)
+{
+  simulation::time_compute_precursors.start();
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+      domain_->compute_delayed_fission_source(k_eff);
+      domain_->compute_precursors_via_analytic_integration();
+    } else {
+      domain_->compute_precursors_via_bd(k_eff);
+    }
+  } else if (settings::is_initial_condition) {
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+      domain_->compute_delayed_fission_source(k_eff);
+    domain_->compute_criticality_precursors(k_eff);
   }
   simulation::time_compute_precursors.start();
 }

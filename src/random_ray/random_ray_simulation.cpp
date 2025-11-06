@@ -724,18 +724,7 @@ void RandomRaySimulation::simulate()
     }
 
     // Compute precursors
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        domain_->compute_delayed_fission_source(k_eff_);
-        domain_->compute_precursors_analytic_integration();
-      } else {
-        domain_->compute_precursors(k_eff_);
-      }
-    } else if (settings::is_initial_condition) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-        domain_->compute_delayed_fission_source(k_eff_);
-      domain_->compute_criticality_precursors(k_eff_);
-    }
+    domain_->compute_precursors(k_eff_);
 
     // Execute all tallying tasks, if this is an active batch
     if (simulation::current_batch > settings::n_inactive) {

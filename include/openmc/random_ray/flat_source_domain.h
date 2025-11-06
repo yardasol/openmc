@@ -58,9 +58,10 @@ public:
   virtual void update_neutron_source_td(double k_eff);
   double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);
-  void compute_precursors(double k_eff);
+  void compute_precursors_via_bd(double k_eff);
   void compute_delayed_fission_source(double k_eff);
-  void compute_precursors_analytic_integration();
+  void compute_precursors_via_analytic_integration();
+  void compute_precursors(double k_eff);
   void compute_neutron_source_time_derivative();
   void compute_scalar_flux_time_derivative_2();
   void serialize_final_td_fluxes(vector<double>& flux_td);
