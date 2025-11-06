@@ -1439,7 +1439,8 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
       // Add derivative of scalar flux (TI method)
       if (RandomRay::time_mode_ == RandomRayTimeMode::TI) {
         double inverse_vbar = inverse_vbar_[material * negroups_ + g_out];
-        double scalar_flux_rhs_bd = (*scalar_flux_rhs_bd_)[index(sr, g_out)];
+        double scalar_flux_rhs_bd =
+          source_regions_.scalar_flux_rhs_bd(sr, g_out);
         double A0 =
           (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
         double scalar_flux_td = source_regions_.scalar_flux_td_old(sr, g_out);
@@ -1663,6 +1664,26 @@ void FlatSourceDomain::flux_td_swap()
 void FlatSourceDomain::precursors_swap()
 {
   source_regions_.precursors_swap();
+}
+
+void FlatSourceDomain::accumulate_iteration_quantities()
+{
+  accumulate_iteration_flux();
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition)
+    accumulate_iteration_precursors();
+  if (settings::run_mode == RunMode::TIME_DEPENDENT)
+    accumulate_iteration_flux_td();
+
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    if (settings::run_mode == RunMode::TIME_DEPENDENT)
+      accumulate_iteration_source_td();
+    else if (settings::is_initial_condition)
+      accumulate_iteration_source();
+  }
+
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+    accumulate_iteration_delayed_fission_source();
 }
 
 void FlatSourceDomain::accumulate_iteration_flux_td()

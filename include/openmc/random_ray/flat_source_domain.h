@@ -71,6 +71,7 @@ public:
     vector<double>& delayed_fission_source);
   void flux_td_swap();
   void precursors_swap();
+  void accumulate_iteration_quantities();
   virtual void accumulate_iteration_flux_td();
   void accumulate_iteration_precursors();
   void accumulate_iteration_source_td();

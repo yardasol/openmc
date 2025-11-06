@@ -117,6 +117,7 @@ double res_scat_energy_max {1000.0};
 vector<std::string> res_scat_nuclides;
 RunMode run_mode {RunMode::UNSET};
 SolverType solver_type {SolverType::MONTE_CARLO};
+ConvergenceMethod convergence_method {ConvergenceMethod::FIXED_BATCH};
 std::unordered_set<int> sourcepoint_batch;
 std::unordered_set<int> statepoint_batch;
 std::unordered_set<int> source_write_surf_id;
@@ -142,7 +143,6 @@ int n_batches_td;
 int32_t n_inactive_td {0};
 int convergence_window_size;
 double source_convergence_threshold;
-double solution_convergence_threshold;
 int n_timesteps;
 double dt;
 int current_timestep;
@@ -368,23 +368,21 @@ void get_run_parameters(pugi::xml_node node_base)
       } else {
         fatal_error("Specify BD approximation order in settings XML");
       }
-      if (check_for_node(random_ray_node, "convergence_window_size")) {
-        convergence_window_size =
-          std::stoi(get_node_value(random_ray_node, "convergence_window_size"));
-      } else {
-        fatal_error("Specify convergence window size in settings XML");
-      }
-      if (check_for_node(random_ray_node, "source_convergence_threshold")) {
-        source_convergence_threshold = std::stod(
-          get_node_value(random_ray_node, "source_convergence_threshold"));
-      } else {
-        fatal_error("Specify source convergence threshold in settings XML");
-      }
-      if (check_for_node(random_ray_node, "solution_convergence_threshold")) {
-        solution_convergence_threshold = std::stod(
-          get_node_value(random_ray_node, "solution_convergence_threshold"));
-      } else {
-        fatal_error("Specify solution convergence threshold in settings XML");
+      if (convergence_method == ConvergenceMethod::WINDOW_AVG_RMS) {
+        if (check_for_node(random_ray_node, "convergence_window_size")) {
+          convergence_window_size = std::stoi(
+            get_node_value(random_ray_node, "convergence_window_size"));
+        } else {
+          fatal_error("Specify convergence window size in settings XML when "
+                      "using window-averaged RMS convergence");
+        }
+        if (check_for_node(random_ray_node, "source_convergence_threshold")) {
+          source_convergence_threshold = std::stod(
+            get_node_value(random_ray_node, "source_convergence_threshold"));
+        } else {
+          fatal_error("Specify source convergence threshold in settings XML "
+                      "when using window-averaged RMS convergence");
+        }
       }
       if (check_for_node(random_ray_node, "time_mode")) {
         std::string temp_str =
@@ -583,6 +581,24 @@ void read_settings_xml(pugi::xml_node root)
     if (run_CE)
       fatal_error("multi-group energy mode must be specified in settings XML "
                   "when using the random ray solver.");
+  }
+
+  // Check solver type
+  // if (solver_type == SolverType::RANDOM_RAY);
+  if (check_for_node(root, "convergence_method")) {
+    std::string temp_str =
+      get_node_value(root, "convergence_method", true, true);
+    if (temp_str == "fixed_batch") {
+      convergence_method = ConvergenceMethod::FIXED_BATCH;
+    } else if (temp_str == "rms_window_averaged") {
+      convergence_method = ConvergenceMethod::WINDOW_AVG_RMS;
+    } else {
+      fatal_error("Unrecognized convergence method: " + temp_str);
+    }
+    if (solver_type == SolverType::MONTE_CARLO &&
+        convergence_method == ConvergenceMethod::WINDOW_AVG_RMS)
+      fatal_error("Window-averaged RMS convergence is currenty unsupported for "
+                  "Monte Carlo simulations.");
   }
 
   if (run_mode == RunMode::EIGENVALUE || run_mode == RunMode::FIXED_SOURCE ||
@@ -860,7 +876,7 @@ void read_settings_xml(pugi::xml_node root)
     // Get pointer to state_point node
     auto node_sp = root.child("state_point");
 
-    // TODO: Allow time-dependnet simulatiosn to support this feature
+    // TODO: Allow time-dependent simulatiosn to support this feature
     // Determine number of batches at which to store state points
     if (check_for_node(node_sp, "batches")) {
       // User gave specific batches to write state points

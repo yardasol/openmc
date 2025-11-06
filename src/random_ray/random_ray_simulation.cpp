@@ -277,7 +277,7 @@ void openmc_run_random_ray_time_dependent()
     }
 
     if (settings::current_timestep > 1)
-    reset_timers();
+      reset_timers();
 
     // Initialize OpenMC general data structures
     openmc_simulation_init();
@@ -377,6 +377,24 @@ void rename_tallies_file(int i)
   const char* old_fname = old_filename_.c_str();
   const char* new_fname = new_filename_.c_str();
   std::rename(old_fname, new_fname);
+}
+
+void increment_batches()
+{
+  settings::n_inactive += 1;
+  settings::n_batches += 1;
+  settings::n_max_batches = settings::n_batches;
+
+  // Increment k_generation and entropy
+  int m = settings::n_max_batches * settings::gen_per_batch;
+  simulation::k_generation.resize(m);
+  simulation::entropy.resize(m);
+
+  // Reset statepoint_batch for statepoint writing
+  // TODO: Make this work with multiple batch statepoints, see line 863 in
+  // settings.cpp
+  settings::statepoint_batch.clear();
+  settings::statepoint_batch.insert(settings::n_batches);
 }
 
 // Enforces restrictions on inputs in random ray mode.  While there are
@@ -701,45 +719,28 @@ void RandomRaySimulation::simulate()
     domain_->compute_precursors(k_eff_);
 
     // Determine if the source is converged
-    bool converged;
-    if (simulation::current_batch >= settings::convergence_window_size) {
-      compute_and_store_batch_fission_source();
-      converged = compare_window_averaged_rms_error();
-    } else {
-      compute_and_store_batch_fission_source(false);
-      converged = false;
+    if (settings::convergence_method == ConvergenceMethod::FIXED_BATCH) {
+      source_converged_ = simulation::current_batch > settings::n_inactive;
+    } else if (settings::convergence_method ==
+               ConvergenceMethod::WINDOW_AVG_RMS) {
+      if (simulation::current_batch >= settings::convergence_window_size) {
+        compute_and_store_batch_fission_source();
+        double rms = compute_window_averaged_rms_error();
+        source_converged_ = rms <= settings::source_convergence_threshold;
+      } else {
+        compute_and_store_batch_fission_source(false);
+      }
+      if (!source_converged_ &&
+          simulation::current_batch == settings::n_inactive)
+        increment_batches();
     }
 
     // Execute all tallying tasks, if this is an active batch
-    //    if (simulation::current_batch > settings::n_inactive) {
-    if (!converged) {
-      // TODO: increment current batch?
-      // TODO: increment total batches?
-      settings::statepoint_batch.clear();
-      settings::statepoint_batch.insert(settings::n_batches);
-    } else {
-
-      // TODO: add helper function
-      // domain_->accumulation_iteration_quantities()
-      // Add this iteration's scalar flux estimate to final accumulated estimate
-      domain_->accumulate_iteration_flux();
-      if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-          settings::is_initial_condition)
-        domain_->accumulate_iteration_precursors();
-      if (settings::run_mode == RunMode::TIME_DEPENDENT)
-        domain_->accumulate_iteration_flux_td();
-
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-          domain_->accumulate_iteration_source_td();
-        } else if (settings::is_initial_condition) {
-          domain_->accumulate_iteration_source();
-        }
-      }
-
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        domain_->accumulate_iteration_delayed_fission_source();
-      }
+    if (source_converged_) {
+      // TODO: Add machinery for tolerance-based solution convergence
+      // Add this iteration's estimates (flux, precursors, etc.) to final
+      // accumulated estimate
+      domain_->accumulate_iteration_quantities();
 
       if (mpi::master) {
         // Generate mapping between source regions and tallies
@@ -929,12 +930,12 @@ void RandomRaySimulation::compute_and_store_batch_fission_source(
   bool shift_window)
 {
   // Compute the window-averaged RMS error
-  for (int64_t sr = 0; sr < domain_->n_source_regions(); sr++) {
-    int material = source_regions_.material(sr);
+  for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
+    int material = domain_->source_regions_.material(sr);
     double F_sr = 0.0;
 #pragma omp parallel for
     for (int g = 0; g < negroups_; g++) {
-      double sigma_t;
+      double sigma_f;
       double flux;
       if (settings::is_initial_condition) {
         sigma_f = domain_->sigma_f_[material * negroups_ + g];
@@ -943,43 +944,46 @@ void RandomRaySimulation::compute_and_store_batch_fission_source(
         sigma_f = domain_->sigma_f_td_[material * negroups_ + g];
         flux = domain_->source_regions_.scalar_flux_td_old(sr, g);
       }
-      F_sr += sigma_t * flux;
+      F_sr += sigma_f * flux;
     }
-    domain_->batchwise_fission_source(sr).push_front(F_sr);
+    domain_->source_regions_.batchwise_fission_source(sr).push_front(F_sr);
     // Remove the first n_source_regions_ * negroups_ elements
     // if we move the window
     if (shift_window)
-      domain_->batchwise_fission_source(sr).pop_back();
+      domain_->source_regions_.batchwise_fission_source(sr).pop_back();
   }
 }
 
-void RandomRaySimulation::compare_window_averaged_rms_error()
+double RandomRaySimulation::compute_window_averaged_rms_error()
 {
   // Compute the window-averaged RMS error
   double W_fissile = 0.0;
-  if (!all_fissile_regions_found) {
+  if (!all_fissile_regions_found_) {
 #pragma omp parallel for
     for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
-      int material = source_regions_.material(sr);
-      // TODO: make it so we only have to look for all fissile regions once
-      if (domain_->sigma_f_[material * negroups_] != 0.0)
-        W_fissile += 1;
-      else
-        continue;
+      int material = domain_->source_regions_.material(sr);
+      for (int g = 0; g < negroups_; g++) {
+        if (domain_->sigma_f_[material * negroups_] != 0.0) {
+          W_fissile += 1;
+          break;
+        }
+      }
     }
+    all_fissile_regions_found_ = true;
   }
-  int half_window = int(0.5 * settings::convergence_window_size);
+
+  int B_w = settings::convergence_window_size;
+  int half_window = int(0.5 * B_w);
   double rms = 0.0;
 #pragma omp parallel for
   for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
-    int material = source_regions_.material(sr);
+    int material = domain_->source_regions_.material(sr);
     double F_sr_new = 0.0;
     double F_sr_old = 0.0;
     for (int b = 0; b < half_window; b++)
       F_sr_new += domain_->source_regions_.batchwise_fission_source(sr)[b];
     for (int b = half_window; b < B_w; b++)
       F_sr_old += domain_->source_regions_.batchwise_fission_source(sr)[b];
-  }
     F_sr_new /= half_window;
     F_sr_old /= half_window;
     rms += pow((F_sr_new - F_sr_old) / F_sr_new, 2);
@@ -987,10 +991,7 @@ void RandomRaySimulation::compare_window_averaged_rms_error()
   rms /= W_fissile;
   rms = sqrt(rms);
 
-  if (rms <= settings::source_convergence_threshold)
-    return true;
-  else
-    return false;
+  return rms;
 }
 
 // TODO: Remove the zero-valued solution from the BD vectors
@@ -1102,5 +1103,6 @@ void RandomRaySimulation::normalize_and_store_quantities()
     update_bd_vector(
       &delayed_fission_source_bd, previous_delayed_fission_source, false);
   }
+}
 
 } // namespace openmc

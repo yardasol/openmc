@@ -1,6 +1,8 @@
 #ifndef OPENMC_RANDOM_RAY_SOURCE_REGION_H
 #define OPENMC_RANDOM_RAY_SOURCE_REGION_H
 
+#include <deque>
+
 #include "openmc/openmp_interface.h"
 #include "openmc/position.h"
 #include "openmc/random_ray/moment_matrix.h"
@@ -211,7 +213,7 @@ public:
 
   // 1D array represetnting fission source across a fixed widnow of batches.
   // This is used for assesing convergence.
-  deque<double> batchwise_fission_source_;
+  std::deque<double> batchwise_fission_source_;
 
 }; // class SourceRegion
 
@@ -702,11 +704,11 @@ public:
     return tally_delay_task_[de];
   }
 
-  deque<double>& batchwise_fission_source(int64_t sr)
+  std::deque<double>& batchwise_fission_source(int64_t sr)
   {
     return batchwise_fission_source_[sr];
   }
-  const deque<double>& batchwise_fission_source(int64_t sr) const
+  const std::deque<double>& batchwise_fission_source(int64_t sr) const
   {
     return batchwise_fission_source_[sr];
   }
@@ -818,7 +820,7 @@ private:
   vector<vector<TallyTask>> tally_delay_task_;
 
   // SoA source region-wise 2D batchwise fission sousrce array
-  vector<deque<double>> batchwise_fission_source_;
+  vector<std::deque<double>> batchwise_fission_source_;
 
   //----------------------------------------------------------------------------
   // Private Methods
