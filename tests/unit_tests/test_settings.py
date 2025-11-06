@@ -13,6 +13,8 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     s.generations_per_batch = 10
     s.inactive = 100
     s.particles = 1000000
+    s.convergence_method = 'fixed batch'
+    s.convergence_window_size = 100
     s.max_lost_particles = 5
     s.rel_max_lost_particles = 1e-4
     s.keff_trigger = {'type': 'std_dev', 'threshold': 0.001}
@@ -31,6 +33,7 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     s.ptables = True
     s.plot_seed = 100
     s.survival_biasing = True
+    s.source_convergence_threshold = 1e-3
     s.cutoff = {'weight': 0.25, 'weight_avg': 0.5, 'energy_neutron': 1.0e-5,
                 'energy_photon': 1000.0, 'energy_electron': 1.0e-5,
                 'energy_positron': 1.0e-5, 'time_neutron': 1.0e-5,
@@ -92,6 +95,8 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     # Generate settings from XML
     s = openmc.Settings.from_xml()
     assert s.run_mode == mode
+    assert s.convergence_method == 'fixed batch'
+    assert s.convergence_window_size == 100
     assert s.batches == 1000
     assert s.generations_per_batch == 10
     assert s.inactive == 100
@@ -115,6 +120,7 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     assert s.ptables
     assert s.plot_seed == 100
     assert s.seed == 17
+    assert s.source_convergence_threshold == 1e-3
     assert s.survival_biasing
     assert s.cutoff == {'weight': 0.25, 'weight_avg': 0.5,
                         'energy_neutron': 1.0e-5, 'energy_photon': 1000.0,

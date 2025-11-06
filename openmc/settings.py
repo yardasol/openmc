@@ -26,6 +26,9 @@ class RunMode(Enum):
     VOLUME = 'volume'
     PARTICLE_RESTART = 'particle restart'
 
+class ConvergenceMethod(Enum):
+    FIXED_BATCH = 'fixed batch'
+    WINDOW_AVG_RMS = 'window-averaged rms'
 
 _RES_SCAT_METHODS = {'dbrc', 'rvs'}
 
@@ -47,6 +50,15 @@ class Settings:
         half-width of the 95% two-sided confidence interval. If False,
         uncertainties on tally results will be reported as the sample standard
         deviation.
+    convergence_method : {'fixed batch', 'window-averaged rms'}
+        The convergence method to use. 
+
+        .. versionadded:: 0.15.2
+    convergence_window_size : {'fixed batch', 'window-averaged rms'}
+        The size of the window (in batches) for use with window-averaged
+        RMS convergence
+
+        .. versionadded:: 0.15.2
     create_fission_neutrons : bool
         Indicate whether fission neutrons should be created or not.
     cutoff : dict
@@ -207,6 +219,11 @@ class Settings:
         Seed for the linear congruential pseudorandom number generator
     source : Iterable of openmc.SourceBase
         Distribution of source sites in space, angle, and energy
+    source_convergence_threshold : float
+        The RMS error threshold for considering a simulation converged
+        when using window-averaged RMS convergence.
+
+        .. versionadded:: 0.15.2
     sourcepoint : dict
         Options for writing source points. Acceptable keys are:
 
@@ -338,6 +355,9 @@ class Settings:
 
     def __init__(self, **kwargs):
         self._run_mode = RunMode.EIGENVALUE
+        self._convergence_method = None
+        self._convergence_window_size = None
+        self._source_convergence_threshold = None
         self._batches = None
         self._generations_per_batch = None
         self._inactive = None
@@ -435,6 +455,39 @@ class Settings:
         for mode in RunMode:
             if mode.value == run_mode:
                 self._run_mode = mode
+
+    @property
+    def convergence_method(self) -> str:
+        return self._convergence_method.value
+
+    @convergence_method.setter
+    def convergence_method(self, convergence_method: str):
+        cv.check_value('convergence method', convergence_method, {x.value for x in ConvergenceMethod})
+        for method in ConvergenceMethod:
+            if method.value == convergence_method:
+                self._convergence_method = method
+
+    @property
+    def convergence_window_size(self) -> int:
+        return self._convergence_window_size
+
+    @convergence_window_size.setter
+    def convergence_window_size(self, convergence_window_size: int):
+        cv.check_type('convergence_window_size', convergence_window_size, Integral)
+        cv.check_greater_than('convergence_window_size', convergence_window_size, 2)
+        # We should have at a minimum a number of inactive batches less than our window size
+        cv.check_less_than('convergence_window_size', convergence_window_size, self._inactive)
+        self._convergence_window_size = convergence_window_size
+
+    @property
+    def source_convergence_threshold(self) -> float:
+        return self._source_convergence_threshold
+
+    @source_convergence_threshold.setter
+    def source_convergence_threshold(self, source_convergence_threshold: float):
+        cv.check_type('source_convergence_threshold', source_convergence_threshold, Real)
+        cv.check_greater_than('source_convergence_threshold', source_convergence_threshold, 0)
+        self._source_convergence_threshold = source_convergence_threshold
 
     @property
     def batches(self) -> int:
@@ -1210,6 +1263,21 @@ class Settings:
         elem = ET.SubElement(root, "run_mode")
         elem.text = self._run_mode.value
 
+    def _create_convergence_method_subelement(self, root):
+        if self._convergence_method:
+          elem = ET.SubElement(root, "convergence_method")
+          elem.text = self._convergence_method.value
+
+    def _create_convergence_window_size_subelement(self, root):
+        if self._convergence_window_size is not None:
+            element = ET.SubElement(root, "convergence_window_size")
+            element.text = str(self._convergence_window_size)
+
+    def _create_source_convergence_threshold_subelement(self, root):
+        if self._source_convergence_threshold is not None:
+            element = ET.SubElement(root, "source_convergence_threshold")
+            element.text = str(self._source_convergence_threshold)
+
     def _create_batches_subelement(self, root):
         if self._batches is not None:
             element = ET.SubElement(root, "batches")
@@ -1660,6 +1728,21 @@ class Settings:
         if text is not None:
             self.run_mode = text
 
+    def _convergence_method_from_xml_element(self, root):
+        text = get_text(root, 'convergence_method')
+        if text is not None:
+            self.convergence_method = text
+
+    def _convergence_window_size_from_xml_element(self, root):
+        text = get_text(root, 'convergence_window_size')
+        if text is not None:
+            self.convergence_window_size = int(text)
+
+    def _source_convergence_threshold_from_xml_element(self, root):
+        text = get_text(root, 'source_convergence_threshold')
+        if text is not None:
+            self.source_convergence_threshold = float(text)
+
     def _particles_from_xml_element(self, root):
         text = get_text(root, 'particles')
         if text is not None:
@@ -2059,8 +2142,10 @@ class Settings:
         element = ET.Element("settings")
 
         self._create_run_mode_subelement(element)
+        self._create_convergence_method_subelement(element)
+        self._create_convergence_window_size_subelement(element)
+        self._create_source_convergence_threshold_subelement(element)
         self._create_particles_subelement(element)
-        self._create_batches_subelement(element)
         self._create_inactive_subelement(element)
         self._create_max_lost_particles_subelement(element)
         self._create_rel_max_lost_particles_subelement(element)
@@ -2166,8 +2251,10 @@ class Settings:
         settings = cls()
         settings._eigenvalue_from_xml_element(elem)
         settings._run_mode_from_xml_element(elem)
+        settings._convergence_method_from_xml_element(elem)
+        settings._convergence_window_size_from_xml_element(elem)
+        settings._source_convergence_threshold_from_xml_element(elem)
         settings._particles_from_xml_element(elem)
-        settings._batches_from_xml_element(elem)
         settings._inactive_from_xml_element(elem)
         settings._max_lost_particles_from_xml_element(elem)
         settings._rel_max_lost_particles_from_xml_element(elem)
