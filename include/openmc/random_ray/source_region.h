@@ -114,7 +114,6 @@ public:
   vector<double> scalar_flux_old_;
   vector<double> scalar_flux_new_;
   vector<double> source_;
-  vector<double> source_final_;
   vector<float> external_source_;
   vector<double> scalar_flux_final_;
 
@@ -124,23 +123,46 @@ public:
   vector<MomentArray> flux_moments_t_;
 
   // Energy group-wise 1D time-dependent arrrays
-  vector<double> scalar_flux_td_old_;
-  vector<double> scalar_flux_td_new_;
-  vector<double> scalar_flux_td_final_;
+  vector<double> source_final_;       //!< The total source accumulated over all
+                                      //!< active iterations (used for SDP)
+  vector<double> scalar_flux_td_old_; //!< The time-dependent scalar flux from
+                                      //!< the previous iteration
+  vector<double> scalar_flux_td_new_; //!< The time-dependent scalar flux from
+                                      //!< the current iteration
+  vector<double>
+    scalar_flux_td_final_; //!< The time-dependent scalar flux accumulated over
+                           //!< all active iterations (used as the initial
+                           //!< condition for the next timestep)
 
-  vector<double> source_td_;
-  vector<double> source_td_final_;
+  vector<double> source_td_; //!< The total time-dependent source term (prompt
+                             //!< fission + scattering + delayed emission)
+  vector<double>
+    source_td_final_; //!< The total time-dependent source accumulated over all
+                      //!< active iterations (used for SDP)
 
   // Energy group-wise 1D derivative arrays
-  vector<double> source_time_derivative_;
-  vector<double> scalar_flux_time_derivative_2_;
-
+  vector<double> source_time_derivative_;        //!< The time derivative of the
+                                                 //!< source (used for SDP)
+  vector<double> scalar_flux_time_derivative_2_; //!< The 2nd order time
+                                                 //!< derivative of the scalar
+                                                 //!< flux (used for SDP)
   // Delay group-wise 1D arrays
-  vector<double> precursors_old_;
-  vector<double> precursors_new_;
-  vector<double> precursors_final_;
-  vector<double> delayed_fission_source_;
-  vector<double> delayed_fission_source_final_;
+  vector<double> precursors_old_; //!< The precursor density from the previous
+                                  //!< iteration. Currently unused
+  vector<double>
+    precursors_new_; //!< The precursor density fro the current iteration
+  vector<double>
+    precursors_final_; //!< The precursor density accumulated over all
+                       //!< active iterations (used for computing
+                       //!< the time derivative of precursor density)
+
+  vector<double>
+    delayed_fission_source_; //!< The delayed fission source binned by delay
+                             //!< group (used for Precursor Integration)
+  vector<double>
+    delayed_fission_source_final_; //!< The delayed fission source accumulated
+                                   //!< over all active iterations (used for
+                                   //!< computing Precursor Integration)
 
   // 2D array representing values for all energy groups x tally
   // tasks. Each group may have a different number of tally tasks
