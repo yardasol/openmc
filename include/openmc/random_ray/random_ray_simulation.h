@@ -30,6 +30,21 @@ public:
   void print_results_random_ray(uint64_t total_geometric_intersections,
     double avg_miss_rate, int negroups, int64_t n_source_regions,
     int64_t n_external_source_regions) const;
+  bool compare_window_averaged_rms_error();
+
+  //----------------------------------------------------------------------------
+  // Time Dependent Methods
+  void compute_and_store_batch_fission_source(bool shift_window = true);
+
+  //----------------------------------------------------------------------------
+  // Time Dependent Methods
+  void initialize_bd_vectors();
+  void increment_bd_vectors(
+    int64_t n_source_elements, int64_t n_delay_elements);
+  void compute_rhs_bd_vectors(
+    int64_t n_source_elements, int64_t n_delay_elements);
+  void store_rhs_bd_vectors();
+  void normalize_and_store_quantities();
 
   //----------------------------------------------------------------------------
   // Accessors
@@ -61,6 +76,9 @@ private:
   // Number of energy groups
   int negroups_;
 
+  // Number of delay groups
+  int ndgroups_;
+
 }; // class RandomRaySimulation
 
 //============================================================================
@@ -71,6 +89,8 @@ void openmc_run_random_ray();
 void validate_random_ray_inputs();
 
 void openmc_run_random_ray_time_dependent();
+void set_time_dependent_settings();
+
 void rename_statepoint_file(int i);
 void rename_tallies_file(int i);
 
@@ -82,6 +102,10 @@ void compute_rhs_backward_difference(int64_t vector_size,
   vector<double>& rhs_bd_vector, int derivative_order);
 
 void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector);
+
+void get_bd_vector_slice(int64_t vector_size, vector<double>& storage_vector,
+  vector<double>& bd_vector, int neg_timestep_index);
+
 void normalize_serialized_vector(
   vector<double>& vector, double normalization_factor);
 

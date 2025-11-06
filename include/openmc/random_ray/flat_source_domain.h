@@ -58,9 +58,10 @@ public:
   virtual void update_neutron_source_td(double k_eff);
   double compute_k_dynamic() const;
   void compute_criticality_precursors(double k_eff);
-  void compute_precursors(double k_eff);
+  void compute_precursors_via_bd(double k_eff);
   void compute_delayed_fission_source(double k_eff);
-  void compute_precursors_analytic_integration();
+  void compute_precursors_via_analytic_integration();
+  void compute_precursors(double k_eff);
   void compute_neutron_source_time_derivative();
   void compute_scalar_flux_time_derivative_2();
   void serialize_final_td_fluxes(vector<double>& flux_td);
@@ -131,22 +132,6 @@ public:
 
   // The abstract container holding all source region-specific data
   SourceRegionContainer source_regions_;
-
-  // Pointers to RHS derivative vectors
-  vector<double>* scalar_flux_rhs_bd_;
-  vector<double>* precursors_rhs_bd_;
-
-  vector<double>* source_rhs_bd_;
-  vector<double>* scalar_flux_rhs_bd_2_;
-
-  vector<double>* precursors_bd_;
-  vector<double>* delayed_fission_source_bd_;
-
-  // Heper index functions
-  inline int index(int64_t sr, int g) const { return sr * negroups_ + g; }
-  inline int index(int64_t se) const { return se; }
-  inline int dindex(int64_t sr, int dg) const { return sr * ndgroups_ + dg; }
-  inline int dindex(int64_t de) const { return de; }
 
 protected:
   //----------------------------------------------------------------------------

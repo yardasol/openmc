@@ -25,9 +25,11 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     // and initialize external source arrays
     scalar_flux_old_.assign(negroups, 0.0);
     external_source_.assign(negroups, 0.0);
-  } else {
+  }
+
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
     // If in time dependent mode, set starting flux to guess of 1
-    // TODO: try to incorporate criticality/previous final flux here
     scalar_flux_old_.assign(negroups, 1.0);
 
     scalar_flux_td_old_.assign(negroups, 1.0);
@@ -39,22 +41,32 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     precursors_new_.assign(ndgroups, 0.0);
     precursors_final_.assign(ndgroups, 0.0);
     tally_delay_task_.resize(ndgroups);
-  }
 
-  // SDP arrays
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-    source_final_.assign(negroups, 0.0);
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    scalar_flux_rhs_bd_.resize(negroups);
+
+    // SDP arrays
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      source_final_.assign(negroups, 0.0);
+
       source_td_final_.assign(negroups, 0.0);
       source_time_derivative_.assign(negroups, 0.0);
       scalar_flux_time_derivative_2_.assign(negroups, 0.0);
-    }
-  }
 
-  // Analytic precursor integration arrays
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-    delayed_fission_source_.assign(ndgroups, 0.0);
-    delayed_fission_source_final_.assign(ndgroups, 0.0);
+      source_rhs_bd_.resize(negroups);
+      scalar_flux_rhs_bd_2_.resize(negroups);
+    }
+
+    // Analytic precursor integration arrays
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+      delayed_fission_source_.assign(ndgroups, 0.0);
+      delayed_fission_source_final_.assign(ndgroups, 0.0);
+
+      precursors_im1_.resize(ndgroups);
+      delayed_fission_source_im1_.resize(ndgroups);
+      delayed_fission_source_im2_.resize(ndgroups);
+    } else {
+      precursors_rhs_bd_.resize(ndgroups);
+    }
   }
 
   scalar_flux_new_.assign(negroups, 0.0);
@@ -62,6 +74,9 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
   scalar_flux_final_.assign(negroups, 0.0);
 
   tally_task_.resize(negroups);
+
+  // TODO: Do we need this??
+  //  batchwise_fission_source_.resize(window_size)
 
   if (is_linear) {
     source_gradients_.resize(negroups);
@@ -107,21 +122,28 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
 
     if (settings::run_mode == RunMode::FIXED_SOURCE) {
       external_source_.push_back(sr.external_source_[g]);
-    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    }
+
+    if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+        settings::is_initial_condition) {
       scalar_flux_td_old_.push_back(sr.scalar_flux_td_old_[g]);
       scalar_flux_td_new_.push_back(sr.scalar_flux_td_new_[g]);
       scalar_flux_td_final_.push_back(sr.scalar_flux_td_final_[g]);
       source_td_.push_back(sr.source_td_[g]);
-    }
 
-    // SDP arrays
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-      source_final_.push_back(sr.source_final_[g]);
-      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      scalar_flux_rhs_bd_.push_back(sr.scalar_flux_rhs_bd_[g]);
+
+      // SDP arrays
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        source_final_.push_back(sr.source_final_[g]);
+
         source_td_final_.push_back(sr.source_final_[g]);
         source_time_derivative_.push_back(sr.source_time_derivative_[g]);
         scalar_flux_time_derivative_2_.push_back(
           sr.scalar_flux_time_derivative_2_[g]);
+
+        source_rhs_bd_.push_back(sr.source_rhs_bd_[g]);
+        scalar_flux_rhs_bd_2_.push_back(sr.scalar_flux_rhs_bd_2_[g]);
       }
     }
 
@@ -145,11 +167,21 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       precursors_new_.push_back(sr.precursors_new_[dg]);
       precursors_final_.push_back(sr.precursors_final_[dg]);
       tally_delay_task_.emplace_back(sr.tally_delay_task_[dg]);
+
       // Analytic precursor integration arrays
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
         delayed_fission_source_.push_back(sr.delayed_fission_source_[dg]);
         delayed_fission_source_final_.push_back(
           sr.delayed_fission_source_final_[dg]);
+
+        precursors_im1_.push_back(sr.precursors_im1_[dg]);
+        delayed_fission_source_im1_.push_back(
+          sr.delayed_fission_source_im1_[dg]);
+        delayed_fission_source_im2_.push_back(
+          sr.delayed_fission_source_im2_[dg]);
+        // Backward difference arrays
+      } else {
+        precursors_rhs_bd_.push_back(sr.precursors_rhs_bd_[dg]);
       }
     }
   }
@@ -190,28 +222,34 @@ void SourceRegionContainer::assign(
     flux_moments_t_.clear();
   }
 
-  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
     scalar_flux_td_old_.clear();
     scalar_flux_td_new_.clear();
     scalar_flux_td_final_.clear();
     source_td_.clear();
-  }
 
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-    source_final_.clear();
-    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      source_final_.clear();
+
       source_time_derivative_.clear();
       scalar_flux_time_derivative_2_.clear();
+
+      source_rhs_bd_.clear();
+      scalar_flux_rhs_bd_2_.clear();
     }
-  }
 
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-    delayed_fission_source_.clear();
-    delayed_fission_source_final_.clear();
-  }
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+      delayed_fission_source_.clear();
+      delayed_fission_source_final_.clear();
 
-  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-      settings::is_initial_condition) {
+      precursors_im1_.clear();
+      delayed_fission_source_im1_.clear();
+      delayed_fission_source_im2_.clear();
+    } else {
+      precursors_rhs_bd_.clear();
+    }
+
     precursors_old_.clear();
     precursors_new_.clear();
     precursors_final_.clear();
@@ -220,6 +258,8 @@ void SourceRegionContainer::assign(
 
   tally_task_.clear();
   volume_task_.clear();
+
+  batchwise_fission_source_.clear();
 
   // Fill with copies of source_region
   for (int i = 0; i < n_source_regions; ++i) {
