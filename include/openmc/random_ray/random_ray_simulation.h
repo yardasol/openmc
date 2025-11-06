@@ -33,9 +33,13 @@ public:
 
   //----------------------------------------------------------------------------
   // Time Dependent Methods
+  void initialize_bd_vectors();
+  void increment_bd_vectors(
+    int64_t n_source_elements, int64_t n_delay_elements);
   void compute_rhs_bd_vectors(
     int64_t n_source_elements, int64_t n_delay_elements);
   void store_rhs_bd_vectors();
+  void normalize_and_store_quantities();
 
   //----------------------------------------------------------------------------
   // Accessors
@@ -80,6 +84,8 @@ void openmc_run_random_ray();
 void validate_random_ray_inputs();
 
 void openmc_run_random_ray_time_dependent();
+void set_time_dependent_settings();
+
 void rename_statepoint_file(int i);
 
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
