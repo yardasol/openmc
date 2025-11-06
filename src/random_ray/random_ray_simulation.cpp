@@ -165,12 +165,18 @@ vector<double> delayed_fission_source_bd;
 
 // 1D RHS BD arrays
 vector<double> scalar_flux_rhs_bd;
-vector<double> precursors_rhs_bd;
 
 vector<double> source_rhs_bd;
 vector<double> scalar_flux_rhs_bd_2;
 
+vector<double> precursors_rhs_bd;
+
+vector<double> precursors_im1;
+vector<double> delayed_fission_source_im1;
+vector<double> delayed_fission_source_im2;
+
 double previous_k_eff;
+// TODO: remove?
 vector<double> previous_scalar_flux;
 vector<double> previous_scalar_flux_td;
 vector<double> previous_precursors;
@@ -203,6 +209,15 @@ void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector)
   vector<double> vector_blank;
   vector_blank.assign(vector_size, 0.0);
   update_bd_vector(bd_vector, vector_blank, true);
+}
+
+void get_bd_vector_slice(int64_t vector_size, vector<double>& storage_vector,
+  vector<double>& bd_vector, int neg_timestep_index)
+{
+  storage_vector.assign(vector_size, 0.0);
+#pragma omp parallel for
+  for (int i = 0; i < vector_size; i++)
+    storage_vector[i] = bd_vector[vector_size * neg_timestep_index + i];
 }
 
 void normalize_serialized_vector(
@@ -299,32 +314,8 @@ void openmc_run_random_ray_time_dependent()
     simulation::time_update_bd_vectors_td.stop();
 
     // Compute RHS backward differences to be used later
-    compute_rhs_backward_difference(n_source_elements,
-      RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd, 1);
-    sim_td.domain()->scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd;
-
-    compute_rhs_backward_difference(n_delay_elements,
-      RandomRaySimulation::bd_order_, precursors_bd, precursors_rhs_bd, 1);
-    sim_td.domain()->precursors_rhs_bd_ = &precursors_rhs_bd;
-
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-      simulation::time_compute_neutron_source_time_derivative.start();
-      compute_rhs_backward_difference(n_source_elements,
-        RandomRaySimulation::bd_order_, source_bd, source_rhs_bd, 1);
-      simulation::time_compute_neutron_source_time_derivative.stop();
-      sim_td.domain()->source_rhs_bd_ = &source_rhs_bd;
-
-      simulation::time_compute_scalar_time_derivative_2.start();
-      compute_rhs_backward_difference(n_source_elements,
-        RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd_2,
-        2);
-      simulation::time_compute_scalar_time_derivative_2.stop();
-      sim_td.domain()->scalar_flux_rhs_bd_2_ = &scalar_flux_rhs_bd_2;
-    }
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-      sim_td.domain()->precursors_bd_ = &precursors_bd;
-      sim_td.domain()->delayed_fission_source_bd_ = &delayed_fission_source_bd;
-    }
+    sim_td.compute_rhs_bd_vectors(n_source_elements, n_delay_elements);
+    sim_td.store_rhs_bd_vectors();
 
     // Update time dependent cross section based on the density
     sim_td.domain()->update_material_density(i);
@@ -615,7 +606,8 @@ void validate_random_ray_inputs()
 int RandomRaySimulation::bd_order_ {1};
 
 RandomRaySimulation::RandomRaySimulation()
-  : negroups_(data::mg.num_energy_groups_)
+  : negroups_(data::mg.num_energy_groups_),
+    ndgroups_(data::mg.num_delayed_groups_)
 {
   // There are no source sites in random ray mode, so be sure to disable to
   // ensure we don't attempt to write source sites to statepoint
@@ -671,17 +663,16 @@ void RandomRaySimulation::simulate()
     // Reset total starting particle weight used for normalizing tallies
     simulation::total_weight = 1.0;
 
-    // Compute 2nd order flux time derivative for SDP
-    if (settings::run_mode == RunMode::TIME_DEPENDENT &&
-        RandomRay::time_mode_ == RandomRayTimeMode::SDP)
-      domain_->compute_scalar_flux_time_derivative_2();
-
+    // TODO: add update source convenience function
+    // domain_->compute_neutron_source()
     // Update source term (scattering + fission)
     domain_->update_neutron_source(k_eff_);
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       domain_->update_neutron_source_td(k_eff_);
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
         domain_->compute_neutron_source_time_derivative();
+        domain_->compute_scalar_flux_time_derivative_2();
+      }
     }
 
     // Reset scalar fluxes, iteration volume tallies, and region hit flags to
@@ -691,8 +682,6 @@ void RandomRaySimulation::simulate()
     // Start timer for transport
     simulation::time_transport.start();
 
-    // This SHOULD be the same for each timestep in TD simulations, but I need
-    // to verify
 // Transport sweep over all random rays for the iteration
 #pragma omp parallel for schedule(dynamic)                                     \
   reduction(+ : total_geometric_intersections_)
@@ -729,6 +718,8 @@ void RandomRaySimulation::simulate()
     // Execute all tallying tasks, if this is an active batch
     if (simulation::current_batch > settings::n_inactive) {
 
+      // TODO: add helper function
+      // domain_->accumulation_iteration_quantities()
       // Add this iteration's scalar flux estimate to final accumulated estimate
       domain_->accumulate_iteration_flux();
       if (settings::run_mode == RunMode::TIME_DEPENDENT ||
@@ -927,6 +918,68 @@ void RandomRaySimulation::print_results_random_ray(
     header("Results", 4);
     fmt::print(" k-effective                       = {:.5f} +/- {:.5f}\n",
       simulation::keff, simulation::keff_std);
+  }
+}
+
+//------------------------------------------------------------------------------
+// Time Dependent Methods
+//
+
+void RandomRaySimulation::compute_rhs_bd_vectors(
+  int64_t n_source_elements, int64_t n_delay_elements)
+{
+  compute_rhs_backward_difference(n_source_elements,
+    RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd, 1);
+
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    simulation::time_compute_neutron_source_time_derivative.start();
+    compute_rhs_backward_difference(n_source_elements,
+      RandomRaySimulation::bd_order_, source_bd, source_rhs_bd, 1);
+    simulation::time_compute_neutron_source_time_derivative.stop();
+
+    simulation::time_compute_scalar_time_derivative_2.start();
+    compute_rhs_backward_difference(n_source_elements,
+      RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd_2, 2);
+    simulation::time_compute_scalar_time_derivative_2.stop();
+  }
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+    get_bd_vector_slice(n_delay_elements, precursors_im1, precursors_bd, 1);
+    get_bd_vector_slice(
+      n_delay_elements, delayed_fission_source_im1, precursors_bd, 1);
+    get_bd_vector_slice(
+      n_delay_elements, delayed_fission_source_im2, precursors_bd, 2);
+  } else {
+    compute_rhs_backward_difference(n_delay_elements,
+      RandomRaySimulation::bd_order_, precursors_bd, precursors_rhs_bd, 1);
+  }
+}
+void RandomRaySimulation::store_rhs_bd_vectors()
+{
+#pragma omp for
+  for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
+    for (int g = 0; g < negroups_; g++) {
+      domain_->source_regions_.scalar_flux_rhs_bd(sr, g) =
+        scalar_flux_rhs_bd[sr * negroups_ + g];
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        domain_->source_regions_.source_rhs_bd(sr, g) =
+          source_rhs_bd[sr * negroups_ + g];
+        domain_->source_regions_.scalar_flux_rhs_bd_2(sr, g) =
+          scalar_flux_rhs_bd_2[sr * negroups_ + g];
+      }
+    }
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+        domain_->source_regions_.precursors_im1(sr, dg) =
+          precursors_im1[sr * ndgroups_ + dg];
+        domain_->source_regions_.delayed_fission_source_im1(sr, dg) =
+          delayed_fission_source_im1[sr * ndgroups_ + dg];
+        domain_->source_regions_.delayed_fission_source_im2(sr, dg) =
+          delayed_fission_source_im2[sr * ndgroups_ + dg];
+      } else {
+        domain_->source_regions_.precursors_rhs_bd(sr, dg) =
+          precursors_rhs_bd[sr * ndgroups_ + dg];
+      }
+    }
   }
 }
 

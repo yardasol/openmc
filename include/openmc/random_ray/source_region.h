@@ -164,6 +164,41 @@ public:
                                    //!< over all active iterations (used for
                                    //!< computing Precursor Integration)
 
+  // Energy group-wise 1D RHS BD arrays
+  vector<double>
+    scalar_flux_rhs_bd_; //!< RHS dervative for the scalar flux from previous
+                         //!< timesteps. Used to compute the total scalar flux
+                         //!< time derivative for both TI and SDP time-dependent
+                         //!< simulations
+  vector<double> source_rhs_bd_; //!< RHS derivative for the neutron source from
+                                 //!< previous timesteps Used for compute the
+                                 //!< total neutron source derivative for SDP
+  vector<double>
+    scalar_flux_rhs_bd_2_; //!< 2nd order RHS derivative for the scalar flux
+                           //!< from previous timesteps. Used to compute the
+                           //!< total 2nd order scalar flux time derivative for
+                           //!< SDP.
+
+  // Delay group-wise 1D RHS BD arrays
+  vector<double>
+    precursors_rhs_bd_; //!< RHS derivative for the precursors from previous
+                        //!< timesteps. Used to compute the total precursor time
+                        //!< derivative for solving the precursor equation using
+                        //!< backwards differences.
+  vector<double> precursors_im1_; //!< Precursor solution from previous time
+                                  //!< step. Used to solve the precursor
+                                  //!< equation using the integration method.
+  vector<double> delayed_fission_source_im1_; //<! Delayed fission source from
+                                              // the previous time step.
+                                              //<! Used to solve the precursor
+                                              // equation using the
+                                              //<! integration method.
+  vector<double> delayed_fission_source_im2_; //<! Delayed fission source from
+                                              // the i-2 time step.
+                                              //<! Used to solve the precursor
+                                              // equation using the
+                                              //<! integration method.
+
   // 2D array representing values for all energy groups x tally
   // tasks. Each group may have a different number of tally tasks
   // associated with it, necessitating the use of a jagged array.
@@ -520,6 +555,104 @@ public:
     return delayed_fission_source_final_[de];
   }
 
+  double& scalar_flux_rhs_bd(int64_t sr, int g)
+  {
+    return scalar_flux_rhs_bd_[index(sr, g)];
+  }
+  const double& scalar_flux_rhs_bd(int64_t sr, int g) const
+  {
+    return scalar_flux_rhs_bd_[index(sr, g)];
+  }
+  double& scalar_flux_rhs_bd(int64_t se) { return scalar_flux_rhs_bd_[se]; }
+  const double& scalar_flux_rhs_bd(int64_t se) const
+  {
+    return scalar_flux_rhs_bd_[se];
+  }
+
+  double& precursors_rhs_bd(int64_t sr, int dg)
+  {
+    return precursors_rhs_bd_[dindex(sr, dg)];
+  }
+  const double& precursors_rhs_bd(int64_t sr, int dg) const
+  {
+    return precursors_rhs_bd_[dindex(sr, dg)];
+  }
+  double& precursors_rhs_bd(int64_t de) { return precursors_rhs_bd_[de]; }
+  const double& precursors_rhs_bd(int64_t de) const
+  {
+    return precursors_rhs_bd_[de];
+  }
+
+  double& source_rhs_bd(int64_t sr, int g)
+  {
+    return source_rhs_bd_[index(sr, g)];
+  }
+  const double& source_rhs_bd(int64_t sr, int g) const
+  {
+    return source_rhs_bd_[index(sr, g)];
+  }
+  double& source_rhs_bd(int64_t se) { return source_rhs_bd_[se]; }
+  const double& source_rhs_bd(int64_t se) const { return source_rhs_bd_[se]; }
+
+  double& scalar_flux_rhs_bd_2(int64_t sr, int g)
+  {
+    return scalar_flux_rhs_bd_2_[index(sr, g)];
+  }
+  const double& scalar_flux_rhs_bd_2(int64_t sr, int g) const
+  {
+    return scalar_flux_rhs_bd_2_[index(sr, g)];
+  }
+  double& scalar_flux_rhs_bd_2(int64_t se) { return scalar_flux_rhs_bd_2_[se]; }
+  const double& scalar_flux_rhs_bd_2(int64_t se) const
+  {
+    return scalar_flux_rhs_bd_2_[se];
+  }
+
+  double& precursors_im1(int64_t sr, int dg)
+  {
+    return precursors_im1_[dindex(sr, dg)];
+  }
+  const double& precursors_im1(int64_t sr, int dg) const
+  {
+    return precursors_im1_[dindex(sr, dg)];
+  }
+  double& precursors_im1(int64_t de) { return precursors_im1_[de]; }
+  const double& precursors_im1(int64_t de) const { return precursors_im1_[de]; }
+
+  double& delayed_fission_source_im1(int64_t sr, int dg)
+  {
+    return delayed_fission_source_im1_[dindex(sr, dg)];
+  }
+  const double& delayed_fission_source_im1(int64_t sr, int dg) const
+  {
+    return delayed_fission_source_im1_[dindex(sr, dg)];
+  }
+  double& delayed_fission_source_im1(int64_t de)
+  {
+    return delayed_fission_source_im1_[de];
+  }
+  const double& delayed_fission_source_im1(int64_t de) const
+  {
+    return delayed_fission_source_im1_[de];
+  }
+
+  double& delayed_fission_source_im2(int64_t sr, int dg)
+  {
+    return delayed_fission_source_im2_[dindex(sr, dg)];
+  }
+  const double& delayed_fission_source_im2(int64_t sr, int dg) const
+  {
+    return delayed_fission_source_im2_[dindex(sr, dg)];
+  }
+  double& delayed_fission_source_im2(int64_t de)
+  {
+    return delayed_fission_source_im2_[de];
+  }
+  const double& delayed_fission_source_im2(int64_t de) const
+  {
+    return delayed_fission_source_im2_[de];
+  }
+
   float& external_source(int64_t sr, int g)
   {
     return external_source_[index(sr, g)];
@@ -645,6 +778,17 @@ private:
   vector<double> precursors_final_;
   vector<double> delayed_fission_source_;
   vector<double> delayed_fission_source_final_;
+
+  // SoA energy group-wise 2D RHS BD arrays flattened to 1D
+  vector<double> scalar_flux_rhs_bd_;
+  vector<double> source_rhs_bd_;
+  vector<double> scalar_flux_rhs_bd_2_;
+
+  // SoA delay group-wise 2D RHS BD arrays flattened to 1D
+  vector<double> precursors_rhs_bd_;
+  vector<double> precursors_im1_;
+  vector<double> delayed_fission_source_im1_;
+  vector<double> delayed_fission_source_im2_;
 
   // SoA 3D array representing values for all source regions x energy groups x
   // tally tasks. The outer two dimensions (source regions and energy groups)

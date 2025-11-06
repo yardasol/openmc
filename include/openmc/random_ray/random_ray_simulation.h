@@ -32,6 +32,12 @@ public:
     int64_t n_external_source_regions) const;
 
   //----------------------------------------------------------------------------
+  // Time Dependent Methods
+  void compute_rhs_bd_vectors(
+    int64_t n_source_elements, int64_t n_delay_elements);
+  void store_rhs_bd_vectors();
+
+  //----------------------------------------------------------------------------
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
 
@@ -61,6 +67,9 @@ private:
   // Number of energy groups
   int negroups_;
 
+  // Number of delay groups
+  int ndgroups_;
+
 }; // class RandomRaySimulation
 
 //============================================================================
@@ -81,6 +90,10 @@ void compute_rhs_backward_difference(int64_t vector_size,
   vector<double>& rhs_bd_vector, int derivative_order);
 
 void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector);
+
+void get_bd_vector_slice(int64_t vector_size, vector<double>& storage_vector,
+  vector<double>& bd_vector, int neg_timestep_index);
+
 void normalize_serialized_vector(
   vector<double>& vector, double normalization_factor);
 
