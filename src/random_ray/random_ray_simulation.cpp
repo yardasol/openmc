@@ -261,8 +261,6 @@ void openmc_run_random_ray_time_dependent()
   int64_t n_source_elements = previous_scalar_flux.size();
   int64_t n_source_regions = n_source_elements / data::mg.num_energy_groups_;
   int64_t n_delay_elements = n_source_regions * data::mg.num_delayed_groups_;
-  int64_t n_material_elements =
-    data::mg.macro_xs_.size() * data::mg.num_energy_groups_;
 
   initialize_bd_vector(n_source_elements, RandomRaySimulation::bd_order_ + 2,
     scalar_flux_bd, previous_scalar_flux);
