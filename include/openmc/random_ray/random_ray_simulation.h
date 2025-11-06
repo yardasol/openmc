@@ -98,6 +98,7 @@ void set_time_dependent_settings();
 
 void rename_statepoint_file(int i);
 void rename_tallies_file(int i);
+void increment_batches();
 
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
   vector<double>& bd_vector, vector<double>& vector);

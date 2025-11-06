@@ -588,9 +588,9 @@ void read_settings_xml(pugi::xml_node root)
   if (check_for_node(root, "convergence_method")) {
     std::string temp_str =
       get_node_value(root, "convergence_method", true, true);
-    if (temp_str == "fixed_batch") {
+    if (temp_str == "fixed batch") {
       convergence_method = ConvergenceMethod::FIXED_BATCH;
-    } else if (temp_str == "rms_window_averaged") {
+    } else if (temp_str == "window-averaged rms") {
       convergence_method = ConvergenceMethod::WINDOW_AVG_RMS;
     } else {
       fatal_error("Unrecognized convergence method: " + temp_str);
