@@ -240,6 +240,7 @@ void openmc_run_random_ray_time_dependent()
   /////////////////////////////////
 
   simulation::time_initialize_td.start();
+  reset_timers();
   // Reset run_mode and batches
   settings::run_mode = RunMode::TIME_DEPENDENT;
   settings::n_batches = settings::n_batches_td;
@@ -278,16 +279,17 @@ void openmc_run_random_ray_time_dependent()
 
   // Timestepping loop
   for (int i = 0; i < settings::n_timesteps; i++) {
-    settings::current_timestep = i;
+    settings::current_timestep = i + 1;
 
     // Print simulation information
     if (mpi::master) {
       // Offset to resolve steady state
-      std::string message = fmt::format("TIME DEPENDENT SOLVE {0}", i + 1);
+      std::string message = fmt::format("TIME DEPENDENT SOLVE {0}", i);
       const char* msg = message.c_str();
       header(msg, 3);
     }
 
+    if (settings::current_timestep > 1)
     reset_timers();
 
     // Initialize OpenMC general data structures
@@ -337,7 +339,7 @@ void openmc_run_random_ray_time_dependent()
     sim_td.output_simulation_results();
 
     // Rename statepoint file
-    rename_statepoint_file(i + 1);
+    rename_statepoint_file(i);
 
     // Compute normalization factors
     double normalization_factor =
