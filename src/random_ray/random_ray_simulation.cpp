@@ -183,8 +183,6 @@ vector<double> previous_precursors;
 vector<double> previous_source;
 vector<double> previous_delayed_fission_source;
 
-dequeue<double> batchwise_fission_source;
-
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
   vector<double>& bd_vector, vector<double>& vector)
 {
@@ -928,48 +926,50 @@ void RandomRaySimulation::compute_and_store_batch_fission_source(
       }
       F_sr += sigma_t * flux;
     }
-    // Vector of vectors
-    domain_->batchwise_fission_source(sr).push_back(F_sr);
+    domain_->batchwise_fission_source(sr).push_front(F_sr);
     // Remove the first n_source_regions_ * negroups_ elements
     // if we move the window
     if (shift_window)
-      domain_->batchwise_fission_source(sr).pop_front();
+      domain_->batchwise_fission_source(sr).pop_back();
   }
 }
 
 void RandomRaySimulation::compare_window_averaged_rms_error()
 {
   // Compute the window-averaged RMS error
+  double W_fissile = 0.0;
+  if (!all_fissile_regions_found) {
+#pragma omp parallel for
+    for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
+      int material = source_regions_.material(sr);
+      // TODO: make it so we only have to look for all fissile regions once
+      if (domain_->sigma_f_[material * negroups_] != 0.0)
+        W_fissile += 1;
+      else
+        continue;
+    }
+  }
   int half_window = int(0.5 * settings::convergence_window_size);
   double rms = 0.0;
-  double W_fissile = 0.0;
-  for (int64_t sr = 0; sr < domain_->n_source_regions(); sr++) {
-    SourceRegionHandle srh =
-      domain_->source_regions_.get_source_region_handle(sr);
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
     int material = source_regions_.material(sr);
-    if (domain_->sigma_f_[material * negroups_] != 0.0)
-      W_fissile += 1;
-    else
-      continue;
     double F_sr_new = 0.0;
     double F_sr_old = 0.0;
-#pragma omp parallel for
-    for (int g = 0; g < negroups_; g++) {
-      for (int b = half_window; b < B_w; b++)
-        F_sr_new +=
-          batchwise_fission_source[b * n_source_elements_ + sr * negroups_ + g];
-      for (int b = 0; b < half_window; b++)
-        F_sr_new +=
-          batchwise_fission_source[b * n_source_elements_ + sr * negroups_ + g];
-    }
+    for (int b = 0; b < half_window; b++)
+      F_sr_new += domain_->source_regions_.batchwise_fission_source(sr)[b];
+    for (int b = half_window; b < B_w; b++)
+      F_sr_old += domain_->source_regions_.batchwise_fission_source(sr)[b];
+  }
     F_sr_new /= half_window;
     F_sr_old /= half_window;
-    rms += pow(F_sr_new - F_sr_old) / F_sr_new, 2;
+    rms += pow((F_sr_new - F_sr_old) / F_sr_new, 2);
   }
   rms /= W_fissile;
+  rms = sqrt(rms);
 
-  if rms
-    <= (settings::source_convergence_threshold) return true;
+  if (rms <= settings::source_convergence_threshold)
+    return true;
   else
     return false;
 }

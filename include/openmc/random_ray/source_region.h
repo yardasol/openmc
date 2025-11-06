@@ -209,6 +209,10 @@ public:
   // associated with it, necessitating the use of a jagged array.
   vector<vector<TallyTask>> tally_delay_task_;
 
+  // 1D array represetnting fission source across a fixed widnow of batches.
+  // This is used for assesing convergence.
+  deque<double> batchwise_fission_source_;
+
 }; // class SourceRegion
 
 class SourceRegionContainer {
@@ -698,6 +702,15 @@ public:
     return tally_delay_task_[de];
   }
 
+  deque<double>& batchwise_fission_source(int64_t sr)
+  {
+    return batchwise_fission_source_[sr];
+  }
+  const deque<double>& batchwise_fission_source(int64_t sr) const
+  {
+    return batchwise_fission_source_[sr];
+  }
+
   std::unordered_set<TallyTask, TallyTask::HashFunctor>& volume_task(int64_t sr)
   {
     return volume_task_[sr];
@@ -803,6 +816,9 @@ private:
   // associated with it, necessitating the use of a jagged array for the inner
   // dimension.
   vector<vector<TallyTask>> tally_delay_task_;
+
+  // SoA source region-wise 2D batchwise fission sousrce array
+  vector<deque<double>> batchwise_fission_source_;
 
   //----------------------------------------------------------------------------
   // Private Methods

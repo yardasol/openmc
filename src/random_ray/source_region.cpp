@@ -75,6 +75,9 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 
   tally_task_.resize(negroups);
 
+  // TODO: Do we need this??
+  //  batchwise_fission_source_.resize(window_size)
+
   if (is_linear) {
     source_gradients_.resize(negroups);
     flux_moments_old_.resize(negroups);
@@ -255,6 +258,8 @@ void SourceRegionContainer::assign(
 
   tally_task_.clear();
   volume_task_.clear();
+
+  batchwise_fission_source_.clear();
 
   // Fill with copies of source_region
   for (int i = 0; i < n_source_regions; ++i) {
