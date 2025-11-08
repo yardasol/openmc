@@ -368,37 +368,6 @@ void get_run_parameters(pugi::xml_node node_base)
       } else {
         fatal_error("Specify BD approximation order in settings XML");
       }
-      if (convergence_method == ConvergenceMethod::WINDOW_AVG_RMS) {
-        if (check_for_node(random_ray_node, "convergence_window_size")) {
-          convergence_window_size = std::stoi(
-            get_node_value(random_ray_node, "convergence_window_size"));
-          if (convergence_window_size >= n_inactive) {
-            warning("The convergence window size is greater than or equal to "
-                    "the number of inactive batches. "
-                    "Setting number of inactive batches to one more than the "
-                    "convergence window size...");
-            int batch_adjustment = n_inactive - convergence_window_size + 1;
-            n_inactive += batch_adjustment;
-            n_batches += batch_adjustment;
-            n_max_batches = n_batches;
-            int m = n_max_batches * settings::gen_per_batch;
-            simulation::k_generation.resize(m);
-            simulation::entropy.resize(m);
-            statepoint_batch.clear();
-            statepoint_batch.insert(n_batches);
-          }
-        } else {
-          fatal_error("Specify convergence window size in settings XML when "
-                      "using window-averaged RMS convergence");
-        }
-        if (check_for_node(random_ray_node, "source_convergence_threshold")) {
-          source_convergence_threshold = std::stod(
-            get_node_value(random_ray_node, "source_convergence_threshold"));
-        } else {
-          fatal_error("Specify source convergence threshold in settings XML "
-                      "when using window-averaged RMS convergence");
-        }
-      }
       if (check_for_node(random_ray_node, "time_mode")) {
         std::string temp_str =
           get_node_value(random_ray_node, "time_mode", true, true);
@@ -645,6 +614,38 @@ void read_settings_xml(pugi::xml_node root)
         fatal_error(
           "Number of time step inactive batches must be non-negative.");
       }
+    }
+  }
+
+  if (convergence_method == ConvergenceMethod::WINDOW_AVG_RMS) {
+    if (check_for_node(root, "convergence_window_size")) {
+      convergence_window_size =
+        std::stoi(get_node_value(root, "convergence_window_size"));
+      if (convergence_window_size >= n_inactive) {
+        warning("The convergence window size is greater than or equal to "
+                "the number of inactive batches. "
+                "Setting number of inactive batches to one more than the "
+                "convergence window size...");
+        int batch_adjustment = n_inactive - convergence_window_size + 1;
+        n_inactive += batch_adjustment;
+        n_batches += batch_adjustment;
+        n_max_batches = n_batches;
+        int m = n_max_batches * settings::gen_per_batch;
+        simulation::k_generation.resize(m);
+        simulation::entropy.resize(m);
+        statepoint_batch.clear();
+        statepoint_batch.insert(n_batches);
+      }
+    } else {
+      fatal_error("Specify convergence window size in settings XML when "
+                  "using window-averaged RMS convergence");
+    }
+    if (check_for_node(root, "source_convergence_threshold")) {
+      source_convergence_threshold =
+        std::stod(get_node_value(root, "source_convergence_threshold"));
+    } else {
+      fatal_error("Specify source convergence threshold in settings XML "
+                  "when using window-averaged RMS convergence");
     }
   }
 
