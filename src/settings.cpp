@@ -372,6 +372,21 @@ void get_run_parameters(pugi::xml_node node_base)
         if (check_for_node(random_ray_node, "convergence_window_size")) {
           convergence_window_size = std::stoi(
             get_node_value(random_ray_node, "convergence_window_size"));
+          if (convergence_window_size >= n_inactive) {
+            warning("The convergence window size is greater than or equal to "
+                    "the number of inactive batches. "
+                    "Setting number of inactive batches to one more than the "
+                    "convergence window size...");
+            int batch_adjustment = n_inactive - convergence_window_size + 1;
+            n_inactive += batch_adjustment;
+            n_batches += batch_adjustment;
+            n_max_batches = n_batches;
+            int m = n_max_batches * settings::gen_per_batch;
+            simulation::k_generation.resize(m);
+            simulation::entropy.resize(m);
+            statepoint_batch.clear();
+            statepoint_batch.insert(n_batches);
+          }
         } else {
           fatal_error("Specify convergence window size in settings XML when "
                       "using window-averaged RMS convergence");
