@@ -15,6 +15,7 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     s.particles = 1000000
     s.convergence_method = 'fixed batch'
     s.convergence_window_size = 100
+    s.max_source_convergence_batches = 1000
     s.max_lost_particles = 5
     s.rel_max_lost_particles = 1e-4
     s.keff_trigger = {'type': 'std_dev', 'threshold': 0.001}
@@ -97,6 +98,7 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     assert s.run_mode == mode
     assert s.convergence_method == 'fixed batch'
     assert s.convergence_window_size == 100
+    assert s.max_source_convergence_batches == 1000
     assert s.batches == 1000
     assert s.generations_per_batch == 10
     assert s.inactive == 100

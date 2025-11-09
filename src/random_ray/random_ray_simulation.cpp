@@ -733,11 +733,14 @@ void RandomRaySimulation::simulate()
       } else {
         compute_and_store_batch_fission_source(false);
       }
+      if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS &&
+            simulation::current_batch >= settings::max_source_convergence_batches)
+        source_converged_ = true;
       if (!source_converged_ &&
           simulation::current_batch == settings::n_inactive)
         increment_batches();
     }
-
+    
     // Execute all tallying tasks, if this is an active batch
     if (source_converged_) {
       // TODO: Add machinery for tolerance-based solution convergence
@@ -940,7 +943,7 @@ void RandomRaySimulation::compute_and_store_batch_fission_source(
     for (int g = 0; g < negroups_; g++) {
       double sigma_f;
       double flux;
-      if (settings::is_initial_condition) {
+      if (settings::run_mode != RunMode::TIME_DEPENDENT) {
         sigma_f = domain_->sigma_f_[material * negroups_ + g];
         flux = domain_->source_regions_.scalar_flux_old(sr, g);
       } else {

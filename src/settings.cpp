@@ -142,6 +142,7 @@ double weight_survive {1.0};
 int n_batches_td;
 int32_t n_inactive_td {0};
 int convergence_window_size;
+int max_source_convergence_batches;
 double source_convergence_threshold;
 int n_timesteps;
 double dt;
@@ -278,6 +279,13 @@ void get_run_parameters(pugi::xml_node node_base)
     } else {
       fatal_error("Specify convergence window size in settings XML when "
                   "using window-averaged RMS convergence");
+    }
+    if (check_for_node(node_base, "max_source_convergence_batches")) {
+      source_convergence_threshold =
+        std::stoi(get_node_value(node_base, "max_source_convergence_batches"));
+    } else {
+      fatal_error("Specify maximum number of source convergence batches in settings XML "
+                  "when using window-averaged RMS convergence");
     }
     if (check_for_node(node_base, "source_convergence_threshold")) {
       source_convergence_threshold =
