@@ -211,7 +211,7 @@ public:
   // associated with it, necessitating the use of a jagged array.
   vector<vector<TallyTask>> tally_delay_task_;
 
-  // 1D array represetnting fission source across a fixed widnow of batches.
+  // 1D array represetnting fission source across a fixed window of batches.
   // This is used for assesing convergence.
   std::deque<double> batchwise_fission_source_;
 
