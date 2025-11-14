@@ -54,9 +54,14 @@ class Settings:
         The convergence method to use. 
 
         .. versionadded:: 0.15.2
-    convergence_window_size : {'fixed batch', 'window-averaged rms'}
+    convergence_window_size : int
         The size of the window (in batches) for use with window-averaged
         RMS convergence
+
+        .. versionadded:: 0.15.2
+    max_source_convergence_batches : int
+        The maximum nubmer of source convergence batches to use with
+        window-averaged RMS convergence
 
         .. versionadded:: 0.15.2
     create_fission_neutrons : bool
@@ -357,6 +362,7 @@ class Settings:
         self._run_mode = RunMode.EIGENVALUE
         self._convergence_method = None
         self._convergence_window_size = None
+        self._max_source_convergence_batches = None
         self._source_convergence_threshold = None
         self._batches = None
         self._generations_per_batch = None
@@ -475,9 +481,17 @@ class Settings:
     def convergence_window_size(self, convergence_window_size: int):
         cv.check_type('convergence_window_size', convergence_window_size, Integral)
         cv.check_greater_than('convergence_window_size', convergence_window_size, 2)
-        # We should have at a minimum a number of inactive batches less than our window size
-        cv.check_less_than('convergence_window_size', convergence_window_size, self._inactive)
         self._convergence_window_size = convergence_window_size
+
+    @property
+    def max_source_convergence_batches(self) -> int:
+        return self._max_source_convergence_batches
+
+    @max_source_convergence_batches.setter
+    def max_source_convergence_batches(self, max_source_convergence_batches: int):
+        cv.check_type('max_source_convergence_batches', max_source_convergence_batches, Integral)
+        cv.check_greater_than('max_source_convergence_batches', max_source_convergence_batches, 2)
+        self._max_source_convergence_batches = max_source_convergence_batches
 
     @property
     def source_convergence_threshold(self) -> float:
@@ -1273,6 +1287,11 @@ class Settings:
             element = ET.SubElement(root, "convergence_window_size")
             element.text = str(self._convergence_window_size)
 
+    def _create_max_source_convergence_batches_subelement(self, root):
+        if self._max_source_convergence_batches is not None:
+            element = ET.SubElement(root, "max_source_convergence_batches")
+            element.text = str(self._max_source_convergence_batches)
+
     def _create_source_convergence_threshold_subelement(self, root):
         if self._source_convergence_threshold is not None:
             element = ET.SubElement(root, "source_convergence_threshold")
@@ -1738,6 +1757,11 @@ class Settings:
         if text is not None:
             self.convergence_window_size = int(text)
 
+    def _max_source_convergence_batches_from_xml_element(self, root):
+        text = get_text(root, 'max_source_convergence_batches')
+        if text is not None:
+            self.max_source_convergence_batches = int(text)
+
     def _source_convergence_threshold_from_xml_element(self, root):
         text = get_text(root, 'source_convergence_threshold')
         if text is not None:
@@ -2144,8 +2168,10 @@ class Settings:
         self._create_run_mode_subelement(element)
         self._create_convergence_method_subelement(element)
         self._create_convergence_window_size_subelement(element)
+        self._create_max_source_convergence_batches_subelement(element)
         self._create_source_convergence_threshold_subelement(element)
         self._create_particles_subelement(element)
+        self._create_batches_subelement(element)
         self._create_inactive_subelement(element)
         self._create_max_lost_particles_subelement(element)
         self._create_rel_max_lost_particles_subelement(element)
@@ -2253,6 +2279,7 @@ class Settings:
         settings._run_mode_from_xml_element(elem)
         settings._convergence_method_from_xml_element(elem)
         settings._convergence_window_size_from_xml_element(elem)
+        settings._max_source_convergence_batches_from_xml_element(elem)
         settings._source_convergence_threshold_from_xml_element(elem)
         settings._particles_from_xml_element(elem)
         settings._inactive_from_xml_element(elem)

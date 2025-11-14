@@ -80,7 +80,8 @@ private:
   int ndgroups_;
 
   // Flag to determine if every fissile region has been found
-  bool all_fissile_regions_found_;
+  bool all_fissile_regions_found_ {false};
+  vector<int> fissile_region_srs_;
 
   bool source_converged_ {false};
 

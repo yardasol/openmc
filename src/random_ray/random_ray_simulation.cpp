@@ -387,8 +387,8 @@ void increment_batches()
 
   // Increment k_generation and entropy
   int m = settings::n_max_batches * settings::gen_per_batch;
-  simulation::k_generation.resize(m);
-  simulation::entropy.resize(m);
+  simulation::k_generation.reserve(m);
+  simulation::entropy.reserve(m);
 
   // Reset statepoint_batch for statepoint writing
   // TODO: Make this work with multiple batch statepoints, see line 863 in
@@ -634,7 +634,10 @@ RandomRaySimulation::RandomRaySimulation()
 
   // Convert OpenMC native MGXS into a more efficient format
   // internal to the random ray solver
-  domain_->flatten_xs(); 
+  domain_->flatten_xs();
+
+  if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS)
+    fissile_region_srs_;
 }
 
 void RandomRaySimulation::prepare_fixed_sources()
@@ -730,6 +733,9 @@ void RandomRaySimulation::simulate()
       } else {
         compute_and_store_batch_fission_source(false);
       }
+      if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS &&
+          simulation::current_batch >= settings::max_source_convergence_batches)
+        source_converged_ = true;
       if (!source_converged_ &&
           simulation::current_batch == settings::n_inactive)
         increment_batches();
@@ -937,7 +943,7 @@ void RandomRaySimulation::compute_and_store_batch_fission_source(
     for (int g = 0; g < negroups_; g++) {
       double sigma_f;
       double flux;
-      if (settings::is_initial_condition) {
+      if (settings::run_mode != RunMode::TIME_DEPENDENT) {
         sigma_f = domain_->sigma_f_[material * negroups_ + g];
         flux = domain_->source_regions_.scalar_flux_old(sr, g);
       } else {
@@ -957,14 +963,13 @@ void RandomRaySimulation::compute_and_store_batch_fission_source(
 double RandomRaySimulation::compute_window_averaged_rms_error()
 {
   // Compute the window-averaged RMS error
-  double W_fissile = 0.0;
+
   if (!all_fissile_regions_found_) {
-#pragma omp parallel for
     for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
       int material = domain_->source_regions_.material(sr);
       for (int g = 0; g < negroups_; g++) {
         if (domain_->sigma_f_[material * negroups_] != 0.0) {
-          W_fissile += 1;
+          fissile_region_srs_.push_back(sr);
           break;
         }
       }
@@ -972,11 +977,13 @@ double RandomRaySimulation::compute_window_averaged_rms_error()
     all_fissile_regions_found_ = true;
   }
 
+  int W_fissile = fissile_region_srs_.size();
+
   int B_w = settings::convergence_window_size;
   int half_window = int(0.5 * B_w);
   double rms = 0.0;
 #pragma omp parallel for
-  for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
+  for (auto sr : fissile_region_srs_) {
     int material = domain_->source_regions_.material(sr);
     double F_sr_new = 0.0;
     double F_sr_old = 0.0;
