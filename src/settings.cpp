@@ -281,7 +281,7 @@ void get_run_parameters(pugi::xml_node node_base)
                   "using window-averaged RMS convergence");
     }
     if (check_for_node(node_base, "max_source_convergence_batches")) {
-      source_convergence_threshold =
+      max_source_convergence_batches =
         std::stoi(get_node_value(node_base, "max_source_convergence_batches"));
     } else {
       fatal_error(

@@ -2282,6 +2282,7 @@ class Settings:
         settings._max_source_convergence_batches_from_xml_element(elem)
         settings._source_convergence_threshold_from_xml_element(elem)
         settings._particles_from_xml_element(elem)
+        settings._batches_from_xml_element(elem)
         settings._inactive_from_xml_element(elem)
         settings._max_lost_particles_from_xml_element(elem)
         settings._rel_max_lost_particles_from_xml_element(elem)

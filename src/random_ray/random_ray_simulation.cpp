@@ -737,7 +737,7 @@ void RandomRaySimulation::simulate()
           simulation::current_batch >= settings::max_source_convergence_batches)
         source_converged_ = true;
       if (!source_converged_ &&
-          simulation::current_batch == settings::n_inactive)
+          simulation::current_batch == settings::n_inactive + 1)
         increment_batches();
     }
 
