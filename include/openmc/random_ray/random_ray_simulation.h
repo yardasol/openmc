@@ -38,13 +38,17 @@ public:
 
   //----------------------------------------------------------------------------
   // Time Dependent Methods
+  void is_window_avg_rms_source_converged(); // Determine if the window-averaged
+                                             // RMS of the source is converged
   void initialize_bd_vectors();
-  void increment_bd_vectors(
-    int64_t n_source_elements, int64_t n_delay_elements);
+  void increment_bd_vectors(int64_t n_source_elements,
+    int64_t
+      n_delay_elements); // Rotate the BD vectors to contain the next timestep
   void compute_rhs_bd_vectors(
     int64_t n_source_elements, int64_t n_delay_elements);
-  void store_rhs_bd_vectors();
-  void normalize_and_store_quantities();
+  void store_rhs_bd_vectors(); // Store the RHS BD vectors in the source region
+  void normalize_and_store_quantities(); // Store quantitites (flux, source,
+                                         // precursors) in the BD vectors
 
   //----------------------------------------------------------------------------
   // Accessors
@@ -83,6 +87,7 @@ private:
   bool all_fissile_regions_found_ {false};
   vector<int> fissile_region_srs_;
 
+  // Flag to track if the source has converged
   bool source_converged_ {false};
 
 }; // class RandomRaySimulation
@@ -99,7 +104,13 @@ void set_time_dependent_settings();
 
 void rename_statepoint_file(int i);
 void rename_tallies_file(int i);
-void increment_batches();
+void increment_batches(); // Incremenet the number of batches and related
+                          // arrays for an unconverged simulation. Only used
+                          // for window-averged RMS convergence.
+void fix_batches(); // If a simulation is converged but hasn't reached the set
+                    // number of inactive batches, reduce the number of batches
+                    // and related arrays so the tallying and statepoint
+                    // machinery works as intended.
 
 void initialize_bd_vector(int64_t vector_size, int n_timesteps,
   vector<double>& bd_vector, vector<double>& vector);

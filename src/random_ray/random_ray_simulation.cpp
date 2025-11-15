@@ -271,7 +271,8 @@ void openmc_run_random_ray_time_dependent()
     // Print simulation information
     if (mpi::master) {
       // Offset to resolve steady state
-      std::string message = fmt::format("TIME DEPENDENT SOLVE {0}", i);
+      std::string message =
+        fmt::format("TIME DEPENDENT SOLVE {0}", settings::current_timestep);
       const char* msg = message.c_str();
       header(msg, 3);
     }
@@ -317,9 +318,9 @@ void openmc_run_random_ray_time_dependent()
     sim_td.output_simulation_results();
 
     // Rename statepoint and tallies file
-    rename_statepoint_file(i + 1);
+    rename_statepoint_file(settings::current_timestep);
     if (settings::output_tallies) {
-      rename_tallies_file(i + 1);
+      rename_tallies_file(settings::current_timestep);
     }
 
     // Save the converged keff in previous_k_eff
@@ -389,6 +390,20 @@ void increment_batches()
   int m = settings::n_max_batches * settings::gen_per_batch;
   simulation::k_generation.reserve(m);
   simulation::entropy.reserve(m);
+
+  // Reset statepoint_batch for statepoint writing
+  // TODO: Make this work with multiple batch statepoints, see line 863 in
+  // settings.cpp
+  settings::statepoint_batch.clear();
+  settings::statepoint_batch.insert(settings::n_batches);
+}
+
+void fix_batches()
+{
+  int batch_adjustment = simulation::current_batch - settings::n_inactive;
+  settings::n_inactive += batch_adjustment;
+  settings::n_batches += batch_adjustment;
+  settings::n_max_batches = settings::n_batches;
 
   // Reset statepoint_batch for statepoint writing
   // TODO: Make this work with multiple batch statepoints, see line 863 in
@@ -662,6 +677,13 @@ void RandomRaySimulation::simulate()
   // Random ray power iteration loop
   while (simulation::current_batch < settings::n_batches) {
 
+    // Determine if the source is converged
+    int& curr = simulation::current_batch;
+    if (simulation::current_batch > 0)
+      if (!source_converged_ &&
+          settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS)
+        is_window_avg_rms_source_converged();
+
     // Initialize the current batch
     initialize_batch();
     initialize_generation();
@@ -721,27 +743,10 @@ void RandomRaySimulation::simulate()
     // Compute precursors
     domain_->compute_precursors(k_eff_);
 
-    // Determine if the source is converged
-    if (settings::convergence_method == ConvergenceMethod::FIXED_BATCH) {
+    if (settings::convergence_method == ConvergenceMethod::FIXED_BATCH)
       source_converged_ = simulation::current_batch > settings::n_inactive;
-    } else if (settings::convergence_method ==
-               ConvergenceMethod::WINDOW_AVG_RMS) {
-      if (simulation::current_batch >= settings::convergence_window_size) {
-        compute_and_store_batch_fission_source();
-        double rms = compute_window_averaged_rms_error();
-        source_converged_ = rms <= settings::source_convergence_threshold;
-      } else {
-        compute_and_store_batch_fission_source(false);
-      }
-      if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS &&
-          simulation::current_batch >= settings::max_source_convergence_batches)
-        source_converged_ = true;
-      if (!source_converged_ &&
-          simulation::current_batch == settings::n_inactive + 1)
-        increment_batches();
-    }
 
-    // Execute all tallying tasks, if this is an active batch
+    // Execute all tallying tasks, if the source is converged
     if (source_converged_) {
       // TODO: Add machinery for tolerance-based solution convergence
       // Add this iteration's estimates (flux, precursors, etc.) to final
@@ -931,6 +936,31 @@ void RandomRaySimulation::print_results_random_ray(
 
 //------------------------------------------------------------------------------
 // Time Dependent Methods
+void RandomRaySimulation::is_window_avg_rms_source_converged()
+{
+  if (simulation::current_batch >= settings::convergence_window_size) {
+    compute_and_store_batch_fission_source();
+    double rms = compute_window_averaged_rms_error();
+    source_converged_ = rms <= settings::source_convergence_threshold;
+  } else {
+    compute_and_store_batch_fission_source(false);
+  }
+  // Consider the simulation converged if we've reached the maximum
+  // number of allowed batches
+  if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS &&
+      simulation::current_batch >= settings::max_source_convergence_batches) {
+    source_converged_ = true;
+    warning(
+      "Reached maximum allowed number of source convergence batches. Source"
+      "may not be converged.");
+  }
+  if (!source_converged_ && simulation::current_batch == settings::n_inactive) {
+    increment_batches();
+  } else if (source_converged_ &&
+             simulation::current_batch <= settings::n_inactive) {
+    fix_batches();
+  }
+}
 
 void RandomRaySimulation::compute_and_store_batch_fission_source(
   bool shift_window)
