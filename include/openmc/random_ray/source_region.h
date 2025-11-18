@@ -211,8 +211,8 @@ public:
   // associated with it, necessitating the use of a jagged array.
   vector<vector<TallyTask>> tally_delay_task_;
 
-  // 1D array represetnting fission source across a fixed window of batches.
-  // This is used for assesing convergence.
+  // 1D array representing fission source across a fixed window of batches.
+  // This is used for assesing source convergence.
   std::deque<double> batchwise_fission_source_;
 
 }; // class SourceRegion
@@ -819,7 +819,7 @@ private:
   // dimension.
   vector<vector<TallyTask>> tally_delay_task_;
 
-  // SoA source region-wise 2D batchwise fission sousrce array
+  // SoA source region-wise 2D batchwise fission source array
   vector<std::deque<double>> batchwise_fission_source_;
 
   //----------------------------------------------------------------------------

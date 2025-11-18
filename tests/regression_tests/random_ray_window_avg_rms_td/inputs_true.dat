@@ -73,9 +73,9 @@
   </geometry>
   <settings>
     <run_mode>time dependent</run_mode>
-    <convergence_method>window-averaged rms</convergence_method>
-    <convergence_window_size>100</convergence_window_size>
-    <max_source_convergence_batches>1000</max_source_convergence_batches>
+    <source_convergence_method>window-averaged rms</source_convergence_method>
+    <source_convergence_window_size>100</source_convergence_window_size>
+    <source_convergence_maximum_batches>1000</source_convergence_maximum_batches>
     <source_convergence_threshold>0.05</source_convergence_threshold>
     <particles>100</particles>
     <batches>10</batches>

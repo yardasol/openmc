@@ -15,9 +15,9 @@ class MGXSTestHarnessTD(TolerantPyAPITestHarnessTD):
 
 def test_random_ray_basic():
     model = random_ray_lattice(time_dependent=True)
-    model.settings.convergence_method = 'window-averaged rms'
-    model.settings.convergence_window_size = 100
-    model.settings.max_source_convergence_batches = 1000
+    model.settings.source_convergence_method = 'window-averaged rms'
+    model.settings.source_convergence_window_size = 100
+    model.settings.source_convergence_maximum_batches = 1000
     model.settings.source_convergence_threshold = 5e-2
     harness = MGXSTestHarnessTD(model, 3)
     harness.main()

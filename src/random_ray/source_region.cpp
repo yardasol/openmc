@@ -75,7 +75,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 
   tally_task_.resize(negroups);
 
-  if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS)
+  if (settings::source_convergence_method ==
+      SourceConvergenceMethod::WINDOW_AVG_RMS)
     batchwise_fission_source_;
 
   if (is_linear) {
@@ -104,7 +105,8 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
   position_.push_back(sr.position_);
   volume_task_.push_back(sr.volume_task_);
 
-  if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS)
+  if (settings::source_convergence_method ==
+      SourceConvergenceMethod::WINDOW_AVG_RMS)
     batchwise_fission_source_.push_back(sr.batchwise_fission_source_);
 
   // Only store these fields if is_linear_ is true
@@ -262,7 +264,8 @@ void SourceRegionContainer::assign(
   tally_task_.clear();
   volume_task_.clear();
 
-  if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS)
+  if (settings::source_convergence_method ==
+      SourceConvergenceMethod::WINDOW_AVG_RMS)
     batchwise_fission_source_.clear();
 
   // Fill with copies of source_region
