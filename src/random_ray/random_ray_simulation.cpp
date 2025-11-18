@@ -651,7 +651,8 @@ RandomRaySimulation::RandomRaySimulation()
   // internal to the random ray solver
   domain_->flatten_xs();
 
-  if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS)
+  if (settings::source_convergence_method ==
+      SourceConvergenceMethod::WINDOW_AVG_RMS)
     fissile_region_srs_;
 }
 
@@ -677,11 +678,13 @@ void RandomRaySimulation::simulate()
   // Random ray power iteration loop
   while (simulation::current_batch < settings::n_batches) {
 
-    // Determine if the source is converged
-    int& curr = simulation::current_batch;
+    // Window averaged source convergence. This must be
+    // done before the batch is initialized so that
+    // the tallies are set up correctly due this function needing
+    // to change the number of inactive and total batches
     if (simulation::current_batch > 0)
-      if (!source_converged_ &&
-          settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS)
+      if (!source_converged_ && settings::source_convergence_method ==
+                                  SourceConvergenceMethod::WINDOW_AVG_RMS)
         is_window_avg_rms_source_converged();
 
     // Initialize the current batch
@@ -743,12 +746,14 @@ void RandomRaySimulation::simulate()
     // Compute precursors
     domain_->compute_precursors(k_eff_);
 
-    if (settings::convergence_method == ConvergenceMethod::FIXED_BATCH)
+    // Fixed Batch source convergence
+    if (settings::source_convergence_method ==
+        SourceConvergenceMethod::FIXED_BATCH)
       source_converged_ = simulation::current_batch > settings::n_inactive;
 
     // Execute all tallying tasks, if the source is converged
     if (source_converged_) {
-      // TODO: Add machinery for tolerance-based solution convergence
+
       // Add this iteration's estimates (flux, precursors, etc.) to final
       // accumulated estimate
       domain_->accumulate_iteration_quantities();
@@ -936,35 +941,27 @@ void RandomRaySimulation::print_results_random_ray(
 
 //------------------------------------------------------------------------------
 // Time Dependent Methods
-void RandomRaySimulation::is_window_avg_rms_source_converged()
+
+void RandomRaySimulation::find_all_fissile_regions()
 {
-  if (simulation::current_batch >= settings::convergence_window_size) {
-    compute_and_store_batch_fission_source();
-    double rms = compute_window_averaged_rms_error();
-    source_converged_ = rms <= settings::source_convergence_threshold;
-  } else {
-    compute_and_store_batch_fission_source(false);
+  for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
+    int material = domain_->source_regions_.material(sr);
+    for (int g = 0; g < negroups_; g++) {
+      if (domain_->sigma_f_[material * negroups_] != 0.0) {
+        fissile_region_srs_.push_back(sr);
+        break;
+      }
+    }
   }
-  // Consider the simulation converged if we've reached the maximum
-  // number of allowed batches
-  if (settings::convergence_method == ConvergenceMethod::WINDOW_AVG_RMS &&
-      simulation::current_batch >= settings::max_source_convergence_batches) {
-    source_converged_ = true;
-    warning(
-      "Reached maximum allowed number of source convergence batches. Source"
-      "may not be converged.");
-  }
-  if (!source_converged_ && simulation::current_batch == settings::n_inactive) {
-    increment_batches();
-  } else if (source_converged_ &&
-             simulation::current_batch <= settings::n_inactive) {
-    fix_batches();
-  }
+  all_fissile_regions_found_ = true;
 }
 
 void RandomRaySimulation::compute_and_store_batch_fission_source(
   bool shift_window)
 {
+  if (!all_fissile_regions_found_)
+    find_all_fissile_regions();
+
   // Compute the window-averaged RMS error
   for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
     int material = domain_->source_regions_.material(sr);
@@ -990,31 +987,46 @@ void RandomRaySimulation::compute_and_store_batch_fission_source(
   }
 }
 
+void RandomRaySimulation::is_window_avg_rms_source_converged()
+{
+  if (simulation::current_batch >= settings::source_convergence_window_size) {
+    compute_and_store_batch_fission_source(true);
+    double rms = compute_window_averaged_rms_error();
+    source_converged_ = rms <= settings::source_convergence_threshold;
+  } else {
+    compute_and_store_batch_fission_source();
+  }
+  // Consider the simulation converged if we've reached the maximum
+  // number of allowed batches
+  if (simulation::current_batch >=
+      settings::source_convergence_maximum_batches) {
+    source_converged_ = true;
+    warning(
+      "Reached maximum allowed number of source convergence batches. Source "
+      "may not be converged.");
+  }
+  // If the simulation is not converged, increment the number of fixed batches
+  // by one
+  if (!source_converged_ && simulation::current_batch == settings::n_inactive) {
+    increment_batches();
+    // If the simulation is converged but before the number of inactive
+    // batches has run, adjust all batch numbers accordingly.
+  } else if (source_converged_ &&
+             simulation::current_batch < settings::n_inactive) {
+    fix_batches();
+  }
+}
+
 double RandomRaySimulation::compute_window_averaged_rms_error()
 {
   // Compute the window-averaged RMS error
-
-  if (!all_fissile_regions_found_) {
-    for (int64_t sr = 0; sr < domain_->n_source_regions_; sr++) {
-      int material = domain_->source_regions_.material(sr);
-      for (int g = 0; g < negroups_; g++) {
-        if (domain_->sigma_f_[material * negroups_] != 0.0) {
-          fissile_region_srs_.push_back(sr);
-          break;
-        }
-      }
-    }
-    all_fissile_regions_found_ = true;
-  }
-
   int W_fissile = fissile_region_srs_.size();
 
-  int B_w = settings::convergence_window_size;
+  int B_w = settings::source_convergence_window_size;
   int half_window = int(0.5 * B_w);
   double rms = 0.0;
 #pragma omp parallel for
   for (auto sr : fissile_region_srs_) {
-    int material = domain_->source_regions_.material(sr);
     double F_sr_new = 0.0;
     double F_sr_old = 0.0;
     for (int b = 0; b < half_window; b++)

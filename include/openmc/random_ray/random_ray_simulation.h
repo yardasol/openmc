@@ -33,13 +33,13 @@ public:
 
   //----------------------------------------------------------------------------
   // Time Dependent Methods
-  void compute_and_store_batch_fission_source(bool shift_window = true);
-  double compute_window_averaged_rms_error();
+  void find_all_fissile_regions();
+  void compute_and_store_batch_fission_source(bool shift_window = false);
 
-  //----------------------------------------------------------------------------
-  // Time Dependent Methods
+  double compute_window_averaged_rms_error();
   void is_window_avg_rms_source_converged(); // Determine if the window-averaged
-                                             // RMS of the source is converged
+                                             // RMS of the source is converg
+
   void initialize_bd_vectors();
   void increment_bd_vectors(int64_t n_source_elements,
     int64_t

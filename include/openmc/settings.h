@@ -124,8 +124,9 @@ extern vector<std::string>
   res_scat_nuclides;           //!< Nuclides using res. upscattering treatment
 extern RunMode run_mode;       //!< Run mode (eigenvalue, fixed src, etc.)
 extern SolverType solver_type; //!< Solver Type (Monte Carlo or Random Ray)
-extern ConvergenceMethod convergence_method; //!< Convergence Method (Fixed
-                                             //!< Batch or Window-averaged RMS)
+extern SourceConvergenceMethod
+  source_convergence_method; //!< Source Convergence Method (Fixed
+                             //!< Batch or Window-averaged RMS)
 extern std::unordered_set<int>
   sourcepoint_batch; //!< Batches when source should be written
 extern std::unordered_set<int>
@@ -163,11 +164,12 @@ extern double weight_survive;      //!< Survival weight after Russian roulette
 // Time-dependent variables
 extern int n_batches_td; //!< number of time step (inactive+active) batches
 extern "C" int32_t n_inactive_td; //!< number of time step inactive batches
-extern int convergence_window_size;         //!< size of convergence window(g);
-extern int max_source_convergence_batches;  //!< Maximum number of source
-                                           //!< convergence batches to simulate;
-extern double source_convergence_threshold; //!< threshold for evaluating source
-                                            //!< as stationary;
+extern int source_convergence_window_size; //!< size of convergence window(g);
+extern int
+  source_convergence_maximum_batches; //!< Maximum number of source
+                                      //!< convergence batches to simulate;
+extern double
+  source_convergence_threshold; //!< RMS Source convergence threshold;
 extern int n_timesteps;      //!< number of timesteps
 extern double dt;            //!< fixed timestep size
 extern int current_timestep; //!< current timestep index
