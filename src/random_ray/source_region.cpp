@@ -37,6 +37,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     source_td_.resize(negroups);
     scalar_flux_td_final_.assign(negroups, 0.0);
 
+    delayed_fission_source_.assign(ndgroups, 0.0);
     precursors_old_.assign(ndgroups, 0.0);
     precursors_new_.assign(ndgroups, 0.0);
     precursors_final_.assign(ndgroups, 0.0);
@@ -58,7 +59,6 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 
     // Analytic precursor integration arrays
     if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-      delayed_fission_source_.assign(ndgroups, 0.0);
       delayed_fission_source_final_.assign(ndgroups, 0.0);
 
       precursors_im1_.resize(ndgroups);
@@ -168,6 +168,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
   if (settings::run_mode == RunMode::TIME_DEPENDENT ||
       settings::is_initial_condition) {
     for (int dg = 0; dg < ndgroups_; dg++) {
+      delayed_fission_source_.push_back(sr.delayed_fission_source_[dg]);
       precursors_old_.push_back(sr.precursors_old_[dg]);
       precursors_new_.push_back(sr.precursors_new_[dg]);
       precursors_final_.push_back(sr.precursors_final_[dg]);
@@ -175,7 +176,6 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
 
       // Analytic precursor integration arrays
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-        delayed_fission_source_.push_back(sr.delayed_fission_source_[dg]);
         delayed_fission_source_final_.push_back(
           sr.delayed_fission_source_final_[dg]);
 
@@ -245,7 +245,6 @@ void SourceRegionContainer::assign(
     }
 
     if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-      delayed_fission_source_.clear();
       delayed_fission_source_final_.clear();
 
       precursors_im1_.clear();
@@ -255,6 +254,7 @@ void SourceRegionContainer::assign(
       precursors_rhs_bd_.clear();
     }
 
+    delayed_fission_source_.clear();
     precursors_old_.clear();
     precursors_new_.clear();
     precursors_final_.clear();

@@ -57,9 +57,9 @@ public:
     vector<double>& previous_precursors);
   virtual void update_neutron_source_td(double k_eff);
   double compute_k_dynamic() const;
-  void compute_criticality_precursors(double k_eff);
-  void compute_precursors_via_bd(double k_eff);
   void compute_delayed_fission_source(double k_eff);
+  void compute_criticality_precursors();
+  void compute_precursors_via_bd();
   void compute_precursors_via_analytic_integration();
   void compute_precursors(double k_eff);
   void compute_neutron_source_time_derivative();

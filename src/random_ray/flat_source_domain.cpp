@@ -1456,7 +1456,7 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
   simulation::time_update_src_td.stop();
 }
 
-void FlatSourceDomain::compute_criticality_precursors(double k_eff)
+void FlatSourceDomain::compute_criticality_precursors()
 {
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
@@ -1465,21 +1465,17 @@ void FlatSourceDomain::compute_criticality_precursors(double k_eff)
       double lambda = lambda_[mat * ndgroups_ + dg];
       source_regions_.precursors_new(sr, dg) = 0.0;
       if (lambda != 0.0) {
-        for (int g_in = 0; g_in < negroups_; g_in++) {
-          double nu_d_sigma_f =
-            nu_d_sigma_f_[mat * negroups_ * ndgroups_ + dg * negroups_ + g_in];
-          double flux = source_regions_.scalar_flux_new(sr, g_in);
-          source_regions_.precursors_new(sr, dg) += flux * nu_d_sigma_f;
-        }
-        source_regions_.precursors_new(sr, dg) /= lambda * k_eff;
+        double delayed_fission_source =
+          source_regions_.delayed_fission_source(sr, dg);
+        source_regions_.precursors_new(sr, dg) =
+          delayed_fission_source / lambda;
       }
     }
   }
 }
 
-void FlatSourceDomain::compute_precursors_via_bd(double k_eff)
+void FlatSourceDomain::compute_precursors_via_bd()
 {
-  double inverse_k_eff = 1.0 / k_eff;
 #pragma omp parallel for
   for (int sr = 0; sr < n_source_regions_; sr++) {
     int material = source_regions_.material(sr);
@@ -1487,15 +1483,8 @@ void FlatSourceDomain::compute_precursors_via_bd(double k_eff)
       double lambda = lambda_[material * ndgroups_ + dg];
       source_regions_.precursors_new(sr, dg) = 0.0;
       if (lambda != 0.0) {
-        double delayed_fission_source = 0.0;
-        for (int g_in = 0; g_in < negroups_; g_in++) {
-          double nu_d_sigma_f = nu_d_sigma_f_[material * negroups_ * ndgroups_ +
-                                              dg * negroups_ + g_in];
-          double flux_td = source_regions_.scalar_flux_td_new(sr, g_in);
-          delayed_fission_source += flux_td * nu_d_sigma_f;
-        }
-        delayed_fission_source *= inverse_k_eff;
-
+        double delayed_fission_source =
+          source_regions_.delayed_fission_source(sr, dg);
         double precursor_rhs_bd = source_regions_.precursors_rhs_bd(sr, dg);
 
         source_regions_.precursors_new(sr, dg) =
@@ -1567,17 +1556,15 @@ void FlatSourceDomain::compute_precursors_via_analytic_integration()
 void FlatSourceDomain::compute_precursors(double k_eff)
 {
   simulation::time_compute_precursors.start();
+  compute_delayed_fission_source(k_eff);
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
-      compute_delayed_fission_source(k_eff);
       compute_precursors_via_analytic_integration();
     } else {
-      compute_precursors_via_bd(k_eff);
+      compute_precursors_via_bd();
     }
   } else if (settings::is_initial_condition) {
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-      compute_delayed_fission_source(k_eff);
-    compute_criticality_precursors(k_eff);
+    compute_criticality_precursors();
   }
   simulation::time_compute_precursors.start();
 }

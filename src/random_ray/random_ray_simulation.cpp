@@ -265,6 +265,7 @@ void openmc_run_random_ray_time_dependent()
   simulation::time_initialize_td.stop();
 
   // Timestepping loop
+  // TODO: Add support for time-dependent restart
   for (int i = 0; i < settings::n_timesteps; i++) {
     settings::current_timestep = i + 1;
 
@@ -1078,10 +1079,10 @@ void RandomRaySimulation::compute_rhs_bd_vectors(
   }
   if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
     get_bd_vector_slice(n_delay_elements, precursors_im1, precursors_bd, 1);
-    get_bd_vector_slice(
-      n_delay_elements, delayed_fission_source_im1, precursors_bd, 1);
-    get_bd_vector_slice(
-      n_delay_elements, delayed_fission_source_im2, precursors_bd, 2);
+    get_bd_vector_slice(n_delay_elements, delayed_fission_source_im1,
+      delayed_fission_source_bd, 1);
+    get_bd_vector_slice(n_delay_elements, delayed_fission_source_im2,
+      delayed_fission_source_bd, 2);
   } else {
     compute_rhs_backward_difference(n_delay_elements,
       RandomRaySimulation::bd_order_, precursors_bd, precursors_rhs_bd, 1);
