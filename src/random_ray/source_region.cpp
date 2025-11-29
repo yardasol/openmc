@@ -43,6 +43,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     precursors_final_.assign(ndgroups, 0.0);
     tally_delay_task_.resize(ndgroups);
 
+    scalar_flux_bd_;
     scalar_flux_rhs_bd_.resize(negroups);
 
     // SDP arrays
@@ -53,6 +54,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
       source_time_derivative_.assign(negroups, 0.0);
       scalar_flux_time_derivative_2_.assign(negroups, 0.0);
 
+      source_bd_;
       source_rhs_bd_.resize(negroups);
       scalar_flux_rhs_bd_2_.resize(negroups);
     }
@@ -65,6 +67,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
       delayed_fission_source_im1_.resize(ndgroups);
       delayed_fission_source_im2_.resize(ndgroups);
     } else {
+      precursors_bd_;
       precursors_rhs_bd_.resize(ndgroups);
     }
   }
@@ -136,6 +139,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       scalar_flux_td_final_.push_back(sr.scalar_flux_td_final_[g]);
       source_td_.push_back(sr.source_td_[g]);
 
+      scalar_flux_bd_.push_back(sr.scalar_flux_bd_);
       scalar_flux_rhs_bd_.push_back(sr.scalar_flux_rhs_bd_[g]);
 
       // SDP arrays
@@ -147,6 +151,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
         scalar_flux_time_derivative_2_.push_back(
           sr.scalar_flux_time_derivative_2_[g]);
 
+        source_bd_.push_back(sr.source_bd_);
         source_rhs_bd_.push_back(sr.source_rhs_bd_[g]);
         scalar_flux_rhs_bd_2_.push_back(sr.scalar_flux_rhs_bd_2_[g]);
       }
@@ -186,6 +191,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
           sr.delayed_fission_source_im2_[dg]);
         // Backward difference arrays
       } else {
+        precursors_bd_.push_back(sr.precursors_bd_);
         precursors_rhs_bd_.push_back(sr.precursors_rhs_bd_[dg]);
       }
     }
@@ -234,12 +240,16 @@ void SourceRegionContainer::assign(
     scalar_flux_td_final_.clear();
     source_td_.clear();
 
+    scalar_flux_bd_.clear();
+    scalar_flux_rhs_bd_.clear();
+
     if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
       source_final_.clear();
 
       source_time_derivative_.clear();
       scalar_flux_time_derivative_2_.clear();
 
+      source_bd_.clear();
       source_rhs_bd_.clear();
       scalar_flux_rhs_bd_2_.clear();
     }
@@ -251,6 +261,7 @@ void SourceRegionContainer::assign(
       delayed_fission_source_im1_.clear();
       delayed_fission_source_im2_.clear();
     } else {
+      precursors_bd_.clear();
       precursors_rhs_bd_.clear();
     }
 

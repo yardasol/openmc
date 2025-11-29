@@ -161,10 +161,31 @@ public:
   vector<double>
     delayed_fission_source_; //!< The delayed fission source binned by delay
                              //!< group (used for Precursor Integration)
+
+  // Precursor Integration arrays
   vector<double>
     delayed_fission_source_final_; //!< The delayed fission source accumulated
                                    //!< over all active iterations (used for
                                    //!< computing Precursor Integration)
+
+  vector<double> precursors_im1_; //!< Precursor solution from previous time
+                                  //!< step. Used to solve the precursor
+                                  //!< equation using the integration method.
+  vector<double> delayed_fission_source_im1_; //<! Delayed fission source from
+                                              // the previous time step.
+                                              //<! Used to solve the precursor
+                                              // equation using the
+                                              //<! integration method.
+  vector<double> delayed_fission_source_im2_; //<! Delayed fission source from
+                                              // the i-2 time step.
+                                              //<! Used to solve the precursor
+                                              // equation using the
+                                              //<! integration method.
+
+  // BD arrays
+  std::deque<double> scalar_flux_bd_;
+  std::deque<double> precursors_bd_;
+  std::deque<double> source_bd_;
 
   // Energy group-wise 1D RHS BD arrays
   vector<double>
@@ -187,19 +208,6 @@ public:
                         //!< timesteps. Used to compute the total precursor time
                         //!< derivative for solving the precursor equation using
                         //!< backwards differences.
-  vector<double> precursors_im1_; //!< Precursor solution from previous time
-                                  //!< step. Used to solve the precursor
-                                  //!< equation using the integration method.
-  vector<double> delayed_fission_source_im1_; //<! Delayed fission source from
-                                              // the previous time step.
-                                              //<! Used to solve the precursor
-                                              // equation using the
-                                              //<! integration method.
-  vector<double> delayed_fission_source_im2_; //<! Delayed fission source from
-                                              // the i-2 time step.
-                                              //<! Used to solve the precursor
-                                              // equation using the
-                                              //<! integration method.
 
   // 2D array representing values for all energy groups x tally
   // tasks. Each group may have a different number of tally tasks
@@ -561,6 +569,48 @@ public:
     return delayed_fission_source_final_[de];
   }
 
+  std::deque<double>& scalar_flux_bd(int64_t sr, int g)
+  {
+    return scalar_flux_bd_[index(sr, g)];
+  }
+  const std::deque<double>& scalar_flux_bd(int64_t sr, int g) const
+  {
+    return scalar_flux_bd_[index(sr, g)];
+  }
+  std::deque<double>& scalar_flux_bd(int64_t se) { return scalar_flux_bd_[se]; }
+  const std::deque<double>& scalar_flux_bd(int64_t se) const
+  {
+    return scalar_flux_bd_[se];
+  }
+
+  std::deque<double>& precursors_bd(int64_t sr, int dg)
+  {
+    return precursors_bd_[dindex(sr, dg)];
+  }
+  const std::deque<double>& precursors_bd(int64_t sr, int dg) const
+  {
+    return precursors_bd_[dindex(sr, dg)];
+  }
+  std::deque<double>& precursors_bd(int64_t de) { return precursors_bd_[de]; }
+  const std::deque<double>& precursors_bd(int64_t de) const
+  {
+    return precursors_bd_[de];
+  }
+
+  std::deque<double>& source_bd(int64_t sr, int g)
+  {
+    return source_bd_[index(sr, g)];
+  }
+  const std::deque<double>& source_bd(int64_t sr, int g) const
+  {
+    return source_bd_[index(sr, g)];
+  }
+  std::deque<double>& source_bd(int64_t se) { return source_bd_[se]; }
+  const std::deque<double>& source_bd(int64_t se) const
+  {
+    return source_bd_[se];
+  }
+
   double& scalar_flux_rhs_bd(int64_t sr, int g)
   {
     return scalar_flux_rhs_bd_[index(sr, g)];
@@ -794,6 +844,15 @@ private:
   vector<double> delayed_fission_source_;
   vector<double> delayed_fission_source_final_;
 
+  vector<double> precursors_im1_;
+  vector<double> delayed_fission_source_im1_;
+  vector<double> delayed_fission_source_im2_;
+
+  // SoA energy group-wise 2D BD arrays flattened to 1D
+  vector<std::deque<double>> scalar_flux_bd_;
+  vector<std::deque<double>> precursors_bd_;
+  vector<std::deque<double>> source_bd_;
+
   // SoA energy group-wise 2D RHS BD arrays flattened to 1D
   vector<double> scalar_flux_rhs_bd_;
   vector<double> source_rhs_bd_;
@@ -801,9 +860,6 @@ private:
 
   // SoA delay group-wise 2D RHS BD arrays flattened to 1D
   vector<double> precursors_rhs_bd_;
-  vector<double> precursors_im1_;
-  vector<double> delayed_fission_source_im1_;
-  vector<double> delayed_fission_source_im2_;
 
   // SoA 3D array representing values for all source regions x energy groups x
   // tally tasks. The outer two dimensions (source regions and energy groups)
