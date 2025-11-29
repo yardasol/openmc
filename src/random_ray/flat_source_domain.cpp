@@ -186,14 +186,6 @@ void FlatSourceDomain::accumulate_iteration_flux()
   }
 }
 
-void FlatSourceDomain::accumulate_iteration_source()
-{
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements_; se++) {
-    source_regions_.source_final(se) += source_regions_.source(se);
-  }
-}
-
 // Compute new estimate of scattering + fission sources in each source region
 // based on the flux estimate from the previous iteration.
 void FlatSourceDomain::update_neutron_source(double k_eff)
@@ -1657,53 +1649,29 @@ void FlatSourceDomain::accumulate_iteration_quantities()
 {
   accumulate_iteration_flux();
   if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-      settings::is_initial_condition)
-    accumulate_iteration_precursors();
-  if (settings::run_mode == RunMode::TIME_DEPENDENT)
-    accumulate_iteration_flux_td();
-
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-    if (settings::run_mode == RunMode::TIME_DEPENDENT)
-      accumulate_iteration_source_td();
-    else if (settings::is_initial_condition)
-      accumulate_iteration_source();
-  }
-
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
-    accumulate_iteration_delayed_fission_source();
-}
-
-void FlatSourceDomain::accumulate_iteration_flux_td()
-{
+      settings::is_initial_condition) {
 #pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements_; se++) {
-    source_regions_.scalar_flux_td_final(se) +=
-      source_regions_.scalar_flux_td_new(se);
-  }
-}
-
-void FlatSourceDomain::accumulate_iteration_source_td()
-{
-#pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements_; se++) {
-    source_regions_.source_td_final(se) += source_regions_.source_td(se);
-  }
-}
-
-void FlatSourceDomain::accumulate_iteration_precursors()
-{
-#pragma omp parallel for
-  for (int64_t de = 0; de < n_delay_elements_; de++) {
-    source_regions_.precursors_final(de) += source_regions_.precursors_new(de);
-  }
-}
-
-void FlatSourceDomain::accumulate_iteration_delayed_fission_source()
-{
-#pragma omp parallel for
-  for (int64_t de = 0; de < n_delay_elements_; de++) {
-    source_regions_.delayed_fission_source_final(de) +=
-      source_regions_.delayed_fission_source(de);
+    for (int64_t sr = 0; sr < n_source_regions_; sr++) {
+      for (int g = 0; g < negroups_; g++) {
+        source_regions_.scalar_flux_td_final(sr, g) +=
+          source_regions_.scalar_flux_td_new(sr, g);
+        if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+          if (settings::run_mode == RunMode::TIME_DEPENDENT)
+            source_regions_.source_final(sr, g) +=
+              source_regions_.source_td(sr, g);
+          else if (settings::is_initial_condition)
+            source_regions_.source_final(sr, g) +=
+              source_regions_.source(sr, g);
+        }
+      }
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+          source_regions_.delayed_fission_source_final(sr, dg) +=
+            source_regions_.delayed_fission_source(sr, dg);
+        source_regions_.precursors_final(sr, dg) +=
+          source_regions_.precursors_new(sr, dg);
+      }
+    }
   }
 }
 

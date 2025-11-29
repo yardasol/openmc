@@ -72,10 +72,6 @@ public:
   void flux_td_swap();
   void precursors_swap();
   void accumulate_iteration_quantities();
-  virtual void accumulate_iteration_flux_td();
-  void accumulate_iteration_precursors();
-  void accumulate_iteration_source_td();
-  void accumulate_iteration_delayed_fission_source();
   void update_material_density(int i);
 
   //----------------------------------------------------------------------------
