@@ -230,13 +230,13 @@ void openmc_run_random_ray_time_dependent()
   int64_t n_source_regions = n_source_elements / data::mg.num_energy_groups_;
   int64_t n_delay_elements = n_source_regions * data::mg.num_delayed_groups_;
 
-  initialize_bd_vector(n_source_elements, RandomRaySimulation::bd_order_ + 2,
+  initialize_bd_vector(n_source_elements, RandomRay::bd_order_ + 2,
     scalar_flux_bd, previous_scalar_flux);
-  initialize_bd_vector(n_delay_elements, RandomRaySimulation::bd_order_ + 1,
+  initialize_bd_vector(n_delay_elements, RandomRay::bd_order_ + 1,
     precursors_bd, previous_precursors);
   if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
-    initialize_bd_vector(n_source_elements, RandomRaySimulation::bd_order_ + 1,
-      source_bd, previous_source);
+    initialize_bd_vector(
+      n_source_elements, RandomRay::bd_order_ + 1, source_bd, previous_source);
 
   if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
     initialize_bd_vector(n_delay_elements, 3, delayed_fission_source_bd,
@@ -266,7 +266,6 @@ void openmc_run_random_ray_time_dependent()
     openmc_simulation_init();
 
     RandomRaySimulation sim_td;
-    sim_td.domain()->bd_order_ = RandomRaySimulation::bd_order_;
     sim_td.k_eff_ = previous_k_eff;
     sim_td.domain()->set_initial_condition(
       previous_scalar_flux, scalar_flux_bd, previous_precursors);
@@ -601,9 +600,6 @@ void validate_random_ray_inputs()
 //==============================================================================
 // RandomRaySimulation implementation
 //==============================================================================
-
-// Static variable declaration
-int RandomRaySimulation::bd_order_ {1};
 
 RandomRaySimulation::RandomRaySimulation()
   : negroups_(data::mg.num_energy_groups_),
@@ -1044,18 +1040,18 @@ void RandomRaySimulation::increment_bd_vectors(
 void RandomRaySimulation::compute_rhs_bd_vectors(
   int64_t n_source_elements, int64_t n_delay_elements)
 {
-  compute_rhs_backward_difference(n_source_elements,
-    RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd, 1);
+  compute_rhs_backward_difference(n_source_elements, RandomRay::bd_order_,
+    scalar_flux_bd, scalar_flux_rhs_bd, 1);
 
   if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
     simulation::time_compute_neutron_source_time_derivative.start();
-    compute_rhs_backward_difference(n_source_elements,
-      RandomRaySimulation::bd_order_, source_bd, source_rhs_bd, 1);
+    compute_rhs_backward_difference(
+      n_source_elements, RandomRay::bd_order_, source_bd, source_rhs_bd, 1);
     simulation::time_compute_neutron_source_time_derivative.stop();
 
     simulation::time_compute_scalar_time_derivative_2.start();
-    compute_rhs_backward_difference(n_source_elements,
-      RandomRaySimulation::bd_order_, scalar_flux_bd, scalar_flux_rhs_bd_2, 2);
+    compute_rhs_backward_difference(n_source_elements, RandomRay::bd_order_,
+      scalar_flux_bd, scalar_flux_rhs_bd_2, 2);
     simulation::time_compute_scalar_time_derivative_2.stop();
   }
   if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
@@ -1065,8 +1061,8 @@ void RandomRaySimulation::compute_rhs_bd_vectors(
     get_bd_vector_slice(n_delay_elements, delayed_fission_source_im2,
       delayed_fission_source_bd, 2);
   } else {
-    compute_rhs_backward_difference(n_delay_elements,
-      RandomRaySimulation::bd_order_, precursors_bd, precursors_rhs_bd, 1);
+    compute_rhs_backward_difference(n_delay_elements, RandomRay::bd_order_,
+      precursors_bd, precursors_rhs_bd, 1);
   }
 }
 void RandomRaySimulation::store_rhs_bd_vectors()

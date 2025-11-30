@@ -165,8 +165,7 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
         break;
       }
       if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-        write_dataset(
-          random_ray_group, "bd_order", RandomRaySimulation::bd_order_);
+        write_dataset(random_ray_group, "bd_order", RandomRay::bd_order_);
         switch (RandomRay::precursor_mode_) {
         case RandomRayPrecursorMode::BD:
           write_dataset(

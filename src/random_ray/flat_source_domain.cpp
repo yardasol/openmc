@@ -274,8 +274,8 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
       double inverse_vbar =
         inverse_vbar_[source_regions_.material(sr) * negroups_ + g];
       double scalar_flux_rhs_bd = source_regions_.scalar_flux_rhs_bd(sr, g);
-      double A0 =
-        (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
+      double A0 = (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] /
+                  settings::dt;
       source_regions_.scalar_flux_td_new(sr, g) -=
         scalar_flux_rhs_bd * inverse_vbar / sigma_t_td;
       source_regions_.scalar_flux_td_new(sr, g) /=
@@ -1433,8 +1433,8 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
         double inverse_vbar = inverse_vbar_[material * negroups_ + g_out];
         double scalar_flux_rhs_bd =
           source_regions_.scalar_flux_rhs_bd(sr, g_out);
-        double A0 =
-          (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
+        double A0 = (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] /
+                    settings::dt;
         double scalar_flux_td = source_regions_.scalar_flux_td_old(sr, g_out);
         double scalar_flux_time_derivative =
           A0 * scalar_flux_td + scalar_flux_rhs_bd;
@@ -1482,7 +1482,8 @@ void FlatSourceDomain::compute_precursors_via_bd()
         source_regions_.precursors_new(sr, dg) =
           delayed_fission_source - precursor_rhs_bd;
 
-        double A0 = (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
+        double A0 = (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] /
+                    settings::dt;
         source_regions_.precursors_new(sr, dg) /= A0 + lambda;
       }
     }
@@ -1564,7 +1565,8 @@ void FlatSourceDomain::compute_precursors(double k_eff)
 void FlatSourceDomain::compute_neutron_source_time_derivative()
 {
   simulation::time_compute_neutron_source_time_derivative.start();
-  double A0 = (bd_coefficients_first_order_.at(bd_order_))[0] / settings::dt;
+  double A0 =
+    (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] / settings::dt;
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {
     double source_rhs_bd = source_regions_.source_rhs_bd(se);
@@ -1577,7 +1579,7 @@ void FlatSourceDomain::compute_neutron_source_time_derivative()
 void FlatSourceDomain::compute_scalar_flux_time_derivative_2()
 {
   simulation::time_compute_scalar_time_derivative_2.start();
-  double B0 = (bd_coefficients_second_order_.at(bd_order_))[0] /
+  double B0 = (bd_coefficients_second_order_.at(RandomRay::bd_order_))[0] /
               (settings::dt * settings::dt);
 #pragma omp parallel for
   for (int64_t se = 0; se < n_source_elements_; se++) {

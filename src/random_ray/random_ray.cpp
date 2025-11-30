@@ -181,6 +181,7 @@ double exponentialG2(double tau)
 // Static Variable Declarations
 double RandomRay::distance_inactive_;
 double RandomRay::distance_active_;
+int RandomRay::bd_order_ {1};
 unique_ptr<Source> RandomRay::ray_source_;
 RandomRaySourceShape RandomRay::source_shape_ {RandomRaySourceShape::FLAT};
 RandomRayTimeMode RandomRay::time_mode_ {RandomRayTimeMode::TI};

@@ -57,9 +57,6 @@ public:
   //---------------------------------------------------------------------------
   // Data members
 
-  // Order of BD approximation.
-  static int bd_order_;
-
   // Random ray eigenvalue
   double k_eff_ {1.0};
 
