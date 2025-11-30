@@ -66,15 +66,8 @@ void openmc_run_random_ray()
     simulation::time_total.stop();
 
     // Normalize and save the final forward flux
+    sim.domain()->normalize_final_quantities();
     sim.domain()->serialize_final_fluxes(forward_flux);
-
-    double normalization_factor =
-      1.0 / (settings::n_batches - settings::n_inactive);
-    double source_normalization_factor =
-      sim.domain()->compute_fixed_source_normalization_factor() *
-      normalization_factor;
-
-    normalize_serialized_vector(forward_flux, source_normalization_factor);
 
     // Finalize OpenMC
     openmc_simulation_finalize();
@@ -92,16 +85,12 @@ void openmc_run_random_ray()
       previous_scalar_flux = forward_flux;
 
       sim.domain()->serialize_final_precursors(previous_precursors);
-      normalize_serialized_vector(previous_precursors, normalization_factor);
       if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
         sim.domain()->serialize_final_sources(previous_source);
-        normalize_serialized_vector(previous_source, normalization_factor);
       }
       if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
         sim.domain()->serialize_final_delayed_fission_source(
           previous_delayed_fission_source);
-        normalize_serialized_vector(
-          previous_delayed_fission_source, normalization_factor);
       }
     }
   }
@@ -218,14 +207,6 @@ void get_bd_vector_slice(int64_t vector_size, vector<double>& storage_vector,
 #pragma omp parallel for
   for (int i = 0; i < vector_size; i++)
     storage_vector[i] = bd_vector[vector_size * neg_timestep_index + i];
-}
-
-void normalize_serialized_vector(
-  vector<double>& vector, double normalization_factor)
-{
-#pragma omp parallel for
-  for (uint64_t i = 0; i < vector.size(); i++)
-    vector[i] *= normalization_factor;
 }
 
 void openmc_run_random_ray_time_dependent()
@@ -1121,35 +1102,23 @@ void RandomRaySimulation::store_rhs_bd_vectors()
 // TODO: Perform normalization inside of the source regions
 void RandomRaySimulation::normalize_and_store_quantities()
 {
-  // Compute normalization factors
-  double normalization_factor =
-    1.0 / (settings::n_batches - settings::n_inactive);
-  double source_normalization_factor =
-    domain_->compute_fixed_source_normalization_factor() * normalization_factor;
+  domain_->normalize_final_quantities();
 
   domain_->serialize_final_fluxes(previous_scalar_flux);
-  normalize_serialized_vector(
-    previous_scalar_flux, source_normalization_factor);
 
   domain_->serialize_final_td_fluxes(previous_scalar_flux_td);
-  normalize_serialized_vector(
-    previous_scalar_flux_td, source_normalization_factor);
   update_bd_vector(&scalar_flux_bd, previous_scalar_flux_td, false);
 
   domain_->serialize_final_precursors(previous_precursors);
-  normalize_serialized_vector(previous_precursors, normalization_factor);
   update_bd_vector(&precursors_bd, previous_precursors, false);
 
   if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
     domain_->serialize_final_td_sources(previous_source);
-    normalize_serialized_vector(previous_source, normalization_factor);
     update_bd_vector(&source_bd, previous_source, false);
   }
   if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
     domain_->serialize_final_delayed_fission_source(
       previous_delayed_fission_source);
-    normalize_serialized_vector(
-      previous_delayed_fission_source, normalization_factor);
     update_bd_vector(
       &delayed_fission_source_bd, previous_delayed_fission_source, false);
   }

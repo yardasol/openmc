@@ -1657,7 +1657,7 @@ void FlatSourceDomain::accumulate_iteration_quantities()
           source_regions_.scalar_flux_td_new(sr, g);
         if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
           if (settings::run_mode == RunMode::TIME_DEPENDENT)
-            source_regions_.source_final(sr, g) +=
+            source_regions_.source_td_final(sr, g) +=
               source_regions_.source_td(sr, g);
           else if (settings::is_initial_condition)
             source_regions_.source_final(sr, g) +=
@@ -1675,8 +1675,46 @@ void FlatSourceDomain::accumulate_iteration_quantities()
   }
 }
 
-void FlatSourceDomain::update_material_density(int i) {
-  // Update material density and cross sections
+void FlatSourceDomain::normalize_final_quantities()
+{
+  double normalization_factor =
+    1.0 / (settings::n_batches - settings::n_inactive);
+  double source_normalization_factor =
+    compute_fixed_source_normalization_factor() * normalization_factor;
+
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions_; sr++) {
+    for (int g = 0; g < negroups_; g++) {
+      source_regions_.scalar_flux_final(sr, g) *= source_normalization_factor;
+      if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+          settings::is_initial_condition)
+        source_regions_.scalar_flux_td_final(sr, g) *=
+          source_normalization_factor;
+      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        if (settings::run_mode == RunMode::TIME_DEPENDENT)
+          source_regions_.source_td_final(sr, g) *= normalization_factor;
+        else if (settings::is_initial_condition)
+          source_regions_.source_final(sr, g) *= normalization_factor;
+      }
+    }
+    for (int dg = 0; dg < ndgroups_; dg++) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+        source_regions_.delayed_fission_source_final(sr, dg) *=
+          normalization_factor;
+      source_regions_.precursors_final(sr, dg) *= normalization_factor;
+    }
+  }
+}
+
+// void FlatSourceDomain::propagate_final_quantities();
+
+// void FlatSourceDomain::store_time_step_quantities(bool increment_not_pop);
+
+// void FlatSourceDomain::compute_rhs_bd_quantities();
+
+// Update material density and cross sections
+void FlatSourceDomain::update_material_density(int i)
+{
 #pragma omp parallel for
   for (int j = 0; j < model::materials.size(); j++) {
     auto& mat {model::materials[j]};
@@ -1699,6 +1737,6 @@ void FlatSourceDomain::update_material_density(int i) {
       }
     }
   }
-} 
+}
 
 } // namespace openmc

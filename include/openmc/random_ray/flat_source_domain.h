@@ -72,6 +72,7 @@ public:
   void flux_td_swap();
   void precursors_swap();
   void accumulate_iteration_quantities();
+  void normalize_final_quantities();
   void update_material_density(int i);
 
   //----------------------------------------------------------------------------

@@ -124,9 +124,6 @@ void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector);
 void get_bd_vector_slice(int64_t vector_size, vector<double>& storage_vector,
   vector<double>& bd_vector, int neg_timestep_index);
 
-void normalize_serialized_vector(
-  vector<double>& vector, double normalization_factor);
-
 //==============================================================================
 // Time-dependent global variables
 //==============================================================================
