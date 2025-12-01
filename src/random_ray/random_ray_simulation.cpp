@@ -47,97 +47,101 @@ void openmc_run_random_ray()
   if (mpi::master)
     validate_random_ray_inputs();
 
-    // Initialize Random Ray Simulation Object
-    RandomRaySimulation sim;
+  // Initialize Random Ray Simulation Object
+  RandomRaySimulation sim;
 
-    // Initialize fixed sources, if present
-    sim.prepare_fixed_sources();
+  // Initialize fixed sources, if present
+  sim.prepare_fixed_sources();
 
-    // Begin main simulation timer
-    simulation::time_total.start();
+  // Begin main simulation timer
+  simulation::time_total.start();
 
-    // Execute random ray simulation
-    sim.simulate();
+  // Execute random ray simulation
+  sim.simulate();
 
-    // End main simulation timer
-    simulation::time_total.stop();
+  // End main simulation timer
+  simulation::time_total.stop();
 
-    // Normalize and save the final forward flux
-    sim.domain()->normalize_final_quantities();
+  // Normalize and save the final forward flux
+  sim.domain()->normalize_final_quantities();
 
-    // Finalize OpenMC
-    openmc_simulation_finalize();
+  // Finalize OpenMC
+  openmc_simulation_finalize();
 
-    // Reduce variables across MPI ranks
-    sim.reduce_simulation_statistics();
+  // Reduce variables across MPI ranks
+  sim.reduce_simulation_statistics();
 
-    // Output all simulation results
-    sim.output_simulation_results();
+  // Output all simulation results
+  sim.output_simulation_results();
 
-    // Extract flux and source for initial condition for time-dependent
-    // simulation
-    if (settings::is_initial_condition) {
-      previous_k_eff = simulation::keff;
-      sim.domain()->store_time_step_quantities(false);
+  // Extract flux and source for initial condition for time-dependent
+  // simulation
+  if (settings::is_initial_condition) {
+    previous_k_eff = simulation::keff;
+    sim.domain()->store_time_step_quantities(false);
 
-      // We can reuse the maps and source regions found during the
-      // initial condition simulation. This is actually required
-      // to properly set the initial conditions.
-      switch (RandomRay::source_shape_) {
-      case RandomRaySourceShape::FLAT:
-        source_domain = move(sim.domain_);
-        break;
-      case RandomRaySourceShape::LINEAR:
-      case RandomRaySourceShape::LINEAR_XY:
-        fatal_error("Time-dependent simulations do not currently suppot linear "
-                    "source regions.");
-        break;
-      default:
-        fatal_error("Unknown random ray source shape");
-      }
+    // We can reuse the maps and source regions found during the
+    // initial condition simulation. This is actually required
+    // to properly set the initial conditions.
+    switch (RandomRay::source_shape_) {
+    case RandomRaySourceShape::FLAT:
+      source_domain = move(sim.domain_);
+      break;
+    case RandomRaySourceShape::LINEAR:
+    case RandomRaySourceShape::LINEAR_XY:
+      fatal_error("Time-dependent simulations do not currently suppot linear "
+                  "source regions.");
+      break;
+    default:
+      fatal_error("Unknown random ray source shape");
     }
+  }
 
   //////////////////////////////////////////////////////////
   // Run adjoint simulation (if enabled)
   //////////////////////////////////////////////////////////
+  if (!adjoint_needed) {
+    return;
+  }
+  reset_timers();
 
-    if (!adjoint_needed) {
-      return;
-    }
-    reset_timers();
+  // Configure the domain for adjoint simulation
+  FlatSourceDomain::adjoint_ = true;
 
-    // Configure the domain for adjoint simulation
-    FlatSourceDomain::adjoint_ = true;
+  if (mpi::master)
+    header("ADJOINT FLUX SOLVE", 3);
 
-    if (mpi::master)
-      header("ADJOINT FLUX SOLVE", 3);
+  // Initialize OpenMC general data structures
+  openmc_simulation_init();
 
-    // Initialize adjoint fixed sources, if present
-    sim.prepare_fixed_sources_adjoint();
+  sim.k_eff_ = 1.0;
 
-    // Transpose scattering matrix
-    sim.domain()->transpose_scattering_matrix();
+  // Initialize adjoint fixed sources, if present
+  sim.prepare_fixed_sources_adjoint();
 
-    // Swap nu_sigma_f and chi
-    sim.domain()->nu_sigma_f_.swap(sim.domain()->chi_);
+  // Transpose scattering matrix
+  sim.domain()->transpose_scattering_matrix();
 
-    // Begin main simulation timer
-    simulation::time_total.start();
+  // Swap nu_sigma_f and chi
+  sim.domain()->nu_sigma_f_.swap(sim.domain()->chi_);
 
-    // Execute random ray simulation
-    sim.simulate();
+  // Begin main simulation timer
+  simulation::time_total.start();
 
-    // End main simulation timer
-    simulation::time_total.stop();
+  // Execute random ray simulation
+  sim.simulate();
 
-    // Finalize OpenMC
-    openmc_simulation_finalize();
+  // End main simulation timer
+  simulation::time_total.stop();
 
-    // Reduce variables across MPI ranks
-    sim.reduce_simulation_statistics();
+  // Finalize OpenMC
+  openmc_simulation_finalize();
 
-    // Output all simulation results
-    sim.output_simulation_results();
+  // Reduce variables across MPI ranks
+  sim.reduce_simulation_statistics();
+
+  // Output all simulation results
+  sim.output_simulation_results();
 }
 
 //==============================================================================

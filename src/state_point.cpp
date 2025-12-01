@@ -188,6 +188,7 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
           break;
         }
       }
+      close_group(random_ray_group);
     }
 
     //
@@ -197,6 +198,7 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
       write_dataset(
         time_dependent_group, "current_timestep", settings::current_timestep);
       write_dataset(time_dependent_group, "n_timesteps", settings::n_timesteps);
+      close_group(time_dependent_group);
     }
 
     // Write out current batch number
