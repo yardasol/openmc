@@ -395,6 +395,74 @@ void SourceRegionContainer::mpi_sync_ranks(bool reduce_position)
 #endif
 }
 
+void SourceRegionContainer::adjoint_reset()
+{
+  std::fill(volume_.begin(), volume_.end(), 0.0);
+  std::fill(volume_t_.begin(), volume_t_.end(), 0.0);
+  std::fill(volume_naive_.begin(), volume_naive_.end(), 0.0);
+  std::fill(
+    external_source_present_.begin(), external_source_present_.end(), 0);
+  std::fill(external_source_.begin(), external_source_.end(), 0.0);
+  std::fill(centroid_.begin(), centroid_.end(), Position {0.0, 0.0, 0.0});
+  std::fill(centroid_iteration_.begin(), centroid_iteration_.end(),
+    Position {0.0, 0.0, 0.0});
+  std::fill(centroid_t_.begin(), centroid_t_.end(), Position {0.0, 0.0, 0.0});
+  std::fill(mom_matrix_.begin(), mom_matrix_.end(),
+    MomentMatrix {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+  std::fill(mom_matrix_t_.begin(), mom_matrix_t_.end(),
+    MomentMatrix {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+  if (settings::run_mode == RunMode::FIXED_SOURCE) {
+    std::fill(scalar_flux_old_.begin(), scalar_flux_old_.end(), 0.0);
+  } else {
+    std::fill(scalar_flux_old_.begin(), scalar_flux_old_.end(), 1.0);
+  }
+  std::fill(scalar_flux_new_.begin(), scalar_flux_new_.end(), 0.0);
+  std::fill(source_.begin(), source_.end(), 0.0f);
+  std::fill(external_source_.begin(), external_source_.end(), 0.0f);
+  std::fill(source_gradients_.begin(), source_gradients_.end(),
+    MomentArray {0.0, 0.0, 0.0});
+  std::fill(flux_moments_old_.begin(), flux_moments_old_.end(),
+    MomentArray {0.0, 0.0, 0.0});
+  std::fill(flux_moments_new_.begin(), flux_moments_new_.end(),
+    MomentArray {0.0, 0.0, 0.0});
+  std::fill(flux_moments_t_.begin(), flux_moments_t_.end(),
+    MomentArray {0.0, 0.0, 0.0});
+
+  // Time-dependent arrays
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    std::fill(scalar_flux_td_old_.begin(), scalar_flux_td_old_.end(), 0.0);
+    std::fill(scalar_flux_td_new_.begin(), scalar_flux_td_new_.end(), 0.0);
+    std::fill(precursors_old_.begin(), precursors_old_.end(), 0.0);
+    std::fill(precursors_new_.begin(), precursors_new_.end(), 0.0);
+
+    // BD Vectors
+    std::fill(scalar_flux_rhs_bd_.begin(), scalar_flux_rhs_bd_.end(), 0.0);
+
+    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      std::fill(
+        source_time_derivative_.begin(), source_time_derivative_.end(), 0.0);
+      std::fill(scalar_flux_time_derivative_2_.begin(),
+        scalar_flux_time_derivative_2_.end(), 0.0);
+
+      std::fill(source_rhs_bd_.begin(), source_rhs_bd_.end(), 0.0);
+      std::fill(
+        scalar_flux_rhs_bd_2_.begin(), scalar_flux_rhs_bd_2_.end(), 0.0);
+    }
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+      std::fill(
+        delayed_fission_source_.begin(), delayed_fission_source_.end(), 0.0);
+
+      std::fill(precursors_im1_.begin(), precursors_im1_.end(), 0.0);
+      std::fill(delayed_fission_source_im1_.begin(),
+        delayed_fission_source_im1_.end(), 0.0);
+      std::fill(delayed_fission_source_im2_.begin(),
+        delayed_fission_source_im2_.end(), 0.0);
+    } else {
+      std::fill(precursors_rhs_bd_.begin(), precursors_rhs_bd_.end(), 0.0);
+    }
+  }
+}
+
 // Time-dependent methods
 void SourceRegionContainer::flux_td_swap()
 {
@@ -405,6 +473,17 @@ void SourceRegionContainer::flux_td_swap()
 void SourceRegionContainer::precursors_swap()
 {
   precursors_old_.swap(precursors_new_);
+}
+
+void SourceRegionContainer::time_step_reset()
+{
+  std::fill(scalar_flux_final_.begin(), scalar_flux_final_.end(), 0.0);
+  std::fill(scalar_flux_td_final_.begin(), scalar_flux_td_final_.end(), 0.0);
+  std::fill(precursors_final_.begin(), precursors_final_.end(), 0.0);
+  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+    std::fill(source_td_final_.begin(), source_td_final_.end(), 0.0);
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+    std::fill(delayed_fission_source_final_.begin(), source_final_.end(), 0.0);
 }
 
 } // namespace openmc

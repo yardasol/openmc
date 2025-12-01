@@ -2,6 +2,7 @@
 #define OPENMC_RANDOM_RAY_BD_UTILITIES_H
 
 #include <algorithm>
+#include <deque>
 #include <map>
 
 #include "openmc/error.h"
@@ -31,55 +32,10 @@ const std::map<int, vector<double>> bd_coefficients_second_order_ = {
   {5, {4.511111111111111, -17.4, 29.25, -28.222222222222222, 16.5, -5.4, 0.761111111111111}},
   {6, {5.211111111111111, -22.3, 43.95, -52.722222222222222, 41.0, -20.1, 5.661111111111111, -0.7}}};
 
-// bd vector funtions
-template<typename T>
-T bd_time_derivative(vector<T>& bd_vector, int64_t vector_size,
-  int index, int bd_order, double dt, int derivative_order = 1)
-{
-  vector<double> bd_coeffs;
-  int n_bd_terms;
-  double time_factor;
-  if (derivative_order == 1) {
-    bd_coeffs = bd_coefficients_first_order_.at(bd_order);
-    time_factor = 1 / dt;
-    n_bd_terms = bd_order + 1;
-  } else if (derivative_order == 2) {
-    bd_coeffs = bd_coefficients_second_order_.at(bd_order);
-    n_bd_terms = bd_order + 2;
-    time_factor = 1 / (dt * dt);
-  } else {
-    fatal_error("Only first or second order bd derivatives are allowed.");
-  }
-  T bd_derivative = 0.0;
-  for (int i = 0; i < n_bd_terms; i++)
-    bd_derivative += bd_coeffs[i] * bd_vector[index + i * vector_size];
-  bd_derivative *= time_factor;
-  return bd_derivative;
-}
-
-// Update the first n elements of bd_vector with
-// all n elements of  new_solution.
-// Optionally scale rotate bd_vector so the last n
-// elements are moved to the first n elements
-// before updating.
-// Optionally scale the new solutions by factor
-template<typename T>
-void update_bd_vector(
-  vector<T>* bd_vector, vector<T>& new_solution, bool increment, T factor = 1)
-{
-  int n = new_solution.size();
-  // Move the oldest solution to the front of the vector
-  if (increment)
-    rotate(bd_vector->rbegin(), bd_vector->rbegin() + n, bd_vector->rend());
-  // Replace the oldest solution with the new solution
-  for (int i = 0; i < n; i++)
-    (*bd_vector)[i] = new_solution[i] * factor;
-}
-
 // Take RHS derivative to solve for the current timestep
 template<typename T>
-T rhs_backwards_difference(vector<T>& bd_vector, int64_t vector_size,
-  int index, int bd_order, double dt, int derivative_order = 1)
+T rhs_backwards_difference(
+  std::deque<T>& bd_vector, int bd_order, double dt, int derivative_order = 1)
 {
   vector<double> bd_coeffs;
   int n_bd_terms;
@@ -87,17 +43,17 @@ T rhs_backwards_difference(vector<T>& bd_vector, int64_t vector_size,
   if (derivative_order == 1) {
     bd_coeffs = bd_coefficients_first_order_.at(bd_order);
     time_factor = 1 / dt;
-    n_bd_terms = bd_order + 1;
+    n_bd_terms = bd_order;
   } else if (derivative_order == 2) {
     bd_coeffs = bd_coefficients_second_order_.at(bd_order);
-    n_bd_terms = bd_order + 2;
+    n_bd_terms = bd_order + 1;
     time_factor = 1 / (dt * dt);
   } else {
     fatal_error("Only first or second order bd derivatives are allowed.");
   }
   T rhs_bd = 0.0;
-  for (int i = 1; i < n_bd_terms; i++)
-    rhs_bd += bd_coeffs[i] * bd_vector[index + i * vector_size];
+  for (int i = 0; i < n_bd_terms; i++)
+    rhs_bd += bd_coeffs[i + 1] * bd_vector[i];
   rhs_bd *= time_factor;
   return rhs_bd;
 }

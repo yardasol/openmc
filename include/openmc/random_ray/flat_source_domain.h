@@ -41,7 +41,7 @@ public:
   void all_reduce_replicated_source_regions();
   void convert_external_sources();
   void count_external_source_regions();
-  void set_adjoint_sources(const vector<double>& forward_flux);
+  void set_adjoint_sources();
   void flux_swap();
   virtual double evaluate_flux_at_point(Position r, int64_t sr, int g) const;
   double compute_fixed_source_normalization_factor() const;
@@ -52,9 +52,6 @@ public:
 
   //----------------------------------------------------------------------------
   // Time dependent methods
-  void set_initial_condition(vector<double>& previous_scalar_flux,
-    vector<double>& previous_scalar_flux_td,
-    vector<double>& previous_precursors);
   virtual void update_neutron_source_td(double k_eff);
   double compute_k_dynamic() const;
   void compute_delayed_fission_source(double k_eff);
@@ -73,6 +70,9 @@ public:
   void precursors_swap();
   void accumulate_iteration_quantities();
   void normalize_final_quantities();
+  void propagate_final_quantities();
+  void store_time_step_quantities(bool increment_not_initialize = true);
+  void compute_rhs_bd_quantities();
   void update_material_density(int i);
 
   //----------------------------------------------------------------------------

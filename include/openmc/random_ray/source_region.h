@@ -784,6 +784,8 @@ public:
   // Time-dependent methods
   void flux_td_swap();
   void precursors_swap();
+  void adjoint_reset();
+  void time_step_reset();
 
 private:
   //----------------------------------------------------------------------------

@@ -15,13 +15,13 @@ class RandomRaySimulation {
 public:
   //----------------------------------------------------------------------------
   // Constructors
-  RandomRaySimulation();
+  RandomRaySimulation(bool generate_source_domain = true);
 
   //----------------------------------------------------------------------------
   // Methods
   void compute_segment_correction_factors();
   void prepare_fixed_sources();
-  void prepare_fixed_sources_adjoint(vector<double>& forward_flux);
+  void prepare_fixed_sources_adjoint();
   void simulate();
   void reduce_simulation_statistics();
   void output_simulation_results() const;
@@ -40,16 +40,6 @@ public:
   void is_window_avg_rms_source_converged(); // Determine if the window-averaged
                                              // RMS of the source is converg
 
-  void initialize_bd_vectors();
-  void increment_bd_vectors(int64_t n_source_elements,
-    int64_t
-      n_delay_elements); // Rotate the BD vectors to contain the next timestep
-  void compute_rhs_bd_vectors(
-    int64_t n_source_elements, int64_t n_delay_elements);
-  void store_rhs_bd_vectors(); // Store the RHS BD vectors in the source region
-  void normalize_and_store_quantities(); // Store quantitites (flux, source,
-                                         // precursors) in the BD vectors
-
   //----------------------------------------------------------------------------
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
@@ -60,12 +50,12 @@ public:
   // Random ray eigenvalue
   double k_eff_ {1.0};
 
+  // Contains all flat source region data
+  unique_ptr<FlatSourceDomain> domain_;
+
 private:
   //----------------------------------------------------------------------------
   // Data members
-
-  // Contains all flat source region data
-  unique_ptr<FlatSourceDomain> domain_;
 
   // Tracks the average FSR miss rate for analysis and reporting
   double avg_miss_rate_ {0.0};
@@ -109,38 +99,11 @@ void fix_batches(); // If a simulation is converged but hasn't reached the set
                     // and related arrays so the tallying and statepoint
                     // machinery works as intended.
 
-void initialize_bd_vector(int64_t vector_size, int n_timesteps,
-  vector<double>& bd_vector, vector<double>& vector);
-
-void compute_rhs_backward_difference(int64_t vector_size,
-  int bd_order, vector<double>& bd_vector,
-  vector<double>& rhs_bd_vector, int derivative_order);
-
-void increment_bd_vector(int64_t vector_size, vector<double>* bd_vector);
-
-void get_bd_vector_slice(int64_t vector_size, vector<double>& storage_vector,
-  vector<double>& bd_vector, int neg_timestep_index);
-
 //==============================================================================
 // Time-dependent global variables
 //==============================================================================
-extern vector<double> scalar_flux_bd;
-extern vector<double> precursors_bd;
-extern vector<double> source_bd;
-extern vector<double> delayed_fission_source_bd;
-
-extern vector<double> scalar_flux_rhs_bd;
-extern vector<double> precursors_rhs_bd;
-
-extern vector<double> source_rhs_bd;
-extern vector<double> scalar_flux_rhs_bd_2;
-
 extern double previous_k_eff;
-extern vector<double> previous_scalar_flux;
-extern vector<double> previous_scalar_flux_td;
-extern vector<double> previous_precursors;
-extern vector<double> previous_source;
-extern vector<double> previous_delayed_fission_source;
+extern unique_ptr<FlatSourceDomain> source_domain;
 
 } // namespace openmc
 
