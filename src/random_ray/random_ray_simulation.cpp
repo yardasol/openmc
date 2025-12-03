@@ -580,8 +580,8 @@ void write_random_ray_hdf5(hid_t group)
     case RandomRayPrecursorMode::BD:
       write_dataset(random_ray_group, "precursor_mode", "backwards difference");
       break;
-    case RandomRayPrecursorMode::ANALYTIC:
-      write_dataset(random_ray_group, "precursor_mode", "analytic");
+    case RandomRayPrecursorMode::INTEGRATION:
+      write_dataset(random_ray_group, "precursor_mode", "integration");
       break;
     default:
       break;

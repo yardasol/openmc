@@ -434,8 +434,8 @@ void get_run_parameters(pugi::xml_node node_base)
           get_node_value(random_ray_node, "precursor_mode", true, true);
         if (temp_str == "bd") {
           RandomRay::precursor_mode_ = RandomRayPrecursorMode::BD;
-        } else if (temp_str == "analytic") {
-          RandomRay::precursor_mode_ = RandomRayPrecursorMode::ANALYTIC;
+        } else if (temp_str == "integration") {
+          RandomRay::precursor_mode_ = RandomRayPrecursorMode::INTEGRATION;
         } else {
           fatal_error("Unrecognized precursor mode: " + temp_str);
         }

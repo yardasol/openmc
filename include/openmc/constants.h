@@ -349,7 +349,7 @@ enum class SourceConvergenceMethod { FIXED_BATCH, WINDOW_AVG_RMS };
 enum class RandomRayVolumeEstimator { NAIVE, SIMULATION_AVERAGED, HYBRID };
 enum class RandomRaySourceShape { FLAT, LINEAR, LINEAR_XY };
 enum class RandomRayTimeMode { TI, SDP };
-enum class RandomRayPrecursorMode { BD, ANALYTIC };
+enum class RandomRayPrecursorMode { BD, INTEGRATION };
 
 //==============================================================================
 // Geometry Constants

@@ -189,8 +189,9 @@ class Settings:
             Options are 'ti' (default), or 'sdp'.
         :precursor_mode:
             Method for solving the characteristic equation.
-            Options are 'bd' (default), or 'analytic'. 'analytic' use the Analytic
-            Precursor Integration method developed for PARCS, which uses a ...
+            Options are 'bd' (default), or 'integration'. 'integration' use the
+            Precursor Integration method (see Section 11.1.2 of the `MPACT
+            Theory Manual`<https://www.osti.gov/biblio/2305812>`).
 
         .. versionadded:: 0.15.0
     resonance_scattering : dict
@@ -1240,7 +1241,7 @@ class Settings:
                                    ('ti', 'sdp'))
                 elif key == 'precursor_mode':
                     cv.check_value('precursor mode', value,
-                                   ('bd', 'analytic'))
+                                   ('bd', 'integration'))
 
             else:
                 raise ValueError(f'Unable to set random ray to "{key}" which is '

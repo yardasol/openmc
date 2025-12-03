@@ -60,7 +60,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     }
 
     // Analytic precursor integration arrays
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
       delayed_fission_source_final_.assign(ndgroups, 0.0);
 
       precursors_im1_.resize(ndgroups);
@@ -180,7 +180,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       tally_delay_task_.emplace_back(sr.tally_delay_task_[dg]);
 
       // Analytic precursor integration arrays
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
         delayed_fission_source_final_.push_back(
           sr.delayed_fission_source_final_[dg]);
 
@@ -254,7 +254,7 @@ void SourceRegionContainer::assign(
       scalar_flux_rhs_bd_2_.clear();
     }
 
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
       delayed_fission_source_final_.clear();
 
       precursors_im1_.clear();
@@ -448,7 +448,7 @@ void SourceRegionContainer::adjoint_reset()
       std::fill(
         scalar_flux_rhs_bd_2_.begin(), scalar_flux_rhs_bd_2_.end(), 0.0);
     }
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
       std::fill(
         delayed_fission_source_.begin(), delayed_fission_source_.end(), 0.0);
 
@@ -482,7 +482,7 @@ void SourceRegionContainer::time_step_reset()
   std::fill(precursors_final_.begin(), precursors_final_.end(), 0.0);
   if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
     std::fill(source_td_final_.begin(), source_td_final_.end(), 0.0);
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
     std::fill(delayed_fission_source_final_.begin(), source_final_.end(), 0.0);
 }
 

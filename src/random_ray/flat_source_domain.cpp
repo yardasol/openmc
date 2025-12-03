@@ -1550,7 +1550,7 @@ void FlatSourceDomain::compute_precursors(double k_eff)
   simulation::time_compute_precursors.start();
   compute_delayed_fission_source(k_eff);
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
       compute_precursors_via_analytic_integration();
     } else {
       compute_precursors_via_bd();
@@ -1662,7 +1662,7 @@ void FlatSourceDomain::accumulate_iteration_quantities()
         }
       }
       for (int dg = 0; dg < ndgroups_; dg++) {
-        if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+        if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
           source_regions_.delayed_fission_source_final(sr, dg) +=
             source_regions_.delayed_fission_source(sr, dg);
         source_regions_.precursors_final(sr, dg) +=
@@ -1693,7 +1693,7 @@ void FlatSourceDomain::normalize_final_quantities()
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC)
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
         source_regions_.delayed_fission_source_final(sr, dg) *=
           normalization_factor;
       source_regions_.precursors_final(sr, dg) *= normalization_factor;
@@ -1715,7 +1715,7 @@ void FlatSourceDomain::propagate_final_quantities()
     for (int dg = 0; dg < ndgroups_; dg++) {
       source_regions_.precursors_old(sr, dg) =
         source_regions_.precursors_final(sr, dg);
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
         source_regions_.delayed_fission_source_im2(sr, dg) =
           source_regions_.delayed_fission_source_im1(sr, dg);
         source_regions_.delayed_fission_source_im1(sr, dg) =
@@ -1759,7 +1759,7 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::ANALYTIC) {
+      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
         source_regions_.delayed_fission_source_im2(sr, dg) =
           source_regions_.delayed_fission_source_final(sr, dg);
         source_regions_.delayed_fission_source(sr, dg) =
