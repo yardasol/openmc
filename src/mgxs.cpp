@@ -420,31 +420,38 @@ double Mgxs::get_xs(MgxsType xstype, int gin, const int* gout, const double* mu,
 {
   XsData* xs_t = &xs[t];
   double val;
+  std::string mgxs_type;
   switch (xstype) {
   case MgxsType::TOTAL:
     val = xs_t->total(a, gin);
+    mgxs_type = "total";
     break;
   case MgxsType::NU_FISSION:
     val = fissionable ? xs_t->nu_fission(a, gin) : 0.;
+    mgxs_type = "nu-fission";
     break;
   case MgxsType::ABSORPTION:
     val = xs_t->absorption(a, gin);
-    ;
+    mgxs_type = "absorption";
     break;
   case MgxsType::FISSION:
     val = fissionable ? xs_t->fission(a, gin) : 0.;
+    mgxs_type = "fission";
     break;
   case MgxsType::KAPPA_FISSION:
     val = fissionable ? xs_t->kappa_fission(a, gin) : 0.;
+    mgxs_type = "kappa-fission";
     break;
   case MgxsType::NU_SCATTER:
   case MgxsType::SCATTER:
   case MgxsType::NU_SCATTER_FMU:
   case MgxsType::SCATTER_FMU:
     val = xs_t->scatter[a]->get_xs(xstype, gin, gout, mu);
+    mgxs_type = "scatter_data";
     break;
   case MgxsType::PROMPT_NU_FISSION:
     val = fissionable ? xs_t->prompt_nu_fission(a, gin) : 0.;
+    mgxs_type = "prompt-nu-fission";
     break;
   case MgxsType::DELAYED_NU_FISSION:
     if (fissionable) {
@@ -459,6 +466,7 @@ double Mgxs::get_xs(MgxsType xstype, int gin, const int* gout, const double* mu,
     } else {
       val = 0.;
     }
+    mgxs_type = "delayed-nu-fission";
     break;
   case MgxsType::CHI:
     if (fissionable) {
@@ -474,6 +482,7 @@ double Mgxs::get_xs(MgxsType xstype, int gin, const int* gout, const double* mu,
     } else {
       val = 0.;
     }
+    mgxs_type = "chi";
     break;
   case MgxsType::CHI_PROMPT:
     if (fissionable) {
@@ -489,6 +498,7 @@ double Mgxs::get_xs(MgxsType xstype, int gin, const int* gout, const double* mu,
     } else {
       val = 0.;
     }
+    mgxs_type = "chi-prompt";
     break;
   case MgxsType::CHI_DELAYED:
     if (fissionable) {
@@ -516,9 +526,11 @@ double Mgxs::get_xs(MgxsType xstype, int gin, const int* gout, const double* mu,
     } else {
       val = 0.;
     }
+    mgxs_type = "chi-delayed";
     break;
   case MgxsType::INVERSE_VELOCITY:
     val = xs_t->inverse_velocity(a, gin);
+    mgxs_type = "inverse-velocity";
     break;
   case MgxsType::DECAY_RATE:
     if (dg != nullptr) {
@@ -526,9 +538,19 @@ double Mgxs::get_xs(MgxsType xstype, int gin, const int* gout, const double* mu,
     } else {
       val = xs_t->decay_rate(a, 0);
     }
+    mgxs_type = "decay-rate";
     break;
   default:
     val = 0.;
+  }
+  // TODO: need to add more robust handling of zero-values cross sections that
+  // produce NANs on normalization
+  if (val != val) {
+    warning(
+      fmt::format("The {} cross section for this material has a nan present "
+                  "(possibly due to a division by zero). Setting to zero...",
+        mgxs_type));
+    val = 0;
   }
   return val;
 }
