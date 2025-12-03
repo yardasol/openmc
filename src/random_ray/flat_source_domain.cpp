@@ -1563,7 +1563,6 @@ void FlatSourceDomain::compute_precursors(double k_eff)
 
 void FlatSourceDomain::compute_neutron_source_time_derivative()
 {
-  simulation::time_compute_neutron_source_time_derivative.start();
   double A0 =
     (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] / settings::dt;
 #pragma omp parallel for
@@ -1572,12 +1571,10 @@ void FlatSourceDomain::compute_neutron_source_time_derivative()
     double source_td = source_regions_.source_td(se);
     source_regions_.source_time_derivative(se) = A0 * source_td + source_rhs_bd;
   }
-  simulation::time_compute_neutron_source_time_derivative.stop();
 }
 
 void FlatSourceDomain::compute_scalar_flux_time_derivative_2()
 {
-  simulation::time_compute_scalar_time_derivative_2.start();
   double B0 = (bd_coefficients_second_order_.at(RandomRay::bd_order_))[0] /
               (settings::dt * settings::dt);
 #pragma omp parallel for
@@ -1587,7 +1584,6 @@ void FlatSourceDomain::compute_scalar_flux_time_derivative_2()
     source_regions_.scalar_flux_time_derivative_2(se) =
       B0 * scalar_flux_td + scalar_flux_rhs_bd_2;
   }
-  simulation::time_compute_scalar_time_derivative_2.stop();
 }
 
 void FlatSourceDomain::serialize_final_td_fluxes(vector<double>& flux_td)
@@ -1731,6 +1727,7 @@ void FlatSourceDomain::propagate_final_quantities()
   }
 }
 
+// Helper function for store_time_step_quantities()
 void add_value_to_bd_vector(std::deque<double>& bd_vector, double& new_value,
   bool increment_not_initialize, int initialize_size)
 {
@@ -1756,7 +1753,6 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
         source_regions_.scalar_flux_td_final(sr, g), increment_not_initialize,
         RandomRay::bd_order_ + j);
       if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-        // TODO: initialize td source inal alongside source
         add_value_to_bd_vector(source_regions_.source_bd(sr, g),
           source_regions_.source_td_final(sr, g), increment_not_initialize,
           RandomRay::bd_order_);

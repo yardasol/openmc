@@ -21,8 +21,6 @@
 #include "openmc/mgxs_interface.h"
 #include "openmc/nuclide.h"
 #include "openmc/output.h"
-#include "openmc/random_ray/flat_source_domain.h"
-#include "openmc/random_ray/random_ray.h"
 #include "openmc/random_ray/random_ray_simulation.h"
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
@@ -118,6 +116,7 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
       break;
     case SolverType::RANDOM_RAY:
       write_dataset(file_id, "solver_type", "random ray");
+      write_random_ray_hdf5(file_id);
       break;
     default:
       break;
@@ -126,78 +125,11 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     write_dataset(file_id, "n_particles", settings::n_particles);
     write_dataset(file_id, "n_batches", settings::n_batches);
 
-    // Write random ray attributes
-    if (settings::solver_type == SolverType::RANDOM_RAY) {
-      hid_t random_ray_group = create_group(file_id, "random_ray");
-      write_dataset(
-        random_ray_group, "distance_active", RandomRay::distance_active_);
-      write_dataset(
-        random_ray_group, "distance_inactive", RandomRay::distance_inactive_);
-      write_dataset(random_ray_group, "volume_normalized_flux_tallies",
-        FlatSourceDomain::volume_normalized_flux_tallies_);
-      write_dataset(random_ray_group, "adjoint", FlatSourceDomain::adjoint_);
-      // TODO: Add avg_miss_rate and total_geometric_intersections
-      switch (FlatSourceDomain::volume_estimator_) {
-      case RandomRayVolumeEstimator::SIMULATION_AVERAGED:
-        write_dataset(
-          random_ray_group, "volume_estimator", "simulation averaged");
-        break;
-      case RandomRayVolumeEstimator::NAIVE:
-        write_dataset(random_ray_group, "volume_estimator", "naive");
-        break;
-      case RandomRayVolumeEstimator::HYBRID:
-        write_dataset(random_ray_group, "volume_estimator", "hybrid");
-        break;
-      default:
-        break;
-      }
-      switch (RandomRay::source_shape_) {
-      case RandomRaySourceShape::FLAT:
-        write_dataset(random_ray_group, "source_region_shape", "flat");
-        break;
-      case RandomRaySourceShape::LINEAR:
-        write_dataset(random_ray_group, "source_region_shape", "linear");
-        break;
-      case RandomRaySourceShape::LINEAR_XY:
-        write_dataset(random_ray_group, "source_region_shape", "linear xy");
-        break;
-      default:
-        break;
-      }
-      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-        write_dataset(random_ray_group, "bd_order", RandomRay::bd_order_);
-        switch (RandomRay::precursor_mode_) {
-        case RandomRayPrecursorMode::BD:
-          write_dataset(
-            random_ray_group, "precursor_mode", "backwards difference");
-          break;
-        case RandomRayPrecursorMode::ANALYTIC:
-          write_dataset(random_ray_group, "precursor_mode", "analytic");
-          break;
-        default:
-          break;
-        }
-        switch (RandomRay::time_mode_) {
-        case RandomRayTimeMode::TI:
-          write_dataset(random_ray_group, "time_mode", "ti");
-          break;
-        case RandomRayTimeMode::SDP:
-          write_dataset(random_ray_group, "time_mode", "sdp");
-          break;
-        default:
-          break;
-        }
-      }
-      close_group(random_ray_group);
-    }
-
-    //
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       hid_t time_dependent_group = create_group(file_id, "time_dependent");
       write_dataset(time_dependent_group, "dt", settings::dt);
       write_dataset(
         time_dependent_group, "current_timestep", settings::current_timestep);
-      write_dataset(time_dependent_group, "n_timesteps", settings::n_timesteps);
       close_group(time_dependent_group);
     }
 
@@ -403,7 +335,8 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     write_dataset(runtime_group, "active batches", time_active.elapsed());
     if (settings::solver_type == SolverType::RANDOM_RAY) {
       write_dataset(runtime_group, "source_update", time_update_src.elapsed());
-      if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      if (settings::is_initial_condition ||
+          settings::run_mode == RunMode::TIME_DEPENDENT) {
         write_dataset(
           runtime_group, "source_td_update", time_update_src_td.elapsed());
         write_dataset(

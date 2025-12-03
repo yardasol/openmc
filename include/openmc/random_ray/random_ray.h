@@ -38,6 +38,15 @@ public:
   // Static data members
   static double distance_inactive_;          // Inactive (dead zone) ray length
   static double distance_active_;            // Active ray length
+  static double avg_miss_rate_;              // Average ray miss rate per
+                                             // iteration for reporting
+  static int64_t n_source_regions_;          // Total number of source regions
+  static int64_t
+    n_external_source_regions_; // Total number of source regions with
+                                // non-zero external source terms
+  static uint64_t total_geometric_intersections_; // Tracks the total number of
+                                                  // geometric intersections by
+                                                  // all rays for reporting
   static int bd_order_; // Order of backwards difference approximation for SDP
                         // time derivatives
   static unique_ptr<Source> ray_source_;     // Starting source for ray sampling

@@ -164,8 +164,8 @@ void openmc_run_random_ray_time_dependent()
   // Settings for timestepping loop
   /////////////////////////////////
 
-  simulation::time_initialize_td.start();
   reset_timers();
+  simulation::time_initialize_td.start();
   RandomRaySimulation sim_td(false);
   sim_td.domain_ = move(source_domain);
   set_time_dependent_settings();
@@ -191,6 +191,8 @@ void openmc_run_random_ray_time_dependent()
     // Initialize OpenMC general data structures
     openmc_simulation_init();
 
+    simulation::time_initialize_td.start();
+
     sim_td.k_eff_ = previous_k_eff;
     sim_td.domain()->source_regions_.adjoint_reset();
     sim_td.domain()->propagate_final_quantities();
@@ -201,6 +203,8 @@ void openmc_run_random_ray_time_dependent()
 
     // Update time dependent cross section based on the density
     sim_td.domain()->update_material_density(i);
+
+    simulation::time_initialize_td.stop();
 
     // Begin main simulation timer
     simulation::time_total.start();
@@ -520,6 +524,82 @@ void validate_random_ray_inputs()
 #endif
 }
 
+void write_random_ray_hdf5(hid_t group)
+{
+  hid_t random_ray_group = create_group(group, "random_ray");
+  switch (RandomRay::source_shape_) {
+  case RandomRaySourceShape::FLAT:
+    write_dataset(random_ray_group, "source_shape", "flat");
+    break;
+  case RandomRaySourceShape::LINEAR:
+    write_dataset(random_ray_group, "source_shape", "linear");
+    break;
+  case RandomRaySourceShape::LINEAR_XY:
+    write_dataset(random_ray_group, "source_shape", "linear xy");
+    break;
+  default:
+    break;
+  }
+
+  switch (FlatSourceDomain::volume_estimator_) {
+  case RandomRayVolumeEstimator::SIMULATION_AVERAGED:
+    write_dataset(random_ray_group, "volume_estimator", "simulation averaged");
+    break;
+  case RandomRayVolumeEstimator::NAIVE:
+    write_dataset(random_ray_group, "volume_estimator", "naive");
+    break;
+  case RandomRayVolumeEstimator::HYBRID:
+    write_dataset(random_ray_group, "volume_estimator", "hybrid");
+    break;
+  default:
+    break;
+  }
+
+  write_dataset(
+    random_ray_group, "distance_active", RandomRay::distance_active_);
+  write_dataset(
+    random_ray_group, "distance_inactive", RandomRay::distance_inactive_);
+  write_dataset(random_ray_group, "volume_normalized_flux_tallies",
+    FlatSourceDomain::volume_normalized_flux_tallies_);
+  write_dataset(random_ray_group, "adjoint_mode", FlatSourceDomain::adjoint_);
+
+  write_dataset(random_ray_group, "avg_miss_rate", RandomRay::avg_miss_rate_);
+  write_dataset(
+    random_ray_group, "n_source_regions", RandomRay::n_source_regions_);
+  write_dataset(random_ray_group, "n_external_source_regions",
+    RandomRay::n_external_source_regions_);
+  write_dataset(random_ray_group, "n_geometric_intersections",
+    RandomRay::total_geometric_intersections_);
+  int64_t n_integrations =
+    RandomRay::total_geometric_intersections_ * data::mg.num_energy_groups_;
+  write_dataset(random_ray_group, "n_integrations", n_integrations);
+
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    write_dataset(random_ray_group, "bd_order", RandomRay::bd_order_);
+    switch (RandomRay::precursor_mode_) {
+    case RandomRayPrecursorMode::BD:
+      write_dataset(random_ray_group, "precursor_mode", "backwards difference");
+      break;
+    case RandomRayPrecursorMode::ANALYTIC:
+      write_dataset(random_ray_group, "precursor_mode", "analytic");
+      break;
+    default:
+      break;
+    }
+    switch (RandomRay::time_mode_) {
+    case RandomRayTimeMode::TI:
+      write_dataset(random_ray_group, "time_mode", "ti");
+      break;
+    case RandomRayTimeMode::SDP:
+      write_dataset(random_ray_group, "time_mode", "sdp");
+      break;
+    default:
+      break;
+    }
+  }
+  close_group(random_ray_group);
+}
+
 //==============================================================================
 // RandomRaySimulation implementation
 //==============================================================================
@@ -682,6 +762,11 @@ void RandomRaySimulation::simulate()
     // Check for any obvious insabilities/nans/infs
     instability_check(n_hits, k_eff_, avg_miss_rate_);
 
+    RandomRay::avg_miss_rate_ = avg_miss_rate_ / settings::n_batches;
+    RandomRay::total_geometric_intersections_ = total_geometric_intersections_;
+    RandomRay::n_external_source_regions_ = domain_->n_external_source_regions_;
+    RandomRay::n_source_regions_ = domain_->n_source_regions_;
+
     // Finalize the current batch
     finalize_generation();
     finalize_batch();
@@ -706,9 +791,7 @@ void RandomRaySimulation::output_simulation_results() const
 {
   // Print random ray results
   if (mpi::master) {
-    print_results_random_ray(total_geometric_intersections_,
-      avg_miss_rate_ / settings::n_batches, negroups_,
-      domain_->n_source_regions_, domain_->n_external_source_regions_);
+    print_results_random_ray();
     if (model::plots.size() > 0) {
       domain_->output_to_vtk();
     }
@@ -746,34 +829,47 @@ void RandomRaySimulation::instability_check(
 }
 
 // Print random ray simulation results
-void RandomRaySimulation::print_results_random_ray(
-  uint64_t total_geometric_intersections, double avg_miss_rate, int negroups,
-  int64_t n_source_regions, int64_t n_external_source_regions) const
+void RandomRaySimulation::print_results_random_ray() const
 {
   using namespace simulation;
 
   if (settings::verbosity >= 6) {
-    double total_integrations = total_geometric_intersections * negroups;
+    double total_integrations =
+      RandomRay::total_geometric_intersections_ * negroups_;
     double time_per_integration =
       simulation::time_transport.elapsed() / total_integrations;
     double misc_time = time_total.elapsed() - time_update_src.elapsed() -
                        time_transport.elapsed() - time_tallies.elapsed() -
                        time_bank_sendrecv.elapsed();
+    if (settings::is_initial_condition) {
+      misc_time -= time_compute_precursors.elapsed();
+    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      misc_time -=
+        time_initialize_td.elapsed() + time_update_bd_vectors_td.elapsed() +
+        time_update_src_td.elapsed() + time_compute_precursors.elapsed();
+    }
     header("Simulation Statistics", 4);
     fmt::print(
       " Total Iterations                  = {}\n", settings::n_batches);
-    fmt::print(" Flat Source Regions (FSRs)        = {}\n", n_source_regions);
-    fmt::print(
-      " FSRs Containing External Sources  = {}\n", n_external_source_regions);
+    fmt::print(" Flat Source Regions (FSRs)        = {}\n",
+      RandomRay::n_source_regions_);
+    fmt::print(" FSRs Containing External Sources  = {}\n",
+      RandomRay::n_external_source_regions_);
     fmt::print(" Total Geometric Intersections     = {:.4e}\n",
-      static_cast<double>(total_geometric_intersections));
+      static_cast<double>(RandomRay::total_geometric_intersections_));
     fmt::print("   Avg per Iteration               = {:.4e}\n",
-      static_cast<double>(total_geometric_intersections) / settings::n_batches);
+      static_cast<double>(RandomRay::total_geometric_intersections_) /
+        settings::n_batches);
     fmt::print("   Avg per Iteration per FSR       = {:.2f}\n",
-      static_cast<double>(total_geometric_intersections) /
-        static_cast<double>(settings::n_batches) / n_source_regions);
-    fmt::print(" Avg FSR Miss Rate per Iteration   = {:.4f}%\n", avg_miss_rate);
-    fmt::print(" Energy Groups                     = {}\n", negroups);
+      static_cast<double>(RandomRay::total_geometric_intersections_) /
+        static_cast<double>(settings::n_batches) /
+        RandomRay::n_source_regions_);
+    fmt::print(" Avg FSR Miss Rate per Iteration   = {:.4f}%\n",
+      RandomRay::avg_miss_rate_);
+    fmt::print(" Energy Groups                     = {}\n", negroups_);
+    if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+        settings::is_initial_condition)
+      fmt::print(" Delay Groups                      = {}\n", ndgroups_);
     fmt::print(
       " Total Integrations                = {:.4e}\n", total_integrations);
     fmt::print("   Avg per Iteration               = {:.4e}\n",
@@ -798,6 +894,19 @@ void RandomRaySimulation::print_results_random_ray(
     std::string adjoint_true = (FlatSourceDomain::adjoint_) ? "ON" : "OFF";
     fmt::print(" Adjoint Flux Mode                 = {}\n", adjoint_true);
 
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      std::string time_mode =
+        (RandomRay::time_mode_ == RandomRayTimeMode::TI) ? "TI" : "SDP";
+      fmt::print(" Time Mode                         = {}\n", time_mode);
+      std::string precursor_mode =
+        (RandomRay::precursor_mode_ == RandomRayPrecursorMode::BD)
+          ? "BD"
+          : "INTEGRATION";
+      fmt::print(" Precursor Mode                    = {}\n", precursor_mode);
+      fmt::print(
+        " Backwards Difference Order        = {}\n", RandomRay::bd_order_);
+    }
+
     header("Timing Statistics", 4);
     show_time("Total time for initialization", time_initialize.elapsed());
     show_time("Reading cross sections", time_read_xs.elapsed(), 1);
@@ -815,14 +924,7 @@ void RandomRaySimulation::print_results_random_ray(
         "Precursor computation only", time_compute_precursors.elapsed(), 1);
       misc_time -= time_compute_precursors.elapsed();
     }
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
-      show_time("Source time derivaitve computation only",
-        time_compute_neutron_source_time_derivative.elapsed(), 1);
-      misc_time -= time_compute_neutron_source_time_derivative.elapsed();
-      show_time("Scalar flux time derivative computation only",
-        time_compute_scalar_time_derivative_2.elapsed(), 1);
-      misc_time -= time_compute_scalar_time_derivative_2.elapsed();
-    }
+
     show_time("Tally conversion only", time_tallies.elapsed(), 1);
     show_time("MPI source reductions only", time_bank_sendrecv.elapsed(), 1);
     show_time("Other iteration routines", misc_time, 1);
