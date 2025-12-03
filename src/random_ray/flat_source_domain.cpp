@@ -136,7 +136,9 @@ void FlatSourceDomain::update_single_neutron_source(SourceRegionHandle& srh)
         double chi = chi_[material * negroups_ + g_out];
 
         scatter_source += sigma_s * scalar_flux;
-        fission_source += nu_sigma_f * scalar_flux * chi;
+        if (settings::create_fission_neutrons) {
+          fission_source += nu_sigma_f * scalar_flux * chi;
+        }
       }
       srh.source(g_out) =
         (scatter_source + fission_source * inverse_k_eff) / sigma_t;
@@ -432,6 +434,7 @@ void FlatSourceDomain::compute_k_eff()
   // Adds entropy value to shared entropy vector in openmc namespace.
   simulation::entropy.push_back(H);
 
+  fission_rate_ = fission_rate_new;
   k_eff_ = k_eff_new;
 }
 
@@ -644,11 +647,35 @@ void FlatSourceDomain::reset_tally_volumes()
 // simulation
 double FlatSourceDomain::compute_fixed_source_normalization_factor() const
 {
-  // If we are not in fixed source mode, then there are no external sources
-  // so no normalization is needed.
-  if (settings::run_mode != RunMode::FIXED_SOURCE || adjoint_) {
+  // Eigenvalue mode normalization
+  if (settings::run_mode == RunMode::EIGENVALUE ||
+      settings::run_mode == RunMode::TIME_DEPENDENT) {
+    // Normalize fluxes by total number of fission neutrons produced. This
+    // ensures consistent scaling of the eigenvector such that its magnitude is
+    // comparable to the eigenvector produced by the Monte Carlo solver.
+    // Multiplying by the eigenvalue is unintuitive, but it is necessary.
+    // If the eigenvalue is 1.2, per starting source neutron, you will
+    // generate 1.2 neutrons. Thus if we normalize to generating only ONE
+    // neutron in total for the whole domain, then we don't actually have enough
+    // flux to generate the required 1.2 neutrons. We only know the flux
+    // required to generate 1 neutron (which would have required less than one
+    // starting neutron). Thus, you have to scale the flux up by the eigenvalue
+    // such that 1.2 neutrons are generated, so as to be consistent with the
+    // bookkeeping in MC which is all done per starting source neutron (not per
+    // neutron produced).
+    // TODO: check if a delayed fission rate needed to normalize the precursor population...
+    // need to run a test problem using mc tallies?
+    return k_eff_ / (fission_rate_ * simulation_volume_);
+  }
+
+  // If we are in adjoint mode of a fixed source problem, the external
+  // source is already normalized, such that all resulting fluxes are
+  // also normalized.
+  if (adjoint_) {
     return 1.0;
   }
+
+  // Fixed source mode normalization
 
   // Step 1 is to sum over all source regions and energy groups to get the
   // total external source strength in the simulation.
@@ -853,6 +880,7 @@ void FlatSourceDomain::random_ray_tally()
 
           case SCORE_PRECURSORS:
             // TODO: void material if statement?
+	    // TODO: check if multiplying by source normalization factor is the right thing to do now...
             score = source_regions_.precursors_new(sr, dg) *
                     source_normalization_factor * volume;
             break;
@@ -2213,7 +2241,7 @@ void FlatSourceDomain::normalize_final_quantities()
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
-      source_regions_.precursors_final(sr, dg) *= normalization_factor;
+      source_regions_.precursors_final(sr, dg) *= source_normalization_factor;
     }
   }
 }
