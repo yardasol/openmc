@@ -576,22 +576,22 @@ void write_random_ray_hdf5(hid_t group)
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     write_dataset(random_ray_group, "bd_order", RandomRay::bd_order_);
-    switch (RandomRay::precursor_mode_) {
-    case RandomRayPrecursorMode::BD:
-      write_dataset(random_ray_group, "precursor_mode", "backwards difference");
+    switch (RandomRay::precursor_method_) {
+    case RandomRayPrecursorMethod::BD:
+      write_dataset(random_ray_group, "precursor_method", "backwards difference");
       break;
-    case RandomRayPrecursorMode::INTEGRATION:
-      write_dataset(random_ray_group, "precursor_mode", "integration");
+    case RandomRayPrecursorMethod::INTEGRATION:
+      write_dataset(random_ray_group, "precursor_method", "integration");
       break;
     default:
       break;
     }
-    switch (RandomRay::time_mode_) {
-    case RandomRayTimeMode::TI:
-      write_dataset(random_ray_group, "time_mode", "ti");
+    switch (RandomRay::time_method_) {
+    case RandomRayTimeMethod::TI:
+      write_dataset(random_ray_group, "time_method", "ti");
       break;
-    case RandomRayTimeMode::SDP:
-      write_dataset(random_ray_group, "time_mode", "sdp");
+    case RandomRayTimeMethod::SDP:
+      write_dataset(random_ray_group, "time_method", "sdp");
       break;
     default:
       break;
@@ -683,7 +683,7 @@ void RandomRaySimulation::simulate()
     domain_->update_neutron_source(k_eff_);
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       domain_->update_neutron_source_td(k_eff_);
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
         domain_->compute_neutron_source_time_derivative();
         domain_->compute_scalar_flux_time_derivative_2();
       }
@@ -895,14 +895,14 @@ void RandomRaySimulation::print_results_random_ray() const
     fmt::print(" Adjoint Flux Mode                 = {}\n", adjoint_true);
 
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      std::string time_mode =
-        (RandomRay::time_mode_ == RandomRayTimeMode::TI) ? "TI" : "SDP";
-      fmt::print(" Time Mode                         = {}\n", time_mode);
-      std::string precursor_mode =
-        (RandomRay::precursor_mode_ == RandomRayPrecursorMode::BD)
+      std::string time_method =
+        (RandomRay::time_method_ == RandomRayTimeMethod::TI) ? "TI" : "SDP";
+      fmt::print(" Time Mode                         = {}\n", time_method);
+      std::string precursor_method =
+        (RandomRay::precursor_method_ == RandomRayPrecursorMethod::BD)
           ? "BD"
           : "INTEGRATION";
-      fmt::print(" Precursor Mode                    = {}\n", precursor_mode);
+      fmt::print(" Precursor Mode                    = {}\n", precursor_method);
       fmt::print(
         " Backwards Difference Order        = {}\n", RandomRay::bd_order_);
     }

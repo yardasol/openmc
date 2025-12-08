@@ -16,12 +16,12 @@ class MGXSTestHarnessTD(TolerantPyAPITestHarnessTD):
             os.remove(f)
 
 
-@pytest.mark.parametrize("time_dependent_method", ["ti",
-                                       "sdp"])
-def test_random_ray_time_dependent(time_dependent_method):
-    with change_directory(time_dependent_method):
+@pytest.mark.parametrize("time_method", ["ti",
+                                         "sdp"])
+def test_random_ray_time_dependent(time_method):
+    with change_directory(time_method):
         openmc.reset_auto_ids()
         model = random_ray_lattice(time_dependent=True)
-        model.settings.random_ray['time_mode'] = time_dependent_method
+        model.settings.random_ray['time_method'] = time_method
         harness = MGXSTestHarnessTD(model, 3)
         harness.main()

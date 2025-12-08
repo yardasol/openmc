@@ -947,8 +947,8 @@ def random_ray_lattice(time_dependent=False) -> openmc.Model:
     settings.random_ray['volume_normalized_flux_tallies'] = True
     if time_dependent:
         settings.random_ray['bd_order'] = 2
-        settings.random_ray['time_mode'] = 'ti'
-        settings.random_ray['precursor_mode'] = 'bd'
+        settings.random_ray['time_method'] = 'ti'
+        settings.random_ray['precursor_method'] = 'bd'
 
         settings.run_mode = "time dependent"
         settings.time_dependent = {

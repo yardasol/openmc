@@ -183,11 +183,11 @@ class Settings:
         :bd_order:
             Indicates the integer order of BD formula used for Time Derivative
             Propogation.
-        :time_mode:
+        :time_method:
             Method for resolving :math:`\\frac{\\partial}{\\partial t}
             I_{g,r}(s,t)` term in the time-dependent charactersitic equation.
             Options are 'ti' (default), or 'sdp'.
-        :precursor_mode:
+        :precursor_method:
             Method for solving the characteristic equation.
             Options are 'bd' (default), or 'integration'. 'integration' use the
             Precursor Integration method (see Section 11.1.2 of the `MPACT
@@ -1236,10 +1236,10 @@ class Settings:
                     cv.check_type('BD order', value, Integer)
                     cv.check_greater_than('BD order', value, 0)
                     cv.check_less_than('BD order', value, 7)
-                elif key == 'time_mode':
-                    cv.check_value('time mode', value,
+                elif key == 'time_method':
+                    cv.check_value('time method', value,
                                    ('ti', 'sdp'))
-                elif key == 'precursor_mode':
+                elif key == 'precursor_method':
                     cv.check_value('precursor mode', value,
                                    ('bd', 'integration'))
 
@@ -2137,10 +2137,10 @@ class Settings:
                     )
                 elif child.tag == 'bd_order':
                     self.random_ray['bd_order'] = int(child.text)
-                elif child.tag == 'time_mode':
-                    self.random_ray['time_mode'] = child.text
-                elif child.tag == 'precursor_mode':
-                    self.random_ray['precursor_mode'] = child.text
+                elif child.tag == 'time_method':
+                    self.random_ray['time_method'] = child.text
+                elif child.tag == 'precursor_method':
+                    self.random_ray['precursor_method'] = child.text
 
 
     def _time_dependent_from_xml_element(self, root):

@@ -276,7 +276,7 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
     double sigma_t_td = sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
     source_regions_.scalar_flux_td_new(sr, g) /= (sigma_t_td * volume);
     source_regions_.scalar_flux_td_new(sr, g) += source_regions_.source_td(sr, g) / sigma_t_td;
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
       double inverse_vbar =
         inverse_vbar_[source_regions_.material(sr) * negroups_ + g];
       double scalar_flux_rhs_bd = source_regions_.scalar_flux_rhs_bd(sr, g);
@@ -1428,7 +1428,7 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
       source_regions_.source_td(sr, g_out) += delayed_source;
 
       // Add derivative of scalar flux (TI method)
-      if (RandomRay::time_mode_ == RandomRayTimeMode::TI) {
+      if (RandomRay::time_method_ == RandomRayTimeMethod::TI) {
         double inverse_vbar = inverse_vbar_[material * negroups_ + g_out];
         double scalar_flux_rhs_bd =
           source_regions_.scalar_flux_rhs_bd(sr, g_out);
@@ -1550,7 +1550,7 @@ void FlatSourceDomain::compute_precursors(double k_eff)
   simulation::time_compute_precursors.start();
   compute_delayed_fission_source(k_eff);
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+    if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
       compute_precursors_via_analytic_integration();
     } else {
       compute_precursors_via_bd();
@@ -1652,7 +1652,7 @@ void FlatSourceDomain::accumulate_iteration_quantities()
       for (int g = 0; g < negroups_; g++) {
         source_regions_.scalar_flux_td_final(sr, g) +=
           source_regions_.scalar_flux_td_new(sr, g);
-        if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+        if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
           if (settings::run_mode == RunMode::TIME_DEPENDENT)
             source_regions_.source_td_final(sr, g) +=
               source_regions_.source_td(sr, g);
@@ -1662,7 +1662,7 @@ void FlatSourceDomain::accumulate_iteration_quantities()
         }
       }
       for (int dg = 0; dg < ndgroups_; dg++) {
-        if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+        if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION)
           source_regions_.delayed_fission_source_final(sr, dg) +=
             source_regions_.delayed_fission_source(sr, dg);
         source_regions_.precursors_final(sr, dg) +=
@@ -1688,12 +1688,12 @@ void FlatSourceDomain::normalize_final_quantities()
           settings::is_initial_condition)
         source_regions_.scalar_flux_td_final(sr, g) *=
           source_normalization_factor;
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
         source_regions_.source_td_final(sr, g) *= normalization_factor;
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION)
         source_regions_.delayed_fission_source_final(sr, dg) *=
           normalization_factor;
       source_regions_.precursors_final(sr, dg) *= normalization_factor;
@@ -1715,7 +1715,7 @@ void FlatSourceDomain::propagate_final_quantities()
     for (int dg = 0; dg < ndgroups_; dg++) {
       source_regions_.precursors_old(sr, dg) =
         source_regions_.precursors_final(sr, dg);
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
         source_regions_.delayed_fission_source_im2(sr, dg) =
           source_regions_.delayed_fission_source_im1(sr, dg);
         source_regions_.delayed_fission_source_im1(sr, dg) =
@@ -1747,19 +1747,19 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
   for (int64_t sr = 0; sr < n_source_regions_; sr++) {
     for (int g = 0; g < negroups_; g++) {
       int j = 0;
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+      if (RandomRay::time_method_ == RandomRayTimeMethod::SDP)
         j = 1;
       add_value_to_bd_vector(source_regions_.scalar_flux_bd(sr, g),
         source_regions_.scalar_flux_td_final(sr, g), increment_not_initialize,
         RandomRay::bd_order_ + j);
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
         add_value_to_bd_vector(source_regions_.source_bd(sr, g),
           source_regions_.source_td_final(sr, g), increment_not_initialize,
           RandomRay::bd_order_);
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
         source_regions_.delayed_fission_source_im2(sr, dg) =
           source_regions_.delayed_fission_source_final(sr, dg);
         source_regions_.delayed_fission_source(sr, dg) =
@@ -1785,7 +1785,7 @@ void FlatSourceDomain::compute_rhs_bd_quantities()
         rhs_backwards_difference(source_regions_.scalar_flux_bd(sr, g),
           RandomRay::bd_order_, settings::dt);
 
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
         source_regions_.source_rhs_bd(sr, g) = rhs_backwards_difference(
           source_regions_.source_bd(sr, g), RandomRay::bd_order_, settings::dt);
 
@@ -1795,7 +1795,7 @@ void FlatSourceDomain::compute_rhs_bd_quantities()
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::BD) {
+      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::BD) {
         source_regions_.precursors_rhs_bd(sr, dg) =
           rhs_backwards_difference(source_regions_.precursors_bd(sr, dg),
             RandomRay::bd_order_, settings::dt);

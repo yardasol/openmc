@@ -87,8 +87,8 @@
       </source>
       <volume_normalized_flux_tallies>True</volume_normalized_flux_tallies>
       <bd_order>2</bd_order>
-      <time_mode>sdp</time_mode>
-      <precursor_mode>bd</precursor_mode>
+      <time_method>sdp</time_method>
+      <precursor_method>bd</precursor_method>
     </random_ray>
     <time_dependent>
       <dt>0.01</dt>

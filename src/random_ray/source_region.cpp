@@ -47,7 +47,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     scalar_flux_rhs_bd_.resize(negroups);
 
     // SDP arrays
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
       source_final_.assign(negroups, 0.0);
 
       source_td_final_.assign(negroups, 0.0);
@@ -60,7 +60,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     }
 
     // Analytic precursor integration arrays
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+    if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
       delayed_fission_source_final_.assign(ndgroups, 0.0);
 
       precursors_im1_.resize(ndgroups);
@@ -143,7 +143,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       scalar_flux_rhs_bd_.push_back(sr.scalar_flux_rhs_bd_[g]);
 
       // SDP arrays
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
         source_final_.push_back(sr.source_final_[g]);
 
         source_td_final_.push_back(sr.source_final_[g]);
@@ -180,7 +180,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       tally_delay_task_.emplace_back(sr.tally_delay_task_[dg]);
 
       // Analytic precursor integration arrays
-      if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
         delayed_fission_source_final_.push_back(
           sr.delayed_fission_source_final_[dg]);
 
@@ -243,7 +243,7 @@ void SourceRegionContainer::assign(
     scalar_flux_bd_.clear();
     scalar_flux_rhs_bd_.clear();
 
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
       source_final_.clear();
 
       source_time_derivative_.clear();
@@ -254,7 +254,7 @@ void SourceRegionContainer::assign(
       scalar_flux_rhs_bd_2_.clear();
     }
 
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+    if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
       delayed_fission_source_final_.clear();
 
       precursors_im1_.clear();
@@ -438,7 +438,7 @@ void SourceRegionContainer::adjoint_reset()
     // BD Vectors
     std::fill(scalar_flux_rhs_bd_.begin(), scalar_flux_rhs_bd_.end(), 0.0);
 
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
       std::fill(
         source_time_derivative_.begin(), source_time_derivative_.end(), 0.0);
       std::fill(scalar_flux_time_derivative_2_.begin(),
@@ -448,7 +448,7 @@ void SourceRegionContainer::adjoint_reset()
       std::fill(
         scalar_flux_rhs_bd_2_.begin(), scalar_flux_rhs_bd_2_.end(), 0.0);
     }
-    if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION) {
+    if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
       std::fill(
         delayed_fission_source_.begin(), delayed_fission_source_.end(), 0.0);
 
@@ -480,9 +480,9 @@ void SourceRegionContainer::time_step_reset()
   std::fill(scalar_flux_final_.begin(), scalar_flux_final_.end(), 0.0);
   std::fill(scalar_flux_td_final_.begin(), scalar_flux_td_final_.end(), 0.0);
   std::fill(precursors_final_.begin(), precursors_final_.end(), 0.0);
-  if (RandomRay::time_mode_ == RandomRayTimeMode::SDP)
+  if (RandomRay::time_method_ == RandomRayTimeMethod::SDP)
     std::fill(source_td_final_.begin(), source_td_final_.end(), 0.0);
-  if (RandomRay::precursor_mode_ == RandomRayPrecursorMode::INTEGRATION)
+  if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION)
     std::fill(delayed_fission_source_final_.begin(), source_final_.end(), 0.0);
 }
 

@@ -78,8 +78,8 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
 
     if time_dependent:
         s.random_ray['bd_order'] = 3
-        s.random_ray['time_mode'] = 'ti'
-        s.random_ray['precursor_mode'] = 'bd'
+        s.random_ray['time_method'] = 'ti'
+        s.random_ray['precursor_method'] = 'bd'
 
     s.max_particle_events = 100
 
@@ -170,7 +170,8 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     assert s.random_ray['ray_source'].space.upper_right == [1., 1., 1.]
     if time_dependent:
         assert s.random_ray['bd_order'] == 3
-        assert s.random_ray['time_mode'] == 'ti'
+        assert s.random_ray['time_method'] == 'ti'
+        assert s.random_ray['precursor_method'] == 'bd'
     assert s.time_dependent['inactive'] == 10
     assert s.time_dependent['dt'] == 0.1
     assert s.time_dependent['n_timesteps'] == 41

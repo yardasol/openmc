@@ -185,8 +185,8 @@ double RandomRay::avg_miss_rate_;
 int RandomRay::bd_order_ {1};
 unique_ptr<Source> RandomRay::ray_source_;
 RandomRaySourceShape RandomRay::source_shape_ {RandomRaySourceShape::FLAT};
-RandomRayTimeMode RandomRay::time_mode_ {RandomRayTimeMode::TI};
-RandomRayPrecursorMode RandomRay::precursor_mode_ {RandomRayPrecursorMode::BD};
+RandomRayTimeMethod RandomRay::time_method_ {RandomRayTimeMethod::TI};
+RandomRayPrecursorMethod RandomRay::precursor_method_ {RandomRayPrecursorMethod::BD};
 int64_t RandomRay::n_source_regions_;
 int64_t RandomRay::n_external_source_regions_;
 uint64_t RandomRay::total_geometric_intersections_;
@@ -348,7 +348,7 @@ void RandomRay::attenuate_flux_flat_source(double distance, bool is_active, bool
         (angular_flux_td_[g] -
           domain_->source_regions_.source_td(sr, g) / sigma_t_td) *
         exponential_td;
-      if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+      if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
         double source_derivative =
           domain_->source_regions_.source_time_derivative(sr, g);
         double flux_derivative_2 =
@@ -597,7 +597,7 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
       double sigma_t_td = domain_->sigma_t_td_[domain_->source_regions_.material(sr) * negroups_ + g];
       angular_flux_td_[g] = domain_->source_regions_.source_td(sr, g) / sigma_t_td;
     }
-    if (RandomRay::time_mode_ == RandomRayTimeMode::SDP) {
+    if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
       for (int g = 0; g < negroups_; g++) {
         double sigma_t_td =
           domain_
