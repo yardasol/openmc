@@ -1,6 +1,9 @@
 import os
 
+import openmc
+from openmc.utility_funcs import change_directory
 from openmc.examples import random_ray_lattice
+import pytest
 
 from tests.testing_harness import TolerantPyAPITestHarnessTD
 
@@ -13,7 +16,12 @@ class MGXSTestHarnessTD(TolerantPyAPITestHarnessTD):
             os.remove(f)
 
 
-def test_random_ray_basic():
-    model = random_ray_lattice(time_dependent=True)
-    harness = MGXSTestHarnessTD(model, 3)
-    harness.main()
+@pytest.mark.parametrize("time_dependent_method", ["ti",
+                                       "sdp"])
+def test_random_ray_time_dependent(time_dependent_method):
+    with change_directory(time_dependent_method):
+        openmc.reset_auto_ids()
+        model = random_ray_lattice(time_dependent=True)
+        model.settings.random_ray['time_mode'] = time_dependent_method
+        harness = MGXSTestHarnessTD(model, 3)
+        harness.main()
