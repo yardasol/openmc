@@ -78,17 +78,17 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
 
     if time_dependent:
         s.random_ray['bd_order'] = 3
-        s.random_ray['time_method'] = 'ti'
-        s.random_ray['precursor_method'] = 'bd'
+        s.random_ray['time_method'] = 'sdp'
+        s.random_ray['precursor_method'] = 'integration'
+        s.time_dependent = {
+            'dt': 0.1,
+            'n_timesteps': 41,
+            'timestep_units': 's',
+        }
 
     s.max_particle_events = 100
 
-    s.time_dependent = {
-        'inactive': 10,
-        'dt': 0.1,
-        'n_timesteps': 41,
-        'timestep_units': 's',
-    }
+    
 
     # Make sure exporting XML works
     s.export_to_xml()
@@ -170,9 +170,8 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     assert s.random_ray['ray_source'].space.upper_right == [1., 1., 1.]
     if time_dependent:
         assert s.random_ray['bd_order'] == 3
-        assert s.random_ray['time_method'] == 'ti'
-        assert s.random_ray['precursor_method'] == 'bd'
-    assert s.time_dependent['inactive'] == 10
-    assert s.time_dependent['dt'] == 0.1
-    assert s.time_dependent['n_timesteps'] == 41
-    assert s.time_dependent['timestep_units'] == 's'
+        assert s.random_ray['time_method'] == 'sdp'
+        assert s.random_ray['precursor_method'] == 'integration'
+        assert s.time_dependent['dt'] == 0.1
+        assert s.time_dependent['n_timesteps'] == 41
+        assert s.time_dependent['timestep_units'] == 's'

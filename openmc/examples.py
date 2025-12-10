@@ -830,6 +830,12 @@ def random_ray_lattice(time_dependent=False) -> openmc.Model:
 
     # Instantiate a Materials collection and export to XML
     materials = openmc.Materials([uo2, water])
+    if time_dependent:
+        water_reflector = openmc.Material(name='Water Reflector')
+        water_reflector.set_density('macro', 1.0)
+        water_reflector.add_macroscopic('LWTR')
+        materials.append(water_reflector)
+
     materials.cross_sections = "mgxs.h5"
 
     ###########################################################################
@@ -890,7 +896,12 @@ def random_ray_lattice(time_dependent=False) -> openmc.Model:
     ########################################
     # Define a moderator lattice universe
 
-    moderator_infinite = openmc.Cell(fill=water, name='moderator infinite')
+    moderator_infinite = openmc.Cell(name='moderator infinite')
+    if time_dependent:
+        moderator_infinite.fill = water_reflector
+    else:
+        moderator_infinite.fill = water
+
     mu = openmc.Universe()
     mu.add_cells([moderator_infinite])
 

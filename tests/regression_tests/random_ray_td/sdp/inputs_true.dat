@@ -10,6 +10,10 @@
       <density units="macro" value="1.0" value_timeseries="1.0 0.9994949494949495"/>
       <macroscopic name="LWTR"/>
     </material>
+    <material id="3" name="Water Reflector">
+      <density units="macro" value="1.0"/>
+      <macroscopic name="LWTR"/>
+    </material>
   </materials>
   <geometry>
     <cell id="1" material="1" name="fuel inner a" region="-2" universe="1"/>
@@ -26,7 +30,7 @@
     <cell fill="1" id="12" name="azimuthal_cell_5" region="11 -12" universe="2"/>
     <cell fill="1" id="13" name="azimuthal_cell_6" region="12 -13" universe="2"/>
     <cell fill="1" id="14" name="azimuthal_cell_7" region="13 -6" universe="2"/>
-    <cell id="15" material="2" name="moderator infinite" universe="3"/>
+    <cell id="15" material="3" name="moderator infinite" universe="3"/>
     <cell fill="4" id="16" universe="5"/>
     <cell fill="6" id="17" name="assembly" region="14 -15 16 -17" universe="7"/>
     <lattice id="4">
@@ -74,8 +78,8 @@
   <settings>
     <run_mode>time dependent</run_mode>
     <particles>100</particles>
-    <batches>10</batches>
-    <inactive>5</inactive>
+    <batches>700</batches>
+    <inactive>500</inactive>
     <energy_mode>multi-group</energy_mode>
     <random_ray>
       <distance_active>100.0</distance_active>
