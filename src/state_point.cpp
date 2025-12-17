@@ -350,6 +350,9 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
         runtime_group, "sampling source sites", time_bank_sample.elapsed());
       write_dataset(
         runtime_group, "SEND-RECV source sites", time_bank_sendrecv.elapsed());
+    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+      write_dataset(
+        runtime_group, "MPI source reduction", time_bank_sendrecv.elapsed());
     }
     write_dataset(
       runtime_group, "accumulating tallies", time_tallies.elapsed());
