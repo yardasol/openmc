@@ -183,13 +183,6 @@ class Settings:
             Method for resolving :math:`\\frac{\\partial}{\\partial t}
             I_{g,r}(s,t)` term in the time-dependent charactersitic equation.
             Options are 'ti' (default), or 'sdp'.
-        :precursor_method:
-            Method for solving the characteristic equation.
-            Options are 'bd' (default), or 'integration'. 'integration' use the
-            Precursor Integration method (see Section 11.1.2 of the `MPACT
-            Theory Manual`<https://www.osti.gov/biblio/2305812>`).
-
-        .. versionadded:: 0.15.0
     resonance_scattering : dict
         Settings for resonance elastic scattering. Accepted keys are 'enable'
         (bool), 'method' (str), 'energy_min' (float), 'energy_max' (float), and
@@ -1168,10 +1161,6 @@ class Settings:
                 elif key == 'time_method':
                     cv.check_value('time method', value,
                                    ('ti', 'sdp'))
-                elif key == 'precursor_method':
-                    cv.check_value('precursor mode', value,
-                                   ('bd', 'integration'))
-
             else:
                 raise ValueError(f'Unable to set random ray to "{key}" which is '
                                  'unsupported by OpenMC')

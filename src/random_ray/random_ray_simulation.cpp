@@ -528,16 +528,6 @@ void write_random_ray_hdf5(hid_t group)
 
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     write_dataset(random_ray_group, "bd_order", RandomRay::bd_order_);
-    switch (RandomRay::precursor_method_) {
-    case RandomRayPrecursorMethod::BD:
-      write_dataset(random_ray_group, "precursor_method", "backwards difference");
-      break;
-    case RandomRayPrecursorMethod::INTEGRATION:
-      write_dataset(random_ray_group, "precursor_method", "integration");
-      break;
-    default:
-      break;
-    }
     switch (RandomRay::time_method_) {
     case RandomRayTimeMethod::TI:
       write_dataset(random_ray_group, "time_method", "ti");
@@ -828,12 +818,7 @@ void RandomRaySimulation::print_results_random_ray() const
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       std::string time_method =
         (RandomRay::time_method_ == RandomRayTimeMethod::TI) ? "TI" : "SDP";
-      fmt::print(" Time Mode                         = {}\n", time_method);
-      std::string precursor_method =
-        (RandomRay::precursor_method_ == RandomRayPrecursorMethod::BD)
-          ? "BD"
-          : "INTEGRATION";
-      fmt::print(" Precursor Mode                    = {}\n", precursor_method);
+      fmt::print(" Time Method                       = {}\n", time_method);
       fmt::print(
         " Backwards Difference Order        = {}\n", RandomRay::bd_order_);
     }

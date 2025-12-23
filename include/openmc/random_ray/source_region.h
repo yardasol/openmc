@@ -149,6 +149,8 @@ public:
                                                  //!< derivative of the scalar
                                                  //!< flux (used for SDP)
   // Delay group-wise 1D arrays
+  vector<double> delayed_fission_source_; //!< The delayed fission source binned
+                                          //!< by delay group
   vector<double> precursors_old_; //!< The precursor density from the previous
                                   //!< iteration. Currently unused
   vector<double>
@@ -157,31 +159,6 @@ public:
     precursors_final_; //!< The precursor density accumulated over all
                        //!< active iterations (used for computing
                        //!< the time derivative of precursor density)
-
-  vector<double>
-    delayed_fission_source_; //!< The delayed fission source binned by delay
-                             //!< group (used for Precursor Integration)
-
-  // Precursor Integration arrays
-  vector<double>
-    delayed_fission_source_final_; //!< The delayed fission source accumulated
-                                   //!< over all active iterations (used for
-                                   //!< computing Precursor Integration)
-
-  vector<double> precursors_im1_; //!< Precursor solution from previous time
-                                  //!< step. Used to solve the precursor
-                                  //!< equation using the integration method.
-  vector<double> delayed_fission_source_im1_; //<! Delayed fission source from
-                                              // the previous time step.
-                                              //<! Used to solve the precursor
-                                              // equation using the
-                                              //<! integration method.
-  vector<double> delayed_fission_source_im2_; //<! Delayed fission source from
-                                              // the i-2 time step.
-                                              //<! Used to solve the precursor
-                                              // equation using the
-                                              //<! integration method.
-
   // BD arrays
   std::deque<double> scalar_flux_bd_;
   std::deque<double> precursors_bd_;
@@ -548,23 +525,6 @@ public:
     return delayed_fission_source_[de];
   }
 
-  double& delayed_fission_source_final(int64_t sr, int dg)
-  {
-    return delayed_fission_source_final_[dindex(sr, dg)];
-  }
-  const double& delayed_fission_source_final(int64_t sr, int dg) const
-  {
-    return delayed_fission_source_final_[dindex(sr, dg)];
-  }
-  double& delayed_fission_source_final(int64_t de)
-  {
-    return delayed_fission_source_final_[de];
-  }
-  const double& delayed_fission_source_final(int64_t de) const
-  {
-    return delayed_fission_source_final_[de];
-  }
-
   std::deque<double>& scalar_flux_bd(int64_t sr, int g)
   {
     return scalar_flux_bd_[index(sr, g)];
@@ -658,51 +618,6 @@ public:
   const double& scalar_flux_rhs_bd_2(int64_t se) const
   {
     return scalar_flux_rhs_bd_2_[se];
-  }
-
-  double& precursors_im1(int64_t sr, int dg)
-  {
-    return precursors_im1_[dindex(sr, dg)];
-  }
-  const double& precursors_im1(int64_t sr, int dg) const
-  {
-    return precursors_im1_[dindex(sr, dg)];
-  }
-  double& precursors_im1(int64_t de) { return precursors_im1_[de]; }
-  const double& precursors_im1(int64_t de) const { return precursors_im1_[de]; }
-
-  double& delayed_fission_source_im1(int64_t sr, int dg)
-  {
-    return delayed_fission_source_im1_[dindex(sr, dg)];
-  }
-  const double& delayed_fission_source_im1(int64_t sr, int dg) const
-  {
-    return delayed_fission_source_im1_[dindex(sr, dg)];
-  }
-  double& delayed_fission_source_im1(int64_t de)
-  {
-    return delayed_fission_source_im1_[de];
-  }
-  const double& delayed_fission_source_im1(int64_t de) const
-  {
-    return delayed_fission_source_im1_[de];
-  }
-
-  double& delayed_fission_source_im2(int64_t sr, int dg)
-  {
-    return delayed_fission_source_im2_[dindex(sr, dg)];
-  }
-  const double& delayed_fission_source_im2(int64_t sr, int dg) const
-  {
-    return delayed_fission_source_im2_[dindex(sr, dg)];
-  }
-  double& delayed_fission_source_im2(int64_t de)
-  {
-    return delayed_fission_source_im2_[de];
-  }
-  const double& delayed_fission_source_im2(int64_t de) const
-  {
-    return delayed_fission_source_im2_[de];
   }
 
   float& external_source(int64_t sr, int g)
@@ -827,15 +742,10 @@ private:
   vector<double> scalar_flux_time_derivative_2_;
 
   // SoA delay group-wise 2D arrays flattened to 1D
+  vector<double> delayed_fission_source_;
   vector<double> precursors_old_;
   vector<double> precursors_new_;
   vector<double> precursors_final_;
-  vector<double> delayed_fission_source_;
-  vector<double> delayed_fission_source_final_;
-
-  vector<double> precursors_im1_;
-  vector<double> delayed_fission_source_im1_;
-  vector<double> delayed_fission_source_im2_;
 
   // SoA energy group-wise 2D BD arrays flattened to 1D
   vector<std::deque<double>> scalar_flux_bd_;

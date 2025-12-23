@@ -23,69 +23,6 @@
 namespace openmc {
 
 //==============================================================================
-// Non-method functions
-//==============================================================================
-double lambda_tilde(double lambda)
-{
-  return settings::dt * lambda;
-}
-
-// if using nonuniform timestep sizes, this will be dt_i-1 / dt_i
-double gamma()
-{
-  return 1.0;
-}
-
-double E(double x)
-{
-  double neg_x = -1.0 * x;
-  return exp(neg_x);
-}
-
-double k0(double x)
-{
-  return 1.0 - E(x);
-}
-
-double k1(double x)
-{
-  double inv_x = 1.0 / x;
-  return 1.0 - k0(x) * inv_x;
-}
-
-double k2(double x)
-{
-  double inv_x = 1.0 / x;
-  return 1.0 - 2.0 * k1(x) * inv_x;
-}
-
-double omega0(double lam_tilde)
-{
-  return E(lam_tilde);
-}
-
-double omega1(double lam_tilde)
-{
-  double numerator = k2(lam_tilde) + gamma() * k1(lam_tilde);
-  double denominator = 1.0 + gamma();
-  return numerator / denominator;
-}
-
-double omega2(double lam_tilde)
-{
-  double numerator = k2(lam_tilde) + (gamma() - 1.0) * k1(lam_tilde);
-  double denominator = gamma();
-  return k0(lam_tilde) - numerator / denominator;
-}
-
-double omega3(double lam_tilde)
-{
-  double numerator = k2(lam_tilde) - k1(lam_tilde);
-  double denominator = (1.0 + gamma()) * gamma();
-  return numerator / denominator;
-}
-
-//==============================================================================
 // FlatSourceDomain implementation
 //==============================================================================
 
@@ -1517,44 +1454,12 @@ void FlatSourceDomain::compute_delayed_fission_source(double k_eff)
   }
 }
 
-void FlatSourceDomain::compute_precursors_via_analytic_integration()
-{
-#pragma omp parallel for
-  for (int sr = 0; sr < n_source_regions_; sr++) {
-    int mat = source_regions_.material(sr);
-    for (int dg = 0; dg < ndgroups_; dg++) {
-      double lambda = lambda_[mat * ndgroups_ + dg];
-      source_regions_.precursors_new(sr, dg) = 0.0;
-      if (lambda != 0.0) {
-        double lam_tilde = lambda_tilde(lambda);
-        double delayed_fission_source =
-          source_regions_.delayed_fission_source(sr, dg);
-        double delayed_fission_source_im1 =
-          source_regions_.delayed_fission_source_im1(sr, dg);
-        double delayed_fission_source_im2 =
-          source_regions_.delayed_fission_source_im2(sr, dg);
-        double C_im1 = source_regions_.precursors_im1(sr, dg);
-        source_regions_.precursors_new(sr, dg) =
-          delayed_fission_source * omega1(lam_tilde) +
-          delayed_fission_source_im1 * omega2(lam_tilde) +
-          delayed_fission_source_im2 * omega3(lam_tilde);
-        source_regions_.precursors_new(sr, dg) /= lambda;
-        source_regions_.precursors_new(sr, dg) += C_im1 * omega0(lam_tilde);
-      }
-    }
-  }
-}
-
 void FlatSourceDomain::compute_precursors(double k_eff)
 {
   simulation::time_compute_precursors.start();
   compute_delayed_fission_source(k_eff);
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
-      compute_precursors_via_analytic_integration();
-    } else {
-      compute_precursors_via_bd();
-    }
+    compute_precursors_via_bd();
   } else if (settings::is_initial_condition) {
     compute_criticality_precursors();
   }
@@ -1619,19 +1524,6 @@ void FlatSourceDomain::serialize_final_precursors(vector<double>& precursors)
   }
 }
 
-void FlatSourceDomain::serialize_final_delayed_fission_source(
-  vector<double>& delayed_fission_source)
-{
-  // Ensure array is correct size
-  delayed_fission_source.resize(n_source_regions_ * ndgroups_);
-// Serialize delayed_fission_source for output
-#pragma omp parallel for
-  for (int64_t de = 0; de < n_delay_elements_; de++) {
-    delayed_fission_source[de] =
-      source_regions_.delayed_fission_source_final(de);
-  }
-}
-
 void FlatSourceDomain::flux_td_swap()
 {
   source_regions_.flux_td_swap();
@@ -1662,9 +1554,6 @@ void FlatSourceDomain::accumulate_iteration_quantities()
         }
       }
       for (int dg = 0; dg < ndgroups_; dg++) {
-        if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION)
-          source_regions_.delayed_fission_source_final(sr, dg) +=
-            source_regions_.delayed_fission_source(sr, dg);
         source_regions_.precursors_final(sr, dg) +=
           source_regions_.precursors_new(sr, dg);
       }
@@ -1693,9 +1582,6 @@ void FlatSourceDomain::normalize_final_quantities()
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
-      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION)
-        source_regions_.delayed_fission_source_final(sr, dg) *=
-          normalization_factor;
       source_regions_.precursors_final(sr, dg) *= normalization_factor;
     }
   }
@@ -1715,14 +1601,6 @@ void FlatSourceDomain::propagate_final_quantities()
     for (int dg = 0; dg < ndgroups_; dg++) {
       source_regions_.precursors_old(sr, dg) =
         source_regions_.precursors_final(sr, dg);
-      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
-        source_regions_.delayed_fission_source_im2(sr, dg) =
-          source_regions_.delayed_fission_source_im1(sr, dg);
-        source_regions_.delayed_fission_source_im1(sr, dg) =
-          source_regions_.delayed_fission_source_final(sr, dg);
-        source_regions_.precursors_im1(sr, dg) =
-          source_regions_.precursors_final(sr, dg);
-      }
     }
   }
 }
@@ -1759,18 +1637,9 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
-      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
-        source_regions_.delayed_fission_source_im2(sr, dg) =
-          source_regions_.delayed_fission_source_final(sr, dg);
-        source_regions_.delayed_fission_source(sr, dg) =
-          source_regions_.delayed_fission_source_final(sr, dg);
-        source_regions_.precursors_im1(sr, dg) =
-          source_regions_.precursors_final(sr, dg);
-      } else {
-        add_value_to_bd_vector(source_regions_.precursors_bd(sr, dg),
-          source_regions_.precursors_final(sr, dg), increment_not_initialize,
-          RandomRay::bd_order_);
-      }
+      add_value_to_bd_vector(source_regions_.precursors_bd(sr, dg),
+        source_regions_.precursors_final(sr, dg), increment_not_initialize,
+        RandomRay::bd_order_);
     }
   }
 }
@@ -1795,11 +1664,9 @@ void FlatSourceDomain::compute_rhs_bd_quantities()
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {
-      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::BD) {
-        source_regions_.precursors_rhs_bd(sr, dg) =
-          rhs_backwards_difference(source_regions_.precursors_bd(sr, dg),
-            RandomRay::bd_order_, settings::dt);
-      }
+      source_regions_.precursors_rhs_bd(sr, dg) =
+        rhs_backwards_difference(source_regions_.precursors_bd(sr, dg),
+          RandomRay::bd_order_, settings::dt);
     }
   }
 }

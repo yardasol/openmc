@@ -15,6 +15,7 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     // If in eigenvalue mode, set starting flux to guess of 1
     scalar_flux_old_.assign(negroups, 1.0);
     if (settings::is_initial_condition) {
+      delayed_fission_source_.assign(ndgroups, 0.0);
       precursors_old_.assign(ndgroups, 0.0);
       precursors_new_.assign(ndgroups, 0.0);
       precursors_final_.assign(ndgroups, 0.0);
@@ -59,17 +60,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
       scalar_flux_rhs_bd_2_.resize(negroups);
     }
 
-    // Analytic precursor integration arrays
-    if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
-      delayed_fission_source_final_.assign(ndgroups, 0.0);
-
-      precursors_im1_.resize(ndgroups);
-      delayed_fission_source_im1_.resize(ndgroups);
-      delayed_fission_source_im2_.resize(ndgroups);
-    } else {
-      precursors_bd_;
-      precursors_rhs_bd_.resize(ndgroups);
-    }
+    precursors_bd_;
+    precursors_rhs_bd_.resize(ndgroups);
   }
 
   scalar_flux_new_.assign(negroups, 0.0);
@@ -171,21 +163,9 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       precursors_final_.push_back(sr.precursors_final_[dg]);
       tally_delay_task_.emplace_back(sr.tally_delay_task_[dg]);
 
-      // Analytic precursor integration arrays
-      if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
-        delayed_fission_source_final_.push_back(
-          sr.delayed_fission_source_final_[dg]);
-
-        precursors_im1_.push_back(sr.precursors_im1_[dg]);
-        delayed_fission_source_im1_.push_back(
-          sr.delayed_fission_source_im1_[dg]);
-        delayed_fission_source_im2_.push_back(
-          sr.delayed_fission_source_im2_[dg]);
-        // Backward difference arrays
-      } else {
-        precursors_bd_.push_back(sr.precursors_bd_);
-        precursors_rhs_bd_.push_back(sr.precursors_rhs_bd_[dg]);
-      }
+      // Backward difference arrays
+      precursors_bd_.push_back(sr.precursors_bd_);
+      precursors_rhs_bd_.push_back(sr.precursors_rhs_bd_[dg]);
     }
   }
 }
@@ -246,16 +226,8 @@ void SourceRegionContainer::assign(
       scalar_flux_rhs_bd_2_.clear();
     }
 
-    if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
-      delayed_fission_source_final_.clear();
-
-      precursors_im1_.clear();
-      delayed_fission_source_im1_.clear();
-      delayed_fission_source_im2_.clear();
-    } else {
-      precursors_bd_.clear();
-      precursors_rhs_bd_.clear();
-    }
+    precursors_bd_.clear();
+    precursors_rhs_bd_.clear();
 
     delayed_fission_source_.clear();
     precursors_old_.clear();
@@ -420,6 +392,8 @@ void SourceRegionContainer::adjoint_reset()
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     std::fill(scalar_flux_td_old_.begin(), scalar_flux_td_old_.end(), 0.0);
     std::fill(scalar_flux_td_new_.begin(), scalar_flux_td_new_.end(), 0.0);
+    std::fill(
+      delayed_fission_source_.begin(), delayed_fission_source_.end(), 0.0);
     std::fill(precursors_old_.begin(), precursors_old_.end(), 0.0);
     std::fill(precursors_new_.begin(), precursors_new_.end(), 0.0);
 
@@ -436,18 +410,7 @@ void SourceRegionContainer::adjoint_reset()
       std::fill(
         scalar_flux_rhs_bd_2_.begin(), scalar_flux_rhs_bd_2_.end(), 0.0);
     }
-    if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION) {
-      std::fill(
-        delayed_fission_source_.begin(), delayed_fission_source_.end(), 0.0);
-
-      std::fill(precursors_im1_.begin(), precursors_im1_.end(), 0.0);
-      std::fill(delayed_fission_source_im1_.begin(),
-        delayed_fission_source_im1_.end(), 0.0);
-      std::fill(delayed_fission_source_im2_.begin(),
-        delayed_fission_source_im2_.end(), 0.0);
-    } else {
-      std::fill(precursors_rhs_bd_.begin(), precursors_rhs_bd_.end(), 0.0);
-    }
+    std::fill(precursors_rhs_bd_.begin(), precursors_rhs_bd_.end(), 0.0);
   }
 }
 
@@ -470,8 +433,6 @@ void SourceRegionContainer::time_step_reset()
   std::fill(precursors_final_.begin(), precursors_final_.end(), 0.0);
   if (RandomRay::time_method_ == RandomRayTimeMethod::SDP)
     std::fill(source_td_final_.begin(), source_td_final_.end(), 0.0);
-  if (RandomRay::precursor_method_ == RandomRayPrecursorMethod::INTEGRATION)
-    std::fill(delayed_fission_source_final_.begin(), source_final_.end(), 0.0);
 }
 
 } // namespace openmc

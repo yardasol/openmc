@@ -51,8 +51,7 @@ public:
                         // time derivatives
   static unique_ptr<Source> ray_source_;     // Starting source for ray sampling
   static RandomRaySourceShape source_shape_; // Flag for linear source
-  static RandomRayTimeMethod time_method_;       // Flag for time method
-  static RandomRayPrecursorMethod precursor_method_; // Flag for precursor method
+  static RandomRayTimeMethod time_method_;   // Flag for time method
 
   //----------------------------------------------------------------------------
   // Public data members

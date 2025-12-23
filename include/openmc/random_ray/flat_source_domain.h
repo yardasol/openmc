@@ -57,7 +57,6 @@ public:
   void compute_delayed_fission_source(double k_eff);
   void compute_criticality_precursors();
   void compute_precursors_via_bd();
-  void compute_precursors_via_analytic_integration();
   void compute_precursors(double k_eff);
   void compute_neutron_source_time_derivative();
   void compute_scalar_flux_time_derivative_2();

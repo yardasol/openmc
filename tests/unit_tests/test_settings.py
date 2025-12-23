@@ -13,10 +13,6 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     s.generations_per_batch = 10
     s.inactive = 100
     s.particles = 1000000
-    s.source_convergence_method = 'fixed batch'
-    s.source_convergence_window_size = 100
-    s.source_convergence_maximum_batches = 1000
-    s.source_convergence_threshold = 1e-3
     s.max_lost_particles = 5
     s.rel_max_lost_particles = 1e-4
     s.keff_trigger = {'type': 'std_dev', 'threshold': 0.001}
@@ -79,7 +75,6 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     if time_dependent:
         s.random_ray['bd_order'] = 3
         s.random_ray['time_method'] = 'sdp'
-        s.random_ray['precursor_method'] = 'integration'
         s.time_dependent = {
             'dt': 0.1,
             'n_timesteps': 41,
@@ -96,10 +91,6 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     # Generate settings from XML
     s = openmc.Settings.from_xml()
     assert s.run_mode == mode
-    assert s.source_convergence_method == 'fixed batch'
-    assert s.source_convergence_window_size == 100
-    assert s.source_convergence_maximum_batches == 1000
-    assert s.source_convergence_threshold == 1e-3
     assert s.batches == 1000
     assert s.generations_per_batch == 10
     assert s.inactive == 100
@@ -171,7 +162,6 @@ def test_export_to_xml(run_in_tmpdir, time_dependent):
     if time_dependent:
         assert s.random_ray['bd_order'] == 3
         assert s.random_ray['time_method'] == 'sdp'
-        assert s.random_ray['precursor_method'] == 'integration'
         assert s.time_dependent['dt'] == 0.1
         assert s.time_dependent['n_timesteps'] == 41
         assert s.time_dependent['timestep_units'] == 's'

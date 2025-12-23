@@ -369,17 +369,6 @@ void get_run_parameters(pugi::xml_node node_base)
           fatal_error("Unrecognized time method: " + temp_str);
         }
       }
-      if (check_for_node(random_ray_node, "precursor_method")) {
-        std::string temp_str =
-          get_node_value(random_ray_node, "precursor_method", true, true);
-        if (temp_str == "bd") {
-          RandomRay::precursor_method_ = RandomRayPrecursorMethod::BD;
-        } else if (temp_str == "integration") {
-          RandomRay::precursor_method_ = RandomRayPrecursorMethod::INTEGRATION;
-        } else {
-          fatal_error("Unrecognized precursor method: " + temp_str);
-        }
-      }
     }
   }
 }
