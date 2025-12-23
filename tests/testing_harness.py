@@ -588,21 +588,34 @@ class TolerantPyAPITestHarness(PyAPITestHarness):
                                 file_test)
             print('Result differences:')
             print(''.join(colorize(diff)))
-            os.rename(file_test, f'results_error_{i}.dat')
+            os.rename(file_test, 'results_error.dat')
         assert compare, 'Results do not agree'
 
 
 class TolerantPyAPITestHarnessTD(PyAPITestHarnessTD, TolerantPyAPITestHarness):
-    """Specialized harness for running tests that involve significant levels
-    of floating point non-associativity when using shared memory parallelism
-    due to single precision usage (e.g., as in the random ray solver).
+    """Specialized harness for running tests in time-dependent mode that involve
+    significant levels of floating point non-associativity when using shared
+    memory parallelism due to single precision usage (e.g., as in the random
+    ray solver).
 
     """
 
     def _compare_results(self, i):
         """Make sure the current results agree with the reference."""
         self._compare_files(
-            f'results_test_{i}.dat', f'results_true_{i}.dat', 1e-6)
+            f'results_test_{i}.dat', f'results_true_{i}.dat', 1e-6, i)
+
+    def _compare_files(self, file_test, file_true, tol, index):
+        compare = self._are_files_equal(file_test, file_true, 1e-6)
+        if not compare:
+            expected = open(file_true).readlines()
+            actual = open(file_test).readlines()
+            diff = unified_diff(expected, actual, file_true,
+                                file_test)
+            print('Result differences:')
+            print(''.join(colorize(diff)))
+            os.rename(file_test, f'results_error_{i}.dat')
+        assert compare, 'Results do not agree'
 
 
 class WeightWindowPyAPITestHarness(PyAPITestHarness):
