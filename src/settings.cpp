@@ -117,8 +117,6 @@ double res_scat_energy_max {1000.0};
 vector<std::string> res_scat_nuclides;
 RunMode run_mode {RunMode::UNSET};
 SolverType solver_type {SolverType::MONTE_CARLO};
-SourceConvergenceMethod source_convergence_method {
-  SourceConvergenceMethod::FIXED_BATCH};
 std::unordered_set<int> sourcepoint_batch;
 std::unordered_set<int> statepoint_batch;
 std::unordered_set<int> source_write_surf_id;
@@ -140,11 +138,6 @@ double weight_cutoff {0.25};
 double weight_survive {1.0};
 
 // Time-dependent variables
-int n_batches_td;
-int32_t n_inactive_td {0};
-int source_convergence_window_size;
-int source_convergence_maximum_batches;
-double source_convergence_threshold;
 int n_timesteps;
 double dt;
 int current_timestep;
@@ -257,62 +250,9 @@ void get_run_parameters(pugi::xml_node node_base)
     }
   }
 
-  if (source_convergence_method == SourceConvergenceMethod::WINDOW_AVG_RMS) {
-    if (run_mode == RunMode::FIXED_SOURCE) {
-      fatal_error("Fixed source mode cannot be used "
-                  "when using window-averaged RMS source convergence");
-    }
-    if (check_for_node(node_base, "source_convergence_window_size")) {
-      source_convergence_window_size =
-        std::stoi(get_node_value(node_base, "source_convergence_window_size"));
-      if (source_convergence_window_size >= settings::n_inactive) {
-        warning("The convergence window size is greater than or equal to "
-                "the number of inactive batches. "
-                "Setting number of inactive batches to one more than the "
-                "convergence window size...");
-        int batch_adjustment =
-          source_convergence_window_size - settings::n_inactive + 1;
-        settings::n_inactive += batch_adjustment;
-        settings::n_batches += batch_adjustment;
-        settings::n_max_batches = n_batches;
-        int m = n_max_batches * settings::gen_per_batch;
-        simulation::k_generation.reserve(m);
-        simulation::entropy.reserve(m);
-        statepoint_batch.clear();
-        statepoint_batch.insert(n_batches);
-      }
-    } else {
-      fatal_error("Specify convergence window size in settings XML when "
-                  "using window-averaged RMS source convergence");
-    }
-    if (check_for_node(node_base, "source_convergence_maximum_batches")) {
-      source_convergence_maximum_batches = std::stoi(
-        get_node_value(node_base, "source_convergence_maximum_batches"));
-    } else {
-      fatal_error(
-        "Specify maximum number of source convergence batches in settings XML "
-        "when using window-averaged RMS source convergence");
-    }
-    if (check_for_node(node_base, "source_convergence_threshold")) {
-      source_convergence_threshold =
-        std::stod(get_node_value(node_base, "source_convergence_threshold"));
-      if (source_convergence_threshold < 0.0) {
-        fatal_error("Source convergence threshold must be positive");
-      }
-    } else {
-      fatal_error("Specify source convergence threshold in settings XML "
-                  "when using window-averaged RMS source convergence");
-    }
-  }
-
   // Get parameters for time-dependent simulations
   if (run_mode == RunMode::TIME_DEPENDENT) {
     xml_node td_node = node_base.child("time_dependent");
-    if (check_for_node(td_node, "inactive")) {
-      n_inactive_td = std::stoi(get_node_value(td_node, "inactive"));
-    } else {
-      n_inactive_td = n_inactive;
-    }
     if (check_for_node(td_node, "n_timesteps")) {
       n_timesteps = std::stoi(get_node_value(td_node, "n_timesteps"));
     } else {
@@ -617,25 +557,6 @@ void read_settings_xml(pugi::xml_node root)
                   "when using the random ray solver.");
   }
 
-  // Check solver type
-  // if (solver_type == SolverType::RANDOM_RAY);
-  if (check_for_node(root, "source_convergence_method")) {
-    std::string temp_str =
-      get_node_value(root, "source_convergence_method", true, true);
-    if (temp_str == "fixed batch") {
-      source_convergence_method = SourceConvergenceMethod::FIXED_BATCH;
-    } else if (temp_str == "window-averaged rms") {
-      source_convergence_method = SourceConvergenceMethod::WINDOW_AVG_RMS;
-    } else {
-      fatal_error("Unrecognized source convergence method: " + temp_str);
-    }
-    if (solver_type == SolverType::MONTE_CARLO &&
-        source_convergence_method == SourceConvergenceMethod::WINDOW_AVG_RMS)
-      fatal_error(
-        "Window-averaged RMS source convergence is currenty unsupported for "
-        "Monte Carlo simulations.");
-  }
-
   if (run_mode == RunMode::EIGENVALUE || run_mode == RunMode::FIXED_SOURCE ||
       run_mode == RunMode::TIME_DEPENDENT) {
     // Read run parameters
@@ -653,18 +574,6 @@ void read_settings_xml(pugi::xml_node root)
       fatal_error("Number of max lost particles must be greater than zero.");
     } else if (rel_max_lost_particles <= 0.0 || rel_max_lost_particles >= 1.0) {
       fatal_error("Relative max lost particles must be between zero and one.");
-    }
-
-    // Compute time step batches and check
-    if (run_mode == RunMode::TIME_DEPENDENT) {
-      n_batches_td = n_batches - n_inactive + n_inactive_td;
-      if (n_batches_td <= n_inactive_td) {
-        fatal_error(
-          "Number of time step active batches must be greater than zero.");
-      } else if (n_inactive_td < 0) {
-        fatal_error(
-          "Number of time step inactive batches must be non-negative.");
-      }
     }
   }
 

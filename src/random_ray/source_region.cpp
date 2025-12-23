@@ -78,10 +78,6 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 
   tally_task_.resize(negroups);
 
-  if (settings::source_convergence_method ==
-      SourceConvergenceMethod::WINDOW_AVG_RMS)
-    batchwise_fission_source_;
-
   if (is_linear) {
     source_gradients_.resize(negroups);
     flux_moments_old_.resize(negroups);
@@ -107,10 +103,6 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
   external_source_present_.push_back(sr.external_source_present_);
   position_.push_back(sr.position_);
   volume_task_.push_back(sr.volume_task_);
-
-  if (settings::source_convergence_method ==
-      SourceConvergenceMethod::WINDOW_AVG_RMS)
-    batchwise_fission_source_.push_back(sr.batchwise_fission_source_);
 
   // Only store these fields if is_linear_ is true
   if (is_linear_) {
@@ -274,10 +266,6 @@ void SourceRegionContainer::assign(
 
   tally_task_.clear();
   volume_task_.clear();
-
-  if (settings::source_convergence_method ==
-      SourceConvergenceMethod::WINDOW_AVG_RMS)
-    batchwise_fission_source_.clear();
 
   // Fill with copies of source_region
   for (int i = 0; i < n_source_regions; ++i) {

@@ -26,10 +26,6 @@ class RunMode(Enum):
     VOLUME = 'volume'
     PARTICLE_RESTART = 'particle restart'
 
-class SourceConvergenceMethod(Enum):
-    FIXED_BATCH = 'fixed batch'
-    WINDOW_AVG_RMS = 'window-averaged rms'
-
 _RES_SCAT_METHODS = {'dbrc', 'rvs'}
 
 
@@ -220,25 +216,6 @@ class Settings:
                    separate file
         :write: bool indicating whether or not to write the source
         :mcpl: bool indicating whether to write the source as an MCPL file
-    source_convergence_method : {'fixed batch', 'window-averaged rms'}
-        The source convergence method to use.
-
-        .. versionadded:: 0.15.2
-    source_convergence_window_size : int
-        The size of the window (in batches) for use with window-averaged
-        RMS source convergence
-
-        .. versionadded:: 0.15.2
-    source_convergence_maximum_batches : int
-        The maximum nubmer of source convergence batches to use with
-        window-averaged RMS source convergence
-
-        .. versionadded:: 0.15.2
-    source_convergence_threshold : float
-        The RMS error threshold for considering a source converged
-        when using window-averaged RMS source convergence.
-
-        .. versionadded:: 0.15.2
     statepoint : dict
         Options for writing state points. Acceptable keys are:
 
@@ -376,12 +353,6 @@ class Settings:
 
         # Source subelement
         self._source = cv.CheckedList(SourceBase, 'source distributions')
-
-        # Convergence settings
-        self._source_convergence_method = None
-        self._source_convergence_window_size = None
-        self._source_convergence_maximum_batches = None
-        self._source_convergence_threshold = None
 
         self._confidence_intervals = None
         self._electron_treatment = None
@@ -600,48 +571,6 @@ class Settings:
         if not isinstance(source, MutableSequence):
             source = [source]
         self._source = cv.CheckedList(SourceBase, 'source distributions', source)
-
-    @property
-    def source_convergence_method(self) -> str:
-        return self._source_convergence_method.value
-
-    @source_convergence_method.setter
-    def source_convergence_method(self, source_convergence_method: str):
-        cv.check_value('source convergence method', source_convergence_method,
-                       {x.value for x in SourceConvergenceMethod})
-        for method in SourceConvergenceMethod:
-            if method.value == source_convergence_method:
-                self._source_convergence_method = method
-
-    @property
-    def source_convergence_window_size(self) -> int:
-        return self._source_convergence_window_size
-
-    @source_convergence_window_size.setter
-    def source_convergence_window_size(self, source_convergence_window_size: int):
-        cv.check_type('source convergence window size', source_convergence_window_size, Integral)
-        cv.check_greater_than('source_convergence_window_size', source_convergence_window_size, 2)
-        self._source_convergence_window_size = source_convergence_window_size
-
-    @property
-    def source_convergence_maximum_batches(self) -> int:
-        return self._source_convergence_maximum_batches
-
-    @source_convergence_maximum_batches.setter
-    def source_convergence_maximum_batches(self, source_convergence_maximum_batches: int):
-        cv.check_type('maximum source convergence batches', source_convergence_maximum_batches, Integral)
-        cv.check_greater_than('source_convergence_maximum_batches', source_convergence_maximum_batches, 2)
-        self._source_convergence_maximum_batches = source_convergence_maximum_batches
-
-    @property
-    def source_convergence_threshold(self) -> float:
-        return self._source_convergence_threshold
-
-    @source_convergence_threshold.setter
-    def source_convergence_threshold(self, source_convergence_threshold: float):
-        cv.check_type('source_convergence_threshold', source_convergence_threshold, Real)
-        cv.check_greater_than('source_convergence_threshold', source_convergence_threshold, 0)
-        self._source_convergence_threshold = source_convergence_threshold
 
     @property
     def confidence_intervals(self) -> bool:
@@ -1281,26 +1210,6 @@ class Settings:
         elem = ET.SubElement(root, "run_mode")
         elem.text = self._run_mode.value
 
-    def _create_source_convergence_method_subelement(self, root):
-        if self._source_convergence_method:
-          elem = ET.SubElement(root, "source_convergence_method")
-          elem.text = self._source_convergence_method.value
-
-    def _create_source_convergence_window_size_subelement(self, root):
-        if self._source_convergence_window_size is not None:
-            element = ET.SubElement(root, "source_convergence_window_size")
-            element.text = str(self._source_convergence_window_size)
-
-    def _create_source_convergence_maximum_batches_subelement(self, root):
-        if self._source_convergence_maximum_batches is not None:
-            element = ET.SubElement(root, "source_convergence_maximum_batches")
-            element.text = str(self._source_convergence_maximum_batches)
-
-    def _create_source_convergence_threshold_subelement(self, root):
-        if self._source_convergence_threshold is not None:
-            element = ET.SubElement(root, "source_convergence_threshold")
-            element.text = str(self._source_convergence_threshold)
-
     def _create_batches_subelement(self, root):
         if self._batches is not None:
             element = ET.SubElement(root, "batches")
@@ -1799,26 +1708,6 @@ class Settings:
             # add newly constructed source object to the list
             self.source.append(src)
 
-    def _source_convergence_method_from_xml_element(self, root):
-        text = get_text(root, 'source_convergence_method')
-        if text is not None:
-            self.source_convergence_method = text
-
-    def _source_convergence_window_size_from_xml_element(self, root):
-        text = get_text(root, 'source_convergence_window_size')
-        if text is not None:
-            self.source_convergence_window_size = int(text)
-
-    def _source_convergence_maximum_batches_from_xml_element(self, root):
-        text = get_text(root, 'source_convergence_maximum_batches')
-        if text is not None:
-            self.source_convergence_maximum_batches = int(text)
-
-    def _source_convergence_threshold_from_xml_element(self, root):
-        text = get_text(root, 'source_convergence_threshold')
-        if text is not None:
-            self.source_convergence_threshold = float(text)
-
     def _volume_calcs_from_xml_element(self, root):
         volume_elems = root.findall("volume_calc")
         if volume_elems:
@@ -2170,10 +2059,6 @@ class Settings:
         element = ET.Element("settings")
 
         self._create_run_mode_subelement(element)
-        self._create_source_convergence_method_subelement(element)
-        self._create_source_convergence_window_size_subelement(element)
-        self._create_source_convergence_maximum_batches_subelement(element)
-        self._create_source_convergence_threshold_subelement(element)
         self._create_particles_subelement(element)
         self._create_batches_subelement(element)
         self._create_inactive_subelement(element)
@@ -2281,10 +2166,6 @@ class Settings:
         settings = cls()
         settings._eigenvalue_from_xml_element(elem)
         settings._run_mode_from_xml_element(elem)
-        settings._source_convergence_method_from_xml_element(elem)
-        settings._source_convergence_window_size_from_xml_element(elem)
-        settings._source_convergence_maximum_batches_from_xml_element(elem)
-        settings._source_convergence_threshold_from_xml_element(elem)
         settings._particles_from_xml_element(elem)
         settings._batches_from_xml_element(elem)
         settings._inactive_from_xml_element(elem)

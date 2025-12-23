@@ -34,15 +34,6 @@ public:
   }
 
   //----------------------------------------------------------------------------
-  // Time Dependent Methods
-  void find_all_fissile_regions();
-  void compute_and_store_batch_fission_source(bool shift_window = false);
-
-  double compute_window_averaged_rms_error();
-  void is_window_avg_rms_source_converged(); // Determine if the window-averaged
-                                             // RMS of the source is converg
-
-  //----------------------------------------------------------------------------
   // Accessors
   FlatSourceDomain* domain() const { return domain_.get(); }
 
@@ -72,13 +63,6 @@ private:
   // Number of delay groups
   int ndgroups_;
 
-  // Flag to determine if every fissile region has been found
-  bool all_fissile_regions_found_ {false};
-  vector<int> fissile_region_srs_;
-
-  // Flag to track if the source has converged
-  bool source_converged_ {false};
-
 }; // class RandomRaySimulation
 
 //============================================================================
@@ -97,13 +81,6 @@ void set_time_dependent_settings();
 
 void rename_statepoint_file(int i);
 void rename_tallies_file(int i);
-void increment_batches(); // Incremenet the number of batches and related
-                          // arrays for an unconverged simulation. Only used
-                          // for window-averged RMS convergence.
-void fix_batches(); // If a simulation is converged but hasn't reached the set
-                    // number of inactive batches, reduce the number of batches
-                    // and related arrays so the tallying and statepoint
-                    // machinery works as intended.
 
 //==============================================================================
 // Time-dependent global variables
