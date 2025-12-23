@@ -654,8 +654,8 @@ def slab_mg(num_regions=1, mat_names=None, mgxslib_name='2g.h5') -> openmc.Model
 
     return model
 
-def generate_c5g7_materials(time_dependent) -> openmc.Materials:
-    """Generate materials utilizing multi-group cross sections based on  the
+def _generate_c5g7_materials(time_dependent) -> openmc.Materials:
+    """Generate materials utilizing multi-group cross sections based on the
     the C5G7 Benchmark.
 
     Parameters
@@ -821,7 +821,7 @@ def generate_c5g7_materials(time_dependent) -> openmc.Materials:
     uo2.add_macroscopic('UO2')
 
     if time_dependent:
-        densities = np.linspace(1, 0.95, 100)[:2]
+        densities = np.linspace(1, 0.95, 100)
     else:
         densities = None
 
@@ -834,9 +834,9 @@ def generate_c5g7_materials(time_dependent) -> openmc.Materials:
     materials.cross_sections = "mgxs.h5"
     return materials
 
-def _generate_random_ray_pincell(uo2, water) -> openmc.Universe:
-    """Create a random ray pincell universe. Helper function for
-    random_ray_pincell() and random_ray_lattice()
+def _generate_random_ray_pin_cell(uo2, water) -> openmc.Universe:
+    """Create a random ray pin cell universe. Helper function for
+    random_ray_pin_cell() and random_ray_lattice()
 
     Parameters
     ----------
@@ -848,11 +848,11 @@ def _generate_random_ray_pincell(uo2, water) -> openmc.Universe:
     Returns
     -------
     pincell : openmc.Universe
-        Universe containing an unbounded pincell
+        Universe containing an unbounded pin cell
 
     """
     ########################################
-    # Define an unbounded pincell universe
+    # Define an unbounded pin cell universe
 
     # Create a surface for the fuel outer radius
     fuel_or = openmc.ZCylinder(r=0.54, name='Fuel OR')
@@ -874,7 +874,7 @@ def _generate_random_ray_pincell(uo2, water) -> openmc.Universe:
     moderator_c = openmc.Cell(
         fill=water, region=+outer_ring_b, name='moderator outer c')
 
-    # Create pincell universe
+    # Create pin cell universe
     pincell_base = openmc.Universe()
 
     # Register Cells with Universe
@@ -899,12 +899,12 @@ def _generate_random_ray_pincell(uo2, water) -> openmc.Universe:
         azimuthal_cells.append(azimuthal_cell)
 
     # Create a geometry with the azimuthal universes
-    pincell = openmc.Universe(cells=azimuthal_cells, name='pincell')
+    pincell = openmc.Universe(cells=azimuthal_cells, name='pin cell')
 
     return pincell
 
-def random_ray_pincell(time_dependent=False) -> openmc.Model:
-    """Create a PWR pincell example using C5G7 cross section data.
+def random_ray_pin_cell(time_dependent=False) -> openmc.Model:
+    """Create a PWR pin cell example using C5G7 cross section data.
     cross section data.
 
     Parameters
@@ -915,30 +915,30 @@ def random_ray_pincell(time_dependent=False) -> openmc.Model:
     Returns
     -------
     model : openmc.Model
-        A PWR pincell model
+        A PWR pin cell model
 
     """
     model = openmc.Model()
 
     ###########################################################################
     # Create Materials for the problem
-    materials = generate_c5g7_materials(time_dependent)
+    materials = _generate_c5g7_materials(time_dependent)
     uo2 = materials[0]
     water = materials[1]
 
     ###########################################################################
     # Define problem geometry
-    pincell = _generate_random_ray_pincell(uo2, water)
+    pincell = _generate_random_ray_pin_cell(uo2, water)
 
     ########################################
     # Define cell containing lattice and other stuff
     box = openmc.model.RectangularPrism(
         PINCELL_PITCH, PINCELL_PITCH, boundary_type='reflective')
 
-    pincell = openmc.Cell(fill=pincell, region=-box, name='pincell')
+    pincell = openmc.Cell(fill=pincell, region=-box, name='pin cell')
 
     # Create a geometry with the top-level cell
-    geometry = openmc.Geometry([assembly])
+    geometry = openmc.Geometry([pincell])
 
     ###########################################################################
     # Define problem settings
@@ -974,14 +974,8 @@ def random_ray_pincell(time_dependent=False) -> openmc.Model:
 
     ###########################################################################
     # Define tallies
-
-    # Create an energy group filter
-    group_edges = [1e-5, 0.0635, 10.0, 1.0e2, 1.0e3, 0.5e6, 1.0e6, 20.0e6]
-    energy_filter = openmc.EnergyFilter(group_edges)
-
     # Now use the mesh filter in a tally and indicate what scores are desired
-    tally = openmc.Tally(name="Engergy tally")
-    tally.filters = [energy_filter]
+    tally = openmc.Tally(name="Pin tally")
     tally.scores = ['flux', 'fission', 'nu-fission']
     tally.estimator = 'analog'
 
@@ -1006,7 +1000,7 @@ def random_ray_pincell(time_dependent=False) -> openmc.Model:
     return model
 
 def random_ray_lattice(time_dependent=False) -> openmc.Model:
-    """Create a 2x2 PWR pincell asymmetrical lattice example.
+    """Create a 2x2 PWR pin cell asymmetrical lattice example.
 
     This model is a 2x2 reflective lattice of fuel pins with one of the lattice
     locations having just moderator instead of a fuel pin. It uses C5G7
@@ -1027,13 +1021,13 @@ def random_ray_lattice(time_dependent=False) -> openmc.Model:
 
     ###########################################################################
     # Create Materials for the problem
-    materials = generate_c5g7_materials(time_dependent)
+    materials = _generate_c5g7_materials(time_dependent)
     uo2 = materials[0]
     water = materials[1]
 
     ###########################################################################
     # Define problem geometry
-    pincell = _generate_random_ray_pincell(uo2, water)
+    pincell = _generate_random_ray_pin_cell(uo2, water)
 
     ########################################
     # Define a moderator lattice universe
