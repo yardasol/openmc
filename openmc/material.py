@@ -541,6 +541,8 @@ class Material(IDManagerMixin):
                 cv.check_type(f'the density timeseries for Material ID="{self.id}"',
                           density_timeseries, Iterable, Real)
                 self._density_timeseries = density_timeseries
+            else:
+                self._density_timeseries = None
 
     def add_nuclide(self, nuclide: str, percent: float, percent_type: str = 'ao'):
         """Add a nuclide to the material
