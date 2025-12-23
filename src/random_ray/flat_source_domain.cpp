@@ -1811,10 +1811,8 @@ void FlatSourceDomain::update_material_density(int i)
   for (int j = 0; j < model::materials.size(); j++) {
     auto& mat {model::materials[j]};
     if (mat->density_timeseries_.size() != 0) {
-      double density_factor = mat->density_timeseries_[i] / mat->density_; 
-      //double new_density = mat->density_timeseries_[i];  
-      //double old_density = mat->density_;
-      //mat->density_ = new_density;
+      double density_factor = mat->density_timeseries_[i] / mat->density_;
+      mat->density_ = mat->density_timeseries_[i];
       for (int g_out = 0; g_out < negroups_; g_out++) {
         for (int dg = 0; dg < ndgroups_; dg++) {
           nu_d_sigma_f_[j * negroups_ * ndgroups_ + dg * negroups_ + g_out] *= density_factor;

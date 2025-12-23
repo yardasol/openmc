@@ -77,12 +77,12 @@ Material::Material(pugi::xml_node node)
   if (density_node) {
     units = get_node_value(density_node, "units");
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-      if (check_for_node(density_node, "timeseries")) {
+      if (check_for_node(density_node, "value_timeseries")) {
         if (units == "sum") {
           fatal_error("Use of density_timeseries is incompatible with 'sum'"
                       "density unit");
         } else {
-          density_timeseries_ = get_node_array<double>(density_node, "timeseries");
+          density_timeseries_ = get_node_array<double>(density_node, "value_timeseries");
           if (density_timeseries_.size() >= settings::n_timesteps) {
             warning(fmt::format(
               "Material {} has a density_timeseries (size={}) longer than "

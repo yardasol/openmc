@@ -841,12 +841,9 @@ void RandomRaySimulation::print_results_random_ray() const
     double misc_time = time_total.elapsed() - time_update_src.elapsed() -
                        time_transport.elapsed() - time_tallies.elapsed() -
                        time_bank_sendrecv.elapsed();
-    if (settings::is_initial_condition) {
-      misc_time -= time_compute_precursors.elapsed();
-    } else if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       misc_time -=
-        time_initialize_td.elapsed() + time_update_bd_vectors_td.elapsed() +
-        time_update_src_td.elapsed() + time_compute_precursors.elapsed();
+        time_initialize_td.elapsed() + time_update_bd_vectors_td.elapsed();
     }
     header("Simulation Statistics", 4);
     fmt::print(

@@ -23,5 +23,7 @@ def test_random_ray_time_dependent(time_method):
         openmc.reset_auto_ids()
         model = random_ray_lattice(time_dependent=True)
         model.settings.random_ray['time_method'] = time_method
+        model.settings.batches = 700
+        model.settings.inactive = 500 
         harness = MGXSTestHarnessTD(model, 3)
         harness.main()
