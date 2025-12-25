@@ -441,9 +441,6 @@ void SourceRegionContainer::adjoint_reset()
     MomentMatrix {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
   std::fill(mom_matrix_t_.begin(), mom_matrix_t_.end(),
     MomentMatrix {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
-  for (auto& task_set : volume_task_) {
-    task_set.clear();
-  }
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
     std::fill(scalar_flux_old_.begin(), scalar_flux_old_.end(), 0.0);
   } else {
@@ -486,13 +483,6 @@ void SourceRegionContainer::adjoint_reset()
     }
     std::fill(precursors_rhs_bd_.begin(), precursors_rhs_bd_.end(), 0.0);
 
-    for (auto& delay_task_set : tally_delay_task_) {
-      delay_task_set.clear();
-    }
-  }
-
-  for (auto& task_set : tally_task_) {
-    task_set.clear();
   }
 }
 
