@@ -154,6 +154,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
     // TODO: Consider splitting up this for loop into smaller, testable
     // functions
     for (int g_out = 0; g_out < negroups_; g_out++) {
+      double sigma_t = sigma_t_[material * negroups_ + g_out];
       double scatter_source = 0.0;
       double fission_source = 0.0;
 
@@ -168,7 +169,7 @@ void FlatSourceDomain::update_neutron_source(double k_eff)
         fission_source += nu_sigma_f * scalar_flux * chi;
       }
       source_regions_.source(sr, g_out) =
-        (scatter_source + fission_source * inverse_k_eff);
+        (scatter_source + fission_source * inverse_k_eff) / sigma_t;
     }
   }
 
@@ -235,15 +236,15 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
   } else {
     double sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
     source_regions_.scalar_flux_new(sr, g) /= (sigma_t * volume);
-    source_regions_.scalar_flux_new(sr, g) +=
-      source_regions_.source(sr, g) / sigma_t;
+    source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g);
     if (settings::run_mode == RunMode::TIME_DEPENDENT) {
       double sigma_t_td =
         sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
       source_regions_.scalar_flux_td_new(sr, g) /= (sigma_t_td * volume);
       source_regions_.scalar_flux_td_new(sr, g) +=
-        source_regions_.source_td(sr, g) / sigma_t_td;
+        source_regions_.source_td(sr, g);
       if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
+        // TODO: may need to adjust sigma t division here
         double inverse_vbar =
           inverse_vbar_[source_regions_.material(sr) * negroups_ + g];
         double scalar_flux_rhs_bd = source_regions_.scalar_flux_rhs_bd(sr, g);
@@ -270,11 +271,10 @@ void FlatSourceDomain::set_flux_to_old_flux(int64_t sr, int g)
 
 void FlatSourceDomain::set_flux_to_source(int64_t sr, int g)
 {
-  double sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
-  source_regions_.scalar_flux_new(sr, g) = source_regions_.source(sr, g) / sigma_t;
+  source_regions_.scalar_flux_new(sr, g) = source_regions_.source(sr, g);
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
-    double sigma_t_td = sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
-    source_regions_.scalar_flux_td_new(sr, g) = source_regions_.source_td(sr, g) / sigma_t_td;
+    source_regions_.scalar_flux_td_new(sr, g) =
+      source_regions_.source_td(sr, g);
   }
 }
 
@@ -649,10 +649,18 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
   double simulation_external_source_strength = 0.0;
 #pragma omp parallel for reduction(+ : simulation_external_source_strength)
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    int material = source_regions_.material(sr);
     double volume = source_regions_.volume(sr) * simulation_volume_;
     for (int g = 0; g < negroups_; g++) {
+      // For non-void regions, we store the external source pre-divided by
+      // sigma_t. We need to multiply non-void regions back up by sigma_t
+      // to get the total source strength in the expected units.
+      double sigma_t = 1.0;
+      if (material != MATERIAL_VOID) {
+        sigma_t = sigma_t_[material * negroups_ + g];
+      }
       simulation_external_source_strength +=
-        source_regions_.external_source(sr, g) * volume;
+        source_regions_.external_source(sr, g) * sigma_t * volume;
     }
   }
 
@@ -1269,6 +1277,20 @@ void FlatSourceDomain::convert_external_sources()
       }
     }
   } // End loop over external sources
+
+  // Divide the fixed source term by sigma t (to save time when applying each
+  // iteration)
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    int material = source_regions_.material(sr);
+    if (material == MATERIAL_VOID) {
+      continue;
+    }
+    for (int g = 0; g < negroups_; g++) {
+      double sigma_t = sigma_t_[material * negroups_ + g];
+      source_regions_.external_source(sr, g) /= sigma_t;
+    }
+  }
 }
 
 void FlatSourceDomain::flux_swap()
@@ -1408,6 +1430,19 @@ void FlatSourceDomain::set_adjoint_sources()
         source_regions_.external_source_present(sr) = 1;
       }
       source_regions_.scalar_flux_final(sr, g) = 0.0;
+    }
+  }
+  // Divide the fixed source term by sigma t (to save time when applying each
+  // iteration)
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    int material = source_regions_.material(sr);
+    if (material == MATERIAL_VOID) {
+      continue;
+    }
+    for (int g = 0; g < negroups_; g++) {
+      double sigma_t = sigma_t_[material * negroups_ + g];
+      source_regions_.external_source(sr, g) /= sigma_t;
     }
   }
 }
@@ -1727,6 +1762,7 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
     // TODO: Consider splitting up this for loop into smaller, testable
     // functions
     for (int g_out = 0; g_out < negroups_; g_out++) {
+      double sigma_t_td = sigma_t_td_[material * negroups_ + g_out];
       double scatter_source_td = 0.0;
       double fission_source_td = 0.0;
 
@@ -1768,6 +1804,7 @@ void FlatSourceDomain::update_neutron_source_td(double k_eff)
         source_regions_.source_td(sr, g_out) -=
           scalar_flux_time_derivative * inverse_vbar;
       }
+      source_regions_.source_td(sr, g_out) /= sigma_t_td;
     }
   }
 
@@ -1862,10 +1899,18 @@ void FlatSourceDomain::compute_neutron_source_time_derivative()
   double A0 =
     (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] / settings::dt;
 #pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements(); se++) {
-    double source_rhs_bd = source_regions_.source_rhs_bd(se);
-    double source_td = source_regions_.source_td(se);
-    source_regions_.source_time_derivative(se) = A0 * source_td + source_rhs_bd;
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    for (int g = 0; g < negroups_; g++) {
+      double source_rhs_bd = source_regions_.source_rhs_bd(sr, g);
+      double source_td = source_regions_.source_td(sr, g);
+      // Multiply out sigma_t to correctly compute the derivative term
+      double sigma_t =
+        sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
+      source_regions_.source_time_derivative(sr, g) =
+        A0 * source_td * sigma_t + source_rhs_bd;
+      // Divide by sigma_t to save time during transport
+      source_regions_.source_time_derivative(sr, g) /= sigma_t;
+    }
   }
 }
 
@@ -1874,11 +1919,17 @@ void FlatSourceDomain::compute_scalar_flux_time_derivative_2()
   double B0 = (bd_coefficients_second_order_.at(RandomRay::bd_order_))[0] /
               (settings::dt * settings::dt);
 #pragma omp parallel for
-  for (int64_t se = 0; se < n_source_elements(); se++) {
-    double scalar_flux_rhs_bd_2 = source_regions_.scalar_flux_rhs_bd_2(se);
-    double scalar_flux_td = source_regions_.scalar_flux_td_old(se);
-    source_regions_.scalar_flux_time_derivative_2(se) =
-      B0 * scalar_flux_td + scalar_flux_rhs_bd_2;
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    for (int g = 0; g < negroups_; g++) {
+      double scalar_flux_rhs_bd_2 = source_regions_.scalar_flux_rhs_bd_2(sr, g);
+      double scalar_flux_td = source_regions_.scalar_flux_td_old(sr, g);
+      source_regions_.scalar_flux_time_derivative_2(sr, g) =
+        B0 * scalar_flux_td + scalar_flux_rhs_bd_2;
+      double sigma_t =
+        sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
+      // Divide by sigma_t to save time during transport
+      source_regions_.scalar_flux_time_derivative_2(sr, g) /= sigma_t;
+    }
   }
 }
 
@@ -2012,6 +2063,7 @@ void add_value_to_bd_vector(std::deque<double>& bd_vector, double& new_value,
 void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
 {
 // TODO: add timer
+// TODO: multiply by sigma_t
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     for (int g = 0; g < negroups_; g++) {
@@ -2022,9 +2074,16 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
         source_regions_.scalar_flux_td_final(sr, g), increment_not_initialize,
         RandomRay::bd_order_ + j);
       if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
-        add_value_to_bd_vector(source_regions_.source_bd(sr, g),
-          source_regions_.source_td_final(sr, g), increment_not_initialize,
-          RandomRay::bd_order_);
+        // Multiply out sigma_t to store the base source
+        double sigma_t;
+        if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+          sigma_t = sigma_t_td_[source_regions_.material(sr) * negroups_ + g];
+        } else {
+          sigma_t = sigma_t_[source_regions_.material(sr) * negroups_ + g];
+        }
+        double source = source_regions_.source_td_final(sr, g) * sigma_t;
+        add_value_to_bd_vector(source_regions_.source_bd(sr, g), source,
+          increment_not_initialize, RandomRay::bd_order_);
       }
     }
     for (int dg = 0; dg < ndgroups_; dg++) {

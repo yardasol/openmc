@@ -55,6 +55,8 @@ void LinearSourceDomain::update_neutron_source(double k_eff)
     MomentMatrix invM = source_regions_.mom_matrix(sr).inverse();
 
     for (int g_out = 0; g_out < negroups_; g_out++) {
+      double sigma_t = sigma_t_[material * negroups_ + g_out];
+
       double scatter_flat = 0.0f;
       double fission_flat = 0.0f;
       MomentArray scatter_linear = {0.0, 0.0, 0.0};
@@ -80,7 +82,7 @@ void LinearSourceDomain::update_neutron_source(double k_eff)
 
       // Compute the flat source term
       source_regions_.source(sr, g_out) =
-        (scatter_flat + fission_flat * inverse_k_eff);
+        (scatter_flat + fission_flat * inverse_k_eff) / sigma_t;
 
       // Compute the linear source terms. In the first 10 iterations when the
       // centroids and spatial moments are not well known, we will leave the
@@ -92,7 +94,7 @@ void LinearSourceDomain::update_neutron_source(double k_eff)
       if (simulation::current_batch > 10 &&
           source_regions_.source(sr, g_out) >= 0.0) {
         source_regions_.source_gradients(sr, g_out) =
-          invM * (scatter_linear + fission_linear * inverse_k_eff);
+          invM * ((scatter_linear + fission_linear * inverse_k_eff) / sigma_t);
       } else {
         source_regions_.source_gradients(sr, g_out) = {0.0, 0.0, 0.0};
       }
@@ -155,10 +157,8 @@ void LinearSourceDomain::set_flux_to_flux_plus_source(
   if (material == MATERIAL_VOID) {
     FlatSourceDomain::set_flux_to_flux_plus_source(sr, volume, g);
   } else {
-    double sigma_t = sigma_t_[material * negroups_ + g];
     source_regions_.scalar_flux_new(sr, g) /= volume;
-    source_regions_.scalar_flux_new(sr, g) +=
-      source_regions_.source(sr, g) / sigma_t;
+    source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g);
   }
   // If a source region is small, then the moments are likely noisy, so we zero
   // them. This is reasonable, given that small regions can get by with a flat
