@@ -80,8 +80,9 @@ public:
   virtual void update_single_neutron_source_td(SourceRegionHandle& srh);
   void compute_single_neutron_source_time_derivative(SourceRegionHandle& srh);
   void compute_single_scalar_flux_time_derivative_2(SourceRegionHandle& srh);
+  virtual void update_all_neutron_sources_td();
 
-  void compute_singe_delayed_fission_source(SourceRegionHandle& srh);
+  void compute_single_delayed_fission_source(SourceRegionHandle& srh);
   void compute_single_precursors(SourceRegionHandle& srh);
   void compute_all_precursors();
 

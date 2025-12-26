@@ -197,7 +197,7 @@ void openmc_run_random_ray_time_dependent()
 
     simulation::time_initialize_td.start();
 
-    sim_td.k_eff_ = previous_k_eff;
+    sim_td.domain()->k_eff_ = previous_k_eff;
     sim_td.domain()->source_regions_.adjoint_reset();
     sim_td.domain()->propagate_final_quantities();
     sim_td.domain()->source_regions_.time_step_reset();

@@ -1007,31 +1007,11 @@ void FlatSourceDomain::output_to_vtk() const
             continue;
           }
 
-<<<<<<< HEAD
-          int i_cell = p.lowest_coord().cell;
-          int64_t sr = source_region_offsets_[i_cell] + p.cell_instance();
-          if (RandomRay::mesh_subdivision_enabled_) {
-            int mesh_idx = base_source_regions_.mesh(sr);
-            int mesh_bin;
-            if (mesh_idx == C_NONE) {
-              mesh_bin = 0;
-            } else {
-              mesh_bin = model::meshes[mesh_idx]->get_bin(p.r());
-            }
-            SourceRegionKey sr_key {sr, mesh_bin};
-            auto it = source_region_map_.find(sr_key);
-            if (it != source_region_map_.end()) {
-              sr = it->second;
-            } else {
-              sr = -1;
-            }
-=======
           SourceRegionKey sr_key = lookup_source_region_key(p);
           int64_t sr = -1;
           auto it = source_region_map_.find(sr_key);
           if (it != source_region_map_.end()) {
             sr = it->second;
->>>>>>> 3ac64d9a0 (Random Ray Base Source Region Refactor (#3576))
           }
 
           voxel_indices[z * Ny * Nx + y * Nx + x] = sr;
@@ -1775,7 +1755,7 @@ SourceRegionHandle FlatSourceDomain::get_subdivided_source_region_handle(
   // map.
   bool is_linear = RandomRay::source_shape_ != RandomRaySourceShape::FLAT;
   SourceRegion* sr_ptr =
-    discovered_source_regions_.emplace(sr_key, {negroups_, is_linear});
+    discovered_source_regions_.emplace(sr_key, {negroups_, ndgroups_, is_linear});
   SourceRegionHandle handle {*sr_ptr};
 
   // Determine the material
@@ -1831,16 +1811,11 @@ SourceRegionHandle FlatSourceDomain::get_subdivided_source_region_handle(
 
   // Compute the combined source term
   update_single_neutron_source(handle);
-  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
-      settings::is_initial_condition) {
-    compute_single_delayed_fission_source(handle);
-    compute_single_precursors(handle);
-  }
   if (settings::run_mode == RunMode::TIME_DEPENDENT) {
     update_single_neutron_source_td(handle);
     if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
-      compute_single_neutron_source_time_derivatives(handle);
-      compute_single_scalar_flux_time_derivatives_2(handle);
+      compute_single_neutron_source_time_derivative(handle);
+      compute_single_scalar_flux_time_derivative_2(handle);
     }
   }
 
@@ -2063,8 +2038,8 @@ void FlatSourceDomain::update_all_neutron_sources_td()
     SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
     update_single_neutron_source_td(srh);
     if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
-      compute_single_neutron_source_time_derivatives(srh);
-      compute_single_scalar_flux_time_derivatives_2(srh);
+      compute_single_neutron_source_time_derivative(srh);
+      compute_single_scalar_flux_time_derivative_2(srh);
     }
   }
 
@@ -2076,7 +2051,7 @@ void FlatSourceDomain::compute_single_delayed_fission_source(SourceRegionHandle&
 {
 
   // Reset all delayed fission sources to zero (important for void regions)
-  for (int dg = 0; g < ndgroups_; dg++) {
+  for (int dg = 0; dg < ndgroups_; dg++) {
     srh.delayed_fission_source(dg) = 0.0;
   }
 
@@ -2108,14 +2083,13 @@ void FlatSourceDomain::compute_single_precursors(SourceRegionHandle& srh)
 {
   // Reset all precursors to zero (important for void regions)
   for (int g = 0; g < negroups_; g++) {
-    srh.precursors(g) = 0.0;
+    srh.precursors_new(g) = 0.0;
   }
 
   int material = srh.material();
   if (material != MATERIAL_VOID) {
     for (int dg = 0; dg < ndgroups_; dg++) {
       double lambda = lambda_[material * ndgroups_ + dg];
-      srh.precursors_new(dg) = 0.0;
       if (lambda != 0.0) {
         double delayed_fission_source = srh.delayed_fission_source(dg);
         if (settings::run_mode == RunMode::TIME_DEPENDENT) {
