@@ -1830,8 +1830,19 @@ SourceRegionHandle FlatSourceDomain::get_subdivided_source_region_handle(
   }
 
   // Compute the combined source term
-  // TODO: add td functions
   update_single_neutron_source(handle);
+  if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+      settings::is_initial_condition) {
+    compute_single_delayed_fission_source(handle);
+    compute_single_precursors(handle);
+  }
+  if (settings::run_mode == RunMode::TIME_DEPENDENT) {
+    update_single_neutron_source_td(handle);
+    if (RandomRay::time_method_ == RandomRayTimeMethod::SDP) {
+      compute_single_neutron_source_time_derivatives(handle);
+      compute_single_scalar_flux_time_derivatives_2(handle);
+    }
+  }
 
   // Unlock the parallel map. Note: we may be tempted to release
   // this lock earlier, and then just use the source region's lock to protect
