@@ -577,7 +577,8 @@ void FlatSourceDomain::convert_source_regions_to_tallies(int64_t start_sr_id)
         // Loop over all active tallies. This logic is essentially identical
         // to what happens when scanning for applicable tallies during
         // MC transport.
-        for (auto i_tally : model::active_tallies) {
+	// Loop over all active tallies. This logic is essentially identical
+        for (int i_tally = 0; i_tally < model::tallies.size(); i_tally++) {
           Tally& tally {*model::tallies[i_tally]};
 
           // Initialize an iterator over valid filter bin combinations.
@@ -1408,11 +1409,11 @@ void FlatSourceDomain::flatten_xs()
         settings::is_initial_condition) {
       for (int dg = 0; dg < ndgroups_; dg++) {
         if (m.exists_in_model) {
-          for (int g_out = 0; g_out < negroups_; g_out++) {
-            double lambda =
-              m.get_xs(MgxsType::DECAY_RATE, 0, NULL, NULL, &dg, t, a);
+          double lambda =
+            m.get_xs(MgxsType::DECAY_RATE, 0, NULL, NULL, &dg, t, a);
             lambda_.push_back(lambda);
-            double nu_d_Sigma_f = m.get_xs(
+          for (int g_out = 0; g_out < negroups_; g_out++) {
+	    double nu_d_Sigma_f = m.get_xs(
               MgxsType::DELAYED_NU_FISSION, g_out, NULL, NULL, &dg, t, a);
             nu_d_sigma_f_.push_back(nu_d_Sigma_f);
             double chi_d =
@@ -1425,8 +1426,8 @@ void FlatSourceDomain::flatten_xs()
             chi_d_.push_back(chi_d);
           }
         } else {
+          lambda_.push_back(0);
           for (int g_out = 0; g_out < negroups_; g_out++) {
-            lambda_.push_back(0);
             nu_d_sigma_f_.push_back(0);
             chi_d_.push_back(0);
           }

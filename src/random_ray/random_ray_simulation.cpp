@@ -95,12 +95,6 @@ void openmc_run_random_ray()
     }
   }
 
-  // Finalize OpenMC
-  openmc_simulation_finalize();
-
-  // Output all simulation results
-  sim.output_simulation_results();
-
   //////////////////////////////////////////////////////////
   // Run adjoint simulation (if enabled)
   //////////////////////////////////////////////////////////
@@ -724,7 +718,9 @@ void RandomRaySimulation::simulate()
       }
 
       // Compute precursors
-      domain_->compute_all_precursors();
+      if (settings::run_mode == RunMode::TIME_DEPENDENT ||
+	  settings::is_initial_condition)
+        domain_->compute_all_precursors();
 
       // Execute all tallying tasks, if the source is converged
       if (simulation::current_batch > settings::n_inactive) {
