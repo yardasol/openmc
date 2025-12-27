@@ -102,6 +102,9 @@ Tally::Tally(pugi::xml_node node)
     multiply_density_ = get_node_value_bool(node, "multiply_density");
   }
 
+  if (check_for_node(node, "higher_moments")) {
+    higher_moments_ = get_node_value_bool(node, "higher_moments");
+  }
   // =======================================================================
   // READ DATA FOR FILTERS
 
@@ -178,6 +181,64 @@ Tally::Tally(pugi::xml_node node)
 
   if (!check_for_node(node, "scores")) {
     fatal_error(fmt::format("No scores specified on tally {}.", id_));
+  }
+
+  // Set IFP if needed
+  if (!settings::ifp_on) {
+    // Determine if this tally has an IFP score
+    bool has_ifp_score = false;
+    for (int score : scores_) {
+      if (score == SCORE_IFP_TIME_NUM || score == SCORE_IFP_BETA_NUM ||
+          score == SCORE_IFP_DENOM) {
+        has_ifp_score = true;
+        break;
+      }
+    }
+
+    // Check for errors
+    if (has_ifp_score) {
+      if (settings::run_mode == RunMode::EIGENVALUE) {
+        if (settings::ifp_n_generation < 0) {
+          settings::ifp_n_generation = DEFAULT_IFP_N_GENERATION;
+          warning(fmt::format(
+            "{} generations will be used for IFP (default value). It can be "
+            "changed using the 'ifp_n_generation' settings.",
+            settings::ifp_n_generation));
+        }
+        if (settings::ifp_n_generation > settings::n_inactive) {
+          fatal_error("'ifp_n_generation' must be lower than or equal to the "
+                      "number of inactive cycles.");
+        }
+        settings::ifp_on = true;
+      } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
+        fatal_error(
+          "Iterated Fission Probability can only be used in an eigenvalue "
+          "calculation.");
+      }
+    }
+  }
+
+  // Set IFP parameters if needed
+  if (settings::ifp_on) {
+    for (int score : scores_) {
+      switch (score) {
+      case SCORE_IFP_TIME_NUM:
+        if (settings::ifp_parameter == IFPParameter::None) {
+          settings::ifp_parameter = IFPParameter::GenerationTime;
+        } else if (settings::ifp_parameter == IFPParameter::BetaEffective) {
+          settings::ifp_parameter = IFPParameter::Both;
+        }
+        break;
+      case SCORE_IFP_BETA_NUM:
+      case SCORE_IFP_DENOM:
+        if (settings::ifp_parameter == IFPParameter::None) {
+          settings::ifp_parameter = IFPParameter::BetaEffective;
+        } else if (settings::ifp_parameter == IFPParameter::GenerationTime) {
+          settings::ifp_parameter = IFPParameter::Both;
+        }
+        break;
+      }
+    }
   }
 
   // Check if tally is compatible with particle type
@@ -750,7 +811,11 @@ void Tally::init_triggers(pugi::xml_node node)
 void Tally::init_results()
 {
   int n_scores = scores_.size() * nuclides_.size();
-  results_ = xt::empty<double>({n_filter_bins_, n_scores, 3});
+  if (higher_moments_) {
+    results_ = xt::empty<double>({n_filter_bins_, n_scores, 5});
+  } else {
+    results_ = xt::empty<double>({n_filter_bins_, n_scores, 3});
+  }
 }
 
 void Tally::reset()
@@ -778,22 +843,46 @@ void Tally::accumulate()
       total_source = 1.0;
     }
 
+    // Determine number of particles contributing to tally
+    double contributing_particles = settings::reduce_tallies
+                                      ? settings::n_particles
+                                      : simulation::work_per_rank;
+
     // Account for number of source particles in normalization
     double norm =
-      total_source / (settings::n_particles * settings::gen_per_batch);
+      total_source / (contributing_particles * settings::gen_per_batch);
 
     if (settings::solver_type == SolverType::RANDOM_RAY) {
       norm = 1.0;
     }
 
-// Accumulate each result
+    // Accumulate each result
+    if (higher_moments_) {
 #pragma omp parallel for
-    for (int i = 0; i < results_.shape()[0]; ++i) {
-      for (int j = 0; j < results_.shape()[1]; ++j) {
-        double val = results_(i, j, TallyResult::VALUE) * norm;
-        results_(i, j, TallyResult::VALUE) = 0.0;
-        results_(i, j, TallyResult::SUM) += val;
-        results_(i, j, TallyResult::SUM_SQ) += val * val;
+      // filter bins (specific cell, energy bins)
+      for (int i = 0; i < results_.shape()[0]; ++i) {
+        // score bins (flux, total reaction rate, fission reaction rate, etc.)
+        for (int j = 0; j < results_.shape()[1]; ++j) {
+          double val = results_(i, j, TallyResult::VALUE) * norm;
+          double val2 = val * val;
+          results_(i, j, TallyResult::VALUE) = 0.0;
+          results_(i, j, TallyResult::SUM) += val;
+          results_(i, j, TallyResult::SUM_SQ) += val2;
+          results_(i, j, TallyResult::SUM_THIRD) += val2 * val;
+          results_(i, j, TallyResult::SUM_FOURTH) += val2 * val2;
+        }
+      }
+    } else {
+#pragma omp parallel for
+      // filter bins (specific cell, energy bins)
+      for (int i = 0; i < results_.shape()[0]; ++i) {
+        // score bins (flux, total reaction rate, fission reaction rate, etc.)
+        for (int j = 0; j < results_.shape()[1]; ++j) {
+          double val = results_(i, j, TallyResult::VALUE) * norm;
+          results_(i, j, TallyResult::VALUE) = 0.0;
+          results_(i, j, TallyResult::SUM) += val;
+          results_(i, j, TallyResult::SUM_SQ) += val * val;
+        }
       }
     }
   }

@@ -101,7 +101,14 @@ def deplete(func, chain, n, rates, dt, matrix_func=None, transfer_rates=None,
         matrices = [matrix - transfer for (matrix, transfer) in zip(matrices,
                                                                     transfers)]
 
-        if len(transfer_rates.index_transfer) > 0:
+        if transfer_rates.redox:
+            for mat_idx, mat_id in enumerate(transfer_rates.local_mats):
+                if mat_id in transfer_rates.redox:
+                    matrices[mat_idx] = chain.add_redox_term(matrices[mat_idx],
+                                                transfer_rates.redox[mat_id][0],
+                                                transfer_rates.redox[mat_id][1])
+
+        if current_timestep in transfer_rates.index_transfer:
             # Gather all on comm.rank 0
             matrices = comm.gather(matrices)
             n = comm.gather(n)
@@ -112,10 +119,18 @@ def deplete(func, chain, n, rates, dt, matrix_func=None, transfer_rates=None,
                 n = [n_elm for n_mat in n for  n_elm in n_mat]
 
                 # Calculate transfer rate terms as diagonal matrices
-                transfer_pair = {
-                    mat_pair: chain.form_rr_term(transfer_rates, mat_pair)
-                    for mat_pair in transfer_rates.index_transfer
-                }
+                transfer_pair = {}
+                for mat_pair in transfer_rates.index_transfer[current_timestep]:
+                    transfer_matrix = chain.form_rr_term(transfer_rates,
+                                                         current_timestep,
+                                                         mat_pair)
+
+                    # check if destination material has a redox control
+                    if mat_pair[0] in transfer_rates.redox:
+                        transfer_matrix = chain.add_redox_term(transfer_matrix,
+                                          transfer_rates.redox[mat_pair[0]][0],
+                                          transfer_rates.redox[mat_pair[0]][1])
+                    transfer_pair[mat_pair] = transfer_matrix
 
                 # Combine all matrices together in a single matrix of matrices
                 # to be solved in one go

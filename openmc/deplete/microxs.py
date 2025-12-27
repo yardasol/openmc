@@ -7,7 +7,9 @@ IndependentOperator class for depletion.
 from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from tempfile import TemporaryDirectory
+from typing import Union, TypeAlias, Self
 
+import h5py
 import pandas as pd
 import numpy as np
 
@@ -20,6 +22,7 @@ from openmc.data import REACTION_MT
 import openmc
 from .chain import Chain, REACTIONS
 from .coupled_operator import _find_cross_sections, _get_nuclides_with_data
+from ..utility_funcs import h5py_file_or_group
 import openmc.lib
 from openmc.mpi import comm
 
@@ -40,17 +43,28 @@ def _resolve_chain_file_path(chain_file: str | None):
 
 
 def get_microxs_and_flux(
-        model: openmc.Model,
-        domains,
-        nuclides: Iterable[str] | None = None,
-        reactions: Iterable[str] | None = None,
-        energies: Iterable[float] | str | None = None,
-        chain_file: PathLike | None = None,
-        run_kwargs=None
-    ) -> tuple[list[np.ndarray], list[MicroXS]]:
-    """Generate a microscopic cross sections and flux from a Model
+    model: openmc.Model,
+    domains: DomainTypes,
+    nuclides: Sequence[str] | None = None,
+    reactions: Sequence[str] | None = None,
+    energies: Sequence[float] | str | None = None,
+    reaction_rate_mode: str = 'direct',
+    chain_file: PathLike | Chain | None = None,
+    path_statepoint: PathLike | None = None,
+    path_input: PathLike | None = None,
+    run_kwargs=None
+) -> tuple[list[np.ndarray], list[MicroXS]]:
+    """Generate microscopic cross sections and fluxes for multiple domains.
+
+    This function runs a neutron transport solve to obtain the flux and reaction
+    rates in the specified domains and computes multigroup microscopic cross
+    sections that can be used in depletion calculations with the
+    :class:`~openmc.deplete.IndependentOperator` class.
 
     .. versionadded:: 0.14.0
+
+    .. versionchanged:: 0.15.3
+        Added `reaction_rate_mode`, `path_statepoint`, `path_input` arguments.
 
     Parameters
     ----------
@@ -71,6 +85,14 @@ def get_microxs_and_flux(
         simulation. Used to determine cross sections for materials not
         present in the inital composition. Defaults to
         ``openmc.config['chain_file']``.
+    path_statepoint : path-like, optional
+        Path to write the statepoint file from the neutron transport solve to.
+        By default, The statepoint file is written to a temporary directory and
+        is not kept.
+    path_input : path-like, optional
+        Path to write the model XML file from the neutron transport solve to.
+        By default, the model XML file is written to a temporary directory and
+        not kept.
     run_kwargs : dict, optional
         Keyword arguments passed to :meth:`openmc.Model.run`
 
@@ -83,7 +105,7 @@ def get_microxs_and_flux(
 
     """
     # Save any original tallies on the model
-    original_tallies = model.tallies
+    original_tallies = list(model.tallies)
 
     # Determine what reactions and nuclides are available in chain
     chain_file = _resolve_chain_file_path(chain_file)
@@ -134,36 +156,72 @@ def get_microxs_and_flux(
         # Reinitialize with tallies
         openmc.lib.init(intracomm=comm)
 
-    # create temporary run
     with TemporaryDirectory() as temp_dir:
-        if run_kwargs is None:
-            run_kwargs = {}
-        else:
-            run_kwargs = dict(run_kwargs)
-        run_kwargs.setdefault('cwd', temp_dir)
+        # Indicate to run in temporary directory unless being executed through
+        # openmc.lib, in which case we don't need to specify the cwd
+        run_kwargs = dict(run_kwargs) if run_kwargs else {}
+        if not openmc.lib.is_initialized:
+            run_kwargs.setdefault('cwd', temp_dir)
+
+        # Run transport simulation and synchronize
         statepoint_path = model.run(**run_kwargs)
+        comm.barrier()
 
         if comm.rank == 0:
-            with StatePoint(statepoint_path) as sp:
+            # Move the statepoint file if it is being saved to a specific path
+            if path_statepoint is not None:
+                shutil.move(statepoint_path, path_statepoint)
+                statepoint_path = path_statepoint
+
+            # Export the model to path_input if provided
+            if path_input is not None:
+                model.export_to_model_xml(path_input)
+
+        # Broadcast updated statepoint path to all ranks
+        statepoint_path = comm.bcast(statepoint_path)
+
+        # Read in tally results (on all ranks)
+        with StatePoint(statepoint_path) as sp:
+            if reaction_rate_mode == 'direct':
                 rr_tally = sp.tallies[rr_tally.id]
                 rr_tally._read_results()
-                flux_tally = sp.tallies[flux_tally.id]
-                flux_tally._read_results()
+            flux_tally = sp.tallies[flux_tally.id]
+            flux_tally._read_results()
 
-    rr_tally = comm.bcast(rr_tally)
-    flux_tally = comm.bcast(flux_tally)
-    # Get reaction rates and flux values
-    reaction_rates = rr_tally.get_reshaped_data()  # (domains, groups, nuclides, reactions)
+    # Get flux values and make energy groups last dimension
     flux = flux_tally.get_reshaped_data()  # (domains, groups, 1, 1)
 
     # Make energy groups last dimension
     reaction_rates = np.moveaxis(reaction_rates, 1, -1)  # (domains, nuclides, reactions, groups)
     flux = np.moveaxis(flux, 1, -1)  # (domains, 1, 1, groups)
 
-    # Divide RR by flux to get microscopic cross sections
-    xs = np.empty_like(reaction_rates) # (domains, nuclides, reactions, groups)
-    d, _, _, g = np.nonzero(flux)
-    xs[d, ..., g] = reaction_rates[d, ..., g] / flux[d, :, :, g]
+    # Create list where each item corresponds to one domain
+    fluxes = list(flux.squeeze((1, 2)))
+
+    if reaction_rate_mode == 'direct':
+        # Get reaction rates
+        reaction_rates = rr_tally.get_reshaped_data()  # (domains, groups, nuclides, reactions)
+
+        # Make energy groups last dimension
+        reaction_rates = np.moveaxis(reaction_rates, 1, -1)  # (domains, nuclides, reactions, groups)
+
+        # Divide RR by flux to get microscopic cross sections. The indexing
+        # ensures that only non-zero flux values are used, and broadcasting is
+        # applied to align the shapes of reaction_rates and flux for division.
+        xs = np.empty_like(reaction_rates) # (domains, nuclides, reactions, groups)
+        d, _, _, g = np.nonzero(flux)
+        xs[d, ..., g] = reaction_rates[d, ..., g] / flux[d, :, :, g]
+
+        # Create lists where each item corresponds to one domain
+        micros = [MicroXS(xs_i, nuclides, reactions) for xs_i in xs]
+    else:
+        micros = [MicroXS.from_multigroup_flux(
+            energies=energies,
+            multigroup_flux=flux_i,
+            chain_file=chain_file,
+            nuclides=nuclides,
+            reactions=reactions
+        ) for flux_i in fluxes]
 
     # Reset tallies
     model.tallies = original_tallies
@@ -292,44 +350,28 @@ class MicroXS:
             reactions = chain.reactions
         mts = [REACTION_MT[name] for name in reactions]
 
-        # Normalize multigroup flux
-        multigroup_flux = np.array(multigroup_flux)
-        multigroup_flux /= multigroup_flux.sum()
-
         # Create 3D array for microscopic cross sections
         microxs_arr = np.zeros((len(nuclides), len(mts), 1))
 
-        # Create a material with all nuclides
-        mat_all_nucs = openmc.Material()
-        for nuc in nuclides:
-            if nuc in nuclides_with_data:
-                mat_all_nucs.add_nuclide(nuc, 1.0)
-        mat_all_nucs.set_density("atom/b-cm", 1.0)
+        # If flux is zero, safely return zero cross sections
+        multigroup_flux = np.array(multigroup_flux)
+        if (flux_sum := multigroup_flux.sum()) == 0.0:
+            return cls(microxs_arr, nuclides, reactions)
 
-        # Create simple model containing the above material
-        surf1 = openmc.Sphere(boundary_type="vacuum")
-        surf1_cell = openmc.Cell(fill=mat_all_nucs, region=-surf1)
-        model = openmc.Model()
-        model.geometry = openmc.Geometry([surf1_cell])
-        model.settings = openmc.Settings(
-            particles=1, batches=1, output={'summary': False})
+        # Normalize multigroup flux
+        multigroup_flux /= flux_sum
 
-        with change_directory(tmpdir=True):
-            # Export model within temporary directory
-            model.export_to_model_xml()
-
-            with openmc.lib.run_in_memory(**init_kwargs):
-                # For each nuclide and reaction, compute the flux-averaged
-                # cross section
-                for nuc_index, nuc in enumerate(nuclides):
-                    if nuc not in nuclides_with_data:
-                        continue
-                    lib_nuc = openmc.lib.nuclides[nuc]
-                    for mt_index, mt in enumerate(mts):
-                        xs = lib_nuc.collapse_rate(
-                            mt, temperature, energies, multigroup_flux
-                        )
-                        microxs_arr[nuc_index, mt_index, 0] = xs
+        # Compute microscopic cross sections within a temporary session
+        with openmc.lib.TemporarySession(**init_kwargs):
+            # For each nuclide and reaction, compute the flux-averaged xs
+            for nuc_index, nuc in enumerate(nuclides):
+                if nuc not in nuclides_with_data:
+                    continue
+                lib_nuc = openmc.lib.load_nuclide(nuc)
+                for mt_index, mt in enumerate(mts):
+                    microxs_arr[nuc_index, mt_index, 0] = lib_nuc.collapse_rate(
+                        mt, temperature, energies, multigroup_flux
+                    )
 
         return cls(microxs_arr, nuclides, reactions)
 
@@ -350,8 +392,7 @@ class MicroXS:
         MicroXS
 
         """
-        if 'float_precision' not in kwargs:
-            kwargs['float_precision'] = 'round_trip'
+        kwargs.setdefault('float_precision', 'round_trip')
 
         df = pd.read_csv(csv_file, **kwargs)
         df.set_index(['nuclides', 'reactions', 'groups'], inplace=True)
@@ -386,3 +427,96 @@ class MicroXS:
         )
         df = pd.DataFrame({'xs': self.data.flatten()}, index=multi_index)
         df.to_csv(*args, **kwargs)
+
+    def to_hdf5(self, group_or_filename: h5py.Group | PathLike, **kwargs):
+        """Export microscopic cross section data to HDF5 format
+
+        Parameters
+        ----------
+        group_or_filename : h5py.Group or path-like
+            HDF5 group or filename to write to
+        kwargs : dict, optional
+            Keyword arguments to pass to :meth:`h5py.Group.create_dataset`.
+            Defaults to {'compression': 'lzf'}.
+
+        """
+        kwargs.setdefault('compression', 'lzf')
+
+        with h5py_file_or_group(group_or_filename, 'w') as group:
+            # Store cross section data as 3D dataset
+            group.create_dataset('data', data=self.data, **kwargs)
+
+            # Store metadata as datasets using string encoding
+            group.create_dataset('nuclides', data=np.array(self.nuclides, dtype='S'))
+            group.create_dataset('reactions', data=np.array(self.reactions, dtype='S'))
+
+    @classmethod
+    def from_hdf5(cls, group_or_filename: h5py.Group | PathLike) -> Self:
+        """Load data from an HDF5 file
+
+        Parameters
+        ----------
+        group_or_filename : h5py.Group or str or PathLike
+            HDF5 group or path to HDF5 file. If given as an h5py.Group, the
+            data is read from that group. If given as a string, it is assumed
+            to be the filename for the HDF5 file.
+
+        Returns
+        -------
+        MicroXS
+        """
+
+        with h5py_file_or_group(group_or_filename, 'r') as group:
+            # Read data from HDF5 group
+            data = group['data'][:]
+            nuclides = [nuc.decode('utf-8') for nuc in group['nuclides'][:]]
+            reactions = [rxn.decode('utf-8') for rxn in group['reactions'][:]]
+
+        return cls(data, nuclides, reactions)
+
+
+def write_microxs_hdf5(
+    micros: Sequence[MicroXS],
+    filename: PathLike,
+    names: Sequence[str] | None = None,
+    **kwargs
+):
+    """Write multiple MicroXS objects to an HDF5 file
+
+    Parameters
+    ----------
+    micros : list of MicroXS
+        List of MicroXS objects
+    filename : PathLike
+        Output HDF5 filename
+    names : list of str, optional
+        Names for each MicroXS object. If None, uses 'domain_0', 'domain_1',
+        etc.
+    **kwargs
+        Additional keyword arguments passed to :meth:`h5py.Group.create_dataset`
+    """
+    if names is None:
+        names = [f'domain_{i}' for i in range(len(micros))]
+
+    # Open file once and write all domains using group interface
+    with h5py.File(filename, 'w') as f:
+        for microxs, name in zip(micros, names):
+            group = f.create_group(name)
+            microxs.to_hdf5(group, **kwargs)
+
+
+def read_microxs_hdf5(filename: PathLike) -> dict[str, MicroXS]:
+    """Read multiple MicroXS objects from an HDF5 file
+
+    Parameters
+    ----------
+    filename : path-like
+        HDF5 filename
+
+    Returns
+    -------
+    dict
+        Dictionary mapping domain names to MicroXS objects
+    """
+    with h5py.File(filename, 'r') as f:
+        return {name: MicroXS.from_hdf5(group) for name, group in f.items()}

@@ -791,7 +791,7 @@ energy decomposition::
 
   # Create a "tallies.xml" file for the MGXS Library
   tallies = openmc.Tallies()
-  mgxs_lib.add_to_tallies_file(tallies, merge=True)
+  mgxs_lib.add_to_tallies(tallies, merge=True)
 
   # Export
   tallies.export_to_xml()
@@ -1131,11 +1131,10 @@ given below:
     tallies.export_to_xml()
 
     # Create voxel plot
-    plot = openmc.Plot()
+    plot = openmc.VoxelPlot()
     plot.origin = [0, 0, 0]
     plot.width = [2*pitch, 2*pitch, 1]
     plot.pixels = [1000, 1000, 1]
-    plot.type = 'voxel'
 
     # Instantiate a Plots collection and export to XML
     plots = openmc.Plots([plot])
@@ -1215,11 +1214,10 @@ given below:
     tallies.export_to_xml()
 
     # Create voxel plot
-    plot = openmc.Plot()
+    plot = openmc.VoxelPlot()
     plot.origin = [0, 0, 0]
     plot.width = [2*pitch, 2*pitch, 1]
     plot.pixels = [1000, 1000, 1]
-    plot.type = 'voxel'
 
     # Instantiate a Plots collection and export to XML
     plots = openmc.Plots([plot])

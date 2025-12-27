@@ -47,8 +47,9 @@ class TransferRates:
         self.local_mats = operator.local_mats
 
         #initialize transfer rates container dict
-        self.transfer_rates = {mat: {} for mat in self.burnable_mats}
-        self.index_transfer = set()
+        self.external_rates = {mat: defaultdict(list) for mat in self.burnable_mats}
+        self.external_timesteps = []
+        self.redox = {}
 
     def _get_material_id(self, val):
         """Helper method for getting material id from Material obj or name.
@@ -219,9 +220,177 @@ class TransferRates:
                                          f'where element {element} already has '
                                          'a transfer rate.')
 
-            if component in self.transfer_rates[material_id]:
-                self.transfer_rates[material_id][component].append(
-                    (transfer_rate / unit_conv, destination_material_id))
+            self.external_rates[material_id][component].append(
+                (timesteps, transfer_rate/unit_conv, destination_material_id))
+
+            if destination_material_id is not None:
+                for timestep in timesteps:
+                    self.index_transfer[timestep].append(
+                        (destination_material_id, material_id))
+
+            self.external_timesteps = np.unique(np.concatenate(
+                    [self.external_timesteps, timesteps]))
+
+    def set_redox(self, material, buffer, oxidation_states, timesteps=None):
+        """Add redox control to depletable material.
+
+        Parameters
+        ----------
+        material : openmc.Material or str or int
+            Depletable material
+        buffer : dict
+            Dictionary of buffer nuclides used to maintain redox balance.
+            Keys are nuclide names (strings) and values are their respective
+            fractions (float) that collectively sum to 1.
+        oxidation_states : dict
+            User-defined oxidation states for elements.
+            Keys are element symbols (e.g., 'H', 'He'), and values are their
+            corresponding oxidation states as integers (e.g., +1, 0).
+        timesteps : list of int, optional
+            List of timestep indices where to set external source rates.
+            Defaults to None, which means the external source rate is set for
+            all timesteps.
+
+        """
+        material_id = self._get_material_id(material)
+        if timesteps is not None:
+            for timestep in timesteps:
+                check_value('timestep', timestep, range(self.number_of_timesteps))
+            timesteps = np.array(timesteps)
+        else:
+            timesteps = np.arange(self.number_of_timesteps)
+        #Check nuclides in buffer exist
+        for nuc in buffer:
+            if nuc not in self.chain_nuclides:
+                raise ValueError(f'{nuc} is not a valid nuclide.')
+        # Checks element in oxidation states exist
+        for elm in oxidation_states:
+            if elm not in ELEMENT_SYMBOL.values():
+                raise ValueError(f'{elm} is not a valid element.')
+
+        self.redox[material_id] =  (buffer, oxidation_states)
+        self.external_timesteps = np.unique(np.concatenate(
+                    [self.external_timesteps, timesteps]))
+
+class ExternalSourceRates(ExternalRates):
+    """Class for defining external source rates.
+
+    An instance of this class can be passed directly to an instance of one of
+    the :class:`openmc.deplete.Integrator` classes.
+
+    .. versionadded:: 0.15.3
+
+    Parameters
+    ----------
+    operator : openmc.TransportOperator
+        Depletion operator
+    materials : openmc.Materials
+        OpenMC materials.
+    number_of_timesteps : int
+        Total number of depletion timesteps
+
+    Attributes
+    ----------
+    burnable_mats : list of str
+        All burnable material IDs.
+    local_mats : list of str
+        All burnable material IDs being managed by a single process
+    external_timesteps : list of int
+        Container of all timesteps indeces with an external rate defined.
+    external_rates : dict of str to dict
+        Container of timesteps external source rates, and components
+        (elements and/or nuclides)
+    """
+
+    def reformat_nuclide_vectors(self, vectors):
+        """Remove last element of nuclide vector that was added for handling
+        external source rates by the depletion solver.
+
+        Parameters
+        ----------
+        vectors : list of array
+            List of nuclides vector to reformat
+
+        """
+        for mat_index, i in enumerate(self.local_mats):
+            if self.external_rates[i]:
+                vectors[mat_index] = vectors[mat_index][:-1]
+
+    def set_external_source_rate(
+        self,
+        material: str | int | Material,
+        composition: dict[str, float],
+        rate: float,
+        rate_units: str = 'g/s',
+        timesteps: Sequence[int] | None = None
+    ):
+        """Set element and/or nuclide composition vector external source rates
+        to a depletable material.
+
+        Parameters
+        ----------
+        material : openmc.Material or str or int
+            Depletable material
+        composition : dict of str to float
+            External source rate composition vector, where key can be an element
+            or a nuclide and value the corresponding weight percent.
+        rate : float
+            External source rate in units of mass per time. A positive or
+            negative value corresponds to a feed or removal rate, respectively.
+        rate_units : {'g/s', 'g/min', 'g/h', 'g/d', 'g/a'}
+            Units for values specified in the `rate` argument. 's' for seconds,
+            'min' for minutes, 'h' for hours, 'a' for Julian years.
+        timesteps : list of int, optional
+            List of timestep indices where to set external source rates. Default
+            to None, which means the external source rate is set for all
+            timesteps.
+
+        """
+
+        material_id = self._get_material_id(material)
+        check_type('rate', rate, Real)
+        check_type('composition', composition, dict, str)
+
+        if rate_units in ('g/s', 'g/sec'):
+            unit_conv = 1
+        elif rate_units in ('g/min', 'g/minute'):
+            unit_conv = _SECONDS_PER_MINUTE
+        elif rate_units in ('g/h', 'g/hr', 'g/hour'):
+            unit_conv = _SECONDS_PER_HOUR
+        elif rate_units in ('g/d', 'g/day'):
+            unit_conv = _SECONDS_PER_DAY
+        elif rate_units in ('g/a', 'g/year'):
+            unit_conv = _SECONDS_PER_JULIAN_YEAR
+        else:
+            raise ValueError(f'Invalid external source rate unit "{rate_units}"')
+
+        if timesteps is not None:
+            for timestep in timesteps:
+                check_value('timestep', timestep, range(self.number_of_timesteps))
+            timesteps = np.asarray(timesteps)
+        else:
+            timesteps = np.arange(self.number_of_timesteps)
+
+        components = composition.keys()
+        percents = composition.values()
+        norm_percents = [float(i) / sum(percents) for i in percents]
+
+        atoms_per_nuc = {}
+        for component, percent in zip(components, norm_percents):
+            split_component = re.split(r'\d+', component)
+            element = split_component[0]
+            if element not in ELEMENT_SYMBOL.values():
+                raise ValueError(f'{component} is not a valid nuclide or element.')
+
+            if len(split_component) == 1:
+                if not isotopes(component):
+                    raise ValueError(f'Cannot add element {component} '
+                                     'as it is not naturally abundant. '
+                                     'Specify a nuclide vector instead.')
+                for nuc, frac in isotopes(component):
+                    atoms_per_nuc[nuc] = (rate / atomic_mass(nuc) * AVOGADRO *
+                                          frac * percent / unit_conv)
+
             else:
                 self.transfer_rates[material_id][component] = [
                     (transfer_rate / unit_conv, destination_material_id)]

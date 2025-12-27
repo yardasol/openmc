@@ -285,3 +285,25 @@ the following abstract base classes:
    abc.Integrator
    abc.SIIntegrator
    abc.DepSystemSolver
+
+R2S Automation
+--------------
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+   :template: myclass.rst
+
+   R2SManager
+
+D1S Functions
+-------------
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+   :template: myfunction.rst
+
+   d1s.prepare_tallies
+   d1s.time_correction_factors
+   d1s.apply_time_correction

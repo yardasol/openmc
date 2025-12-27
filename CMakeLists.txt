@@ -343,6 +343,7 @@ list(APPEND libopenmc_SOURCES
   src/bremsstrahlung.cpp
   src/cell.cpp
   src/cmfd_solver.cpp
+  src/collision_track.cpp
   src/cross_sections.cpp
   src/dagmc.cpp
   src/distribution.cpp
