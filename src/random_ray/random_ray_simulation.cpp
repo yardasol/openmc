@@ -531,6 +531,13 @@ void RandomRaySimulation::random_ray_adjoint()
     return;
   }
 
+  if (FlatSourceDomain::eigenvalue_fw_cadis_) {
+    // Turn off fission
+    settings::create_fission_neutrons = false;
+    // Switch to fixed source simulation
+    settings::run_mode = RunMode::FIXED_SOURCE;
+  }
+
   // Configure the domain for adjoint simulation
   FlatSourceDomain::adjoint_ = true;
 

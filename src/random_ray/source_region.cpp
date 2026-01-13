@@ -54,6 +54,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
   if (settings::run_mode == RunMode::EIGENVALUE) {
     // If in eigenvalue mode, set starting flux to guess of 1
     scalar_flux_old_.assign(negroups, 1.0);
+    if (FlatSourceDomain::eigenvalue_fw_cadis_)
+      external_source_.assign(negroups, 0.0);
   } else {
     // If in fixed source mode, set starting flux to guess of zero
     // and initialize external source arrays
@@ -144,7 +146,8 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
     scalar_flux_new_.push_back(sr.scalar_flux_new_[g]);
     scalar_flux_final_.push_back(sr.scalar_flux_final_[g]);
     source_.push_back(sr.source_[g]);
-    if (settings::run_mode == RunMode::FIXED_SOURCE) {
+    if (settings::run_mode == RunMode::FIXED_SOURCE ||
+        FlatSourceDomain::eigenvalue_fw_cadis_) {
       external_source_.push_back(sr.external_source_[g]);
     }
 

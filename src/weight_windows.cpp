@@ -876,6 +876,10 @@ WeightWindowsGenerator::WeightWindowsGenerator(pugi::xml_node node)
       fatal_error("FW-CADIS can only be run in random ray solver mode.");
     }
     FlatSourceDomain::adjoint_ = true;
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      // Utillize the k-eigenvalue method for FW-CADIS
+      FlatSourceDomain::eigenvalue_fw_cadis_ = true;
+    }
   } else {
     fatal_error(fmt::format(
       "Unknown weight window update method '{}' specified", method_string));
