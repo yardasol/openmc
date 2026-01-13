@@ -1425,19 +1425,18 @@ def reflected_absorbing_jezebel():
     settings.inactive = 20
     settings.batches = 300
 
-    #x = pitch * np.sqrt(2) / 2
     settings.source = openmc.IndependentSource(
-            space=openmc.stats.Box([-pitch/2, -pitch/2], # -pitch/2],
-                                   [pitch/2, pitch/2]), #, pitch/2]),
+            space=openmc.stats.Box([-pitch/2, -pitch/2., -1],
+                                   [pitch/2, pitch/2, 1]),
             constraints={'fissionable': True}
         )
 
     # Define Tallies
     mesh = openmc.RegularMesh()
-    n = 8
-    mesh.dimension = (8, 8)#, 8)
-    mesh.lower_left = (-pitch/2, -pitch/2)#, -pitch/2)
-    mesh.upper_right = (pitch/2, pitch/2)#, pitch/2)
+    n = 40
+    mesh.dimension = (n, n)
+    mesh.lower_left = (-pitch/2, -pitch/2)
+    mesh.upper_right = (pitch/2, pitch/2)
     mesh_filter = openmc.MeshFilter(mesh)
 
     tallies = openmc.Tallies()
