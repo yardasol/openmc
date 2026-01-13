@@ -1376,3 +1376,86 @@ def random_ray_three_region_cube() -> openmc.Model:
     model.tallies = tallies
 
     return model
+
+def reflected_absorbing_jezebel():
+    # Generate Materials
+    pu = openmc.Material(name='Plutonium Sphere')
+    pu.set_density('g/cm3', 15.61)
+    pu.add_nuclide('Pu239', 9.4132e-02)
+    pu.add_nuclide('Pu240', 4.3465e-02)
+    pu.add_nuclide('Pu241', 2.8975e-03)
+    pu.add_element('Ga', 3.4132e-02)
+
+    wc = openmc.Material(name='Tungsten Carbide')
+    wc.set_density('g/cm3', 15.6)
+    wc.add_elements_from_formula('WC')
+
+    b4c = openmc.Material(name='Boron Carbide')
+    b4c.set_density('g/cm3', 2.50)
+    b4c.add_elements_from_formula('B4C')
+
+    materials = openmc.Materials([pu, wc, b4c])
+
+    # Define Geometry
+    radius = 6.3849
+    pitch = (2 * radius) + radius
+    s_pu = openmc.ZCylinder(r=radius)
+    midplane = openmc.XPlane()
+
+    left = openmc.XPlane(x0=-pitch/2, name='left', boundary_type='vacuum')
+    right = openmc.XPlane(x0=pitch/2, name='right', boundary_type='vacuum')
+    back = openmc.YPlane(y0=-pitch/2, name='back', boundary_type='vacuum')
+    front = openmc.YPlane(y0=pitch/2, name='front', boundary_type='vacuum')
+#    top = openmc.ZPlane(z0=pitch/2, name='top', boundary_type='vacuum')
+#    bottom = openmc.ZPlane(z0=-pitch/2, name='bottom', boundary_type='vacuum')
+
+    pu_cell = openmc.Cell(name='PU Sphere', fill=pu)
+    wc_cell = openmc.Cell(name='Refector Blocks', fill=wc)
+    b4c_cell = openmc.Cell(name='Absorber Blocks', fill=b4c)
+
+    pu_cell.region = -s_pu
+    wc_cell.region = +s_pu & +left & -right & +back & -front & -midplane #& +bottom 
+    b4c_cell.region = +s_pu & +left & -right & +back & -front & +midplane #& -top
+
+    geometry = openmc.Geometry([pu_cell, wc_cell, b4c_cell])
+
+    # Define Settings
+    settings = openmc.Settings()
+    settings.particles = 10000
+    settings.inactive = 20
+    settings.batches = 300
+
+    #x = pitch * np.sqrt(2) / 2
+    settings.source = openmc.IndependentSource(
+            space=openmc.stats.Box([-pitch/2, -pitch/2], # -pitch/2],
+                                   [pitch/2, pitch/2]), #, pitch/2]),
+            constraints={'fissionable': True}
+        )
+
+    # Define Tallies
+    mesh = openmc.RegularMesh()
+    n = 8
+    mesh.dimension = (8, 8)#, 8)
+    mesh.lower_left = (-pitch/2, -pitch/2)#, -pitch/2)
+    mesh.upper_right = (pitch/2, pitch/2)#, pitch/2)
+    mesh_filter = openmc.MeshFilter(mesh)
+
+    tallies = openmc.Tallies()
+
+    tally = openmc.Tally(name="Mesh tally")
+    tally.filters = [mesh_filter]
+    tally.scores = ['flux', 'fission', 'nu-fission']
+
+    tallies.append(tally)
+
+    # Define plots
+    plots = openmc.Plots()
+
+    plot = openmc.SlicePlot.from_geometry(geometry)
+    plot.pixels = (300, 300)
+    plot.color_by = 'material'
+    plots.append(plot)
+
+    # Define Model
+    model = openmc.model.Model(geometry, materials, settings, tallies, plots)
+    return model
