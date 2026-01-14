@@ -1398,24 +1398,24 @@ def reflected_absorbing_jezebel():
 
     # Define Geometry
     radius = 6.3849
-    pitch = (2 * radius) + radius
-    s_pu = openmc.ZCylinder(r=radius)
-    midplane = openmc.XPlane()
+    pitch = (2 * radius) + 4*radius
+    s_pu = openmc.Sphere(r=radius)
+    midplane = openmc.ZPlane()
 
     left = openmc.XPlane(x0=-pitch/2, name='left', boundary_type='vacuum')
     right = openmc.XPlane(x0=pitch/2, name='right', boundary_type='vacuum')
     back = openmc.YPlane(y0=-pitch/2, name='back', boundary_type='vacuum')
     front = openmc.YPlane(y0=pitch/2, name='front', boundary_type='vacuum')
-#    top = openmc.ZPlane(z0=pitch/2, name='top', boundary_type='vacuum')
-#    bottom = openmc.ZPlane(z0=-pitch/2, name='bottom', boundary_type='vacuum')
+    top = openmc.ZPlane(z0=pitch/2, name='top', boundary_type='vacuum')
+    bottom = openmc.ZPlane(z0=-pitch/2, name='bottom', boundary_type='vacuum')
 
     pu_cell = openmc.Cell(name='PU Sphere', fill=pu)
     wc_cell = openmc.Cell(name='Refector Blocks', fill=wc)
     b4c_cell = openmc.Cell(name='Absorber Blocks', fill=b4c)
 
     pu_cell.region = -s_pu
-    wc_cell.region = +s_pu & +left & -right & +back & -front & -midplane #& +bottom 
-    b4c_cell.region = +s_pu & +left & -right & +back & -front & +midplane #& -top
+    wc_cell.region = +s_pu & +left & -right & +back & -front & -midplane & +bottom 
+    b4c_cell.region = +s_pu & +left & -right & +back & -front & +midplane & -top
 
     geometry = openmc.Geometry([pu_cell, wc_cell, b4c_cell])
 
@@ -1426,17 +1426,17 @@ def reflected_absorbing_jezebel():
     settings.batches = 300
 
     settings.source = openmc.IndependentSource(
-            space=openmc.stats.Box([-pitch/2, -pitch/2., -1],
-                                   [pitch/2, pitch/2, 1]),
+            space=openmc.stats.Box([-radius, -radius, -radius],
+                                   [radius, radius, radius]),
             constraints={'fissionable': True}
         )
 
     # Define Tallies
     mesh = openmc.RegularMesh()
-    n = 40
-    mesh.dimension = (n, n)
-    mesh.lower_left = (-pitch/2, -pitch/2)
-    mesh.upper_right = (pitch/2, pitch/2)
+    n = 12
+    mesh.dimension = (n, n, n)
+    mesh.lower_left = (-pitch/2, -pitch/2, -pitch/2)
+    mesh.upper_right = (pitch/2, pitch/2, pitch/2)
     mesh_filter = openmc.MeshFilter(mesh)
 
     tallies = openmc.Tallies()

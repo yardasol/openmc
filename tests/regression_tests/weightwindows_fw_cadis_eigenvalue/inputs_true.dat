@@ -17,14 +17,16 @@
   </materials>
   <geometry>
     <cell id="1" name="PU Sphere" material="1" region="-1" universe="1"/>
-    <cell id="2" name="Refector Blocks" material="2" region="1 3 -4 5 -6 -2" universe="1"/>
-    <cell id="3" name="Absorber Blocks" material="3" region="1 3 -4 5 -6 2" universe="1"/>
-    <surface id="1" type="z-cylinder" coeffs="0.0 0.0 6.3849"/>
-    <surface id="2" type="x-plane" coeffs="0.0"/>
-    <surface id="3" name="left" type="x-plane" boundary="vacuum" coeffs="-9.57735"/>
-    <surface id="4" name="right" type="x-plane" boundary="vacuum" coeffs="9.57735"/>
-    <surface id="5" name="back" type="y-plane" boundary="vacuum" coeffs="-9.57735"/>
-    <surface id="6" name="front" type="y-plane" boundary="vacuum" coeffs="9.57735"/>
+    <cell id="2" name="Refector Blocks" material="2" region="1 3 -4 5 -6 -2 8" universe="1"/>
+    <cell id="3" name="Absorber Blocks" material="3" region="1 3 -4 5 -6 2 -7" universe="1"/>
+    <surface id="1" type="sphere" coeffs="0.0 0.0 0.0 6.3849"/>
+    <surface id="2" type="z-plane" coeffs="0.0"/>
+    <surface id="3" name="left" type="x-plane" boundary="vacuum" coeffs="-19.1547"/>
+    <surface id="4" name="right" type="x-plane" boundary="vacuum" coeffs="19.1547"/>
+    <surface id="5" name="back" type="y-plane" boundary="vacuum" coeffs="-19.1547"/>
+    <surface id="6" name="front" type="y-plane" boundary="vacuum" coeffs="19.1547"/>
+    <surface id="7" name="top" type="z-plane" boundary="vacuum" coeffs="19.1547"/>
+    <surface id="8" name="bottom" type="z-plane" boundary="vacuum" coeffs="-19.1547"/>
   </geometry>
   <settings>
     <run_mode>eigenvalue</run_mode>
@@ -33,7 +35,7 @@
     <inactive>200</inactive>
     <source type="independent" strength="1.0" particle="neutron">
       <space type="box">
-        <parameters>-9.57735 -9.57735 -1 9.57735 9.57735 1</parameters>
+        <parameters>-6.3849 -6.3849 -6.3849 6.3849 6.3849 6.3849</parameters>
       </space>
       <constraints>
         <fissionable>true</fissionable>
@@ -52,13 +54,13 @@
     </weight_window_generators>
     <mesh id="2">
       <dimension>40 40</dimension>
-      <lower_left>-9.57735 -9.57735</lower_left>
-      <upper_right>9.57735 9.57735</upper_right>
+      <lower_left>-19.1547 -19.1547</lower_left>
+      <upper_right>19.1547 19.1547</upper_right>
     </mesh>
     <random_ray>
       <source type="independent" strength="1.0" particle="neutron">
         <space type="box">
-          <parameters>-9.57735 -9.57735 -1.0 9.57735 9.57735 1.0</parameters>
+          <parameters>-19.1547 -19.1547 -19.1547 19.1547 19.1547 19.1547</parameters>
         </space>
       </source>
       <distance_inactive>15.0</distance_inactive>
@@ -72,9 +74,9 @@
   </settings>
   <tallies>
     <mesh id="1">
-      <dimension>40 40</dimension>
-      <lower_left>-9.57735 -9.57735</lower_left>
-      <upper_right>9.57735 9.57735</upper_right>
+      <dimension>12 12 12</dimension>
+      <lower_left>-19.1547 -19.1547 -19.1547</lower_left>
+      <upper_right>19.1547 19.1547 19.1547</upper_right>
     </mesh>
     <filter id="1" type="mesh">
       <bins>1</bins>
