@@ -92,6 +92,209 @@ def pwr_pin_cell() -> openmc.Model:
 
     return model
 
+def pwr_2d_quarter_core() -> openmc.Model:
+    """Create a 2D PWR quarter core model.
+
+    This model is based on the OECD/NEA Monte Carlo Performance benchmark which is a
+    grossly simplified pressurized water reactor (PWR) with 241 fuel
+    assemblies. Note that the number of particles/batches is initially set very
+    low for testing purposes.
+
+    Returns
+    -------
+    model : openmc.Model
+        2D quarter core PWR model
+
+    """
+    model = openmc.Model()
+
+    # Define materials.
+    fuel_mat = openmc.Material(1, name='UOX fuel')
+    fuel_mat.set_density('g/cm3', 10.062)
+    fuel_mat.add_nuclide('U234', 4.9476e-6)
+    fuel_mat.add_nuclide('U235', 4.8218e-4)
+    fuel_mat.add_nuclide('U238', 2.1504e-2)
+    fuel_mat.add_nuclide('Xe135', 1.0801e-8)
+    fuel_mat.add_nuclide('O16', 4.5737e-2)
+
+    clad = openmc.Material(2, name='Zircaloy')
+    clad.set_density('g/cm3', 5.77)
+    clad.add_nuclide('Zr90', 0.5145)
+    clad.add_nuclide('Zr91', 0.1122)
+    clad.add_nuclide('Zr92', 0.1715)
+    clad.add_nuclide('Zr94', 0.1738)
+    clad.add_nuclide('Zr96', 0.0280)
+
+    hot_water = openmc.Material(3, name='Hot borated water')
+    hot_water.set_density('atom/b-cm', 0.06614)
+    hot_water.add_nuclide('H1', 2.0)
+    hot_water.add_nuclide('O16', 1.0)
+    hot_water.add_nuclide('B10', 6.490e-4)
+    hot_water.add_nuclide('B11', 2.689e-3)
+    hot_water.add_s_alpha_beta('c_H_in_H2O')
+
+    rpv_steel = openmc.Material(4, name='Reactor pressure vessel steel')
+    rpv_steel.set_density('g/cm3', 7.9)
+    rpv_steel.add_nuclide('Fe54', 0.05437098, 'wo')
+    rpv_steel.add_nuclide('Fe56', 0.88500663, 'wo')
+    rpv_steel.add_nuclide('Fe57', 0.0208008, 'wo')
+    rpv_steel.add_nuclide('Fe58', 0.00282159, 'wo')
+    rpv_steel.add_nuclide('Ni58', 0.0067198, 'wo')
+    rpv_steel.add_nuclide('Ni60', 0.0026776, 'wo')
+    rpv_steel.add_nuclide('Mn55', 0.01, 'wo')
+    rpv_steel.add_nuclide('Cr52', 0.002092475, 'wo')
+    rpv_steel.add_nuclide('C0', 0.0025, 'wo')
+    rpv_steel.add_nuclide('Cu63', 0.0013696, 'wo')
+
+    bot_nozzle = openmc.Material(5, name='Bottom nozzle region')
+    bot_nozzle.set_density('g/cm3', 2.53)
+    bot_nozzle.add_nuclide('H1', 0.0245014, 'wo')
+    bot_nozzle.add_nuclide('O16', 0.1944274, 'wo')
+    bot_nozzle.add_nuclide('B10', 7.89917e-5, 'wo')
+    bot_nozzle.add_nuclide('B11', 3.59854e-4, 'wo')
+    bot_nozzle.add_nuclide('Fe54', 0.030411411144, 'wo')
+    bot_nozzle.add_nuclide('Fe56', 0.495012237964, 'wo')
+    bot_nozzle.add_nuclide('Fe57', 0.01163454624, 'wo')
+    bot_nozzle.add_nuclide('Fe58', 0.001578204652, 'wo')
+    bot_nozzle.add_nuclide('Ni58', 0.047211231662, 'wo')
+    bot_nozzle.add_nuclide('Mn55', 0.0156126, 'wo')
+    bot_nozzle.add_nuclide('Cr52', 0.124142524198, 'wo')
+    bot_nozzle.add_s_alpha_beta('c_H_in_H2O')
+
+    # Define the materials file.
+    model.materials = (fuel_mat, clad, hot_water, rpv_steel, bot_nozzle)
+
+    # Define surfaces.
+    s1 = openmc.ZCylinder(r=0.41, surface_id=1)
+    s2 = openmc.ZCylinder(r=0.475, surface_id=2)
+    s3 = openmc.ZCylinder(r=0.56, surface_id=3)
+    s4 = openmc.ZCylinder(r=0.62, surface_id=4)
+    s6 = openmc.ZCylinder(r=209.0, surface_id=6)
+    s7 = openmc.ZCylinder(r=229.0, surface_id=7)
+    s8 = openmc.ZCylinder(r=249.0, surface_id=8, boundary_type='vacuum')
+
+    s10 = openmc.XPlane(boundary_type='reflective')
+    s11 = openmc.YPlane(boundary_type='reflective')
+
+    # Define universes for MGXS homogenization.
+    inf_water = openmc.Universe(name='Infinite hot water',
+                               universe_id=1)
+    c20 = openmc.Cell(cell_id=20, fill=hot_water)
+    inf_water.add_cell(c20)
+
+    inf_rpv_steel = openmc.Universe(name='Infinite rpv steel',
+                               universe_id=2)
+    c21 = openmc.Cell(cell_id=21, fill=rpv_steel)
+    inf_rpv_steel.add_cell(c21)
+
+    inf_bot_nozzle = openmc.Universe(name='Infinite bottom nozzle',
+                               universe_id=3)
+    c22 = openmc.Cell(cell_id=22, fill=bot_nozzle)
+    inf_bot_nozzle.add_cell(c22)
+
+    fuel = openmc.Universe(name='Fuel pin, cladding',
+                               universe_id=4)
+    c23 = openmc.Cell(cell_id=23, fill=fuel_mat, region=-s1)
+    c24 = openmc.Cell(cell_id=24, fill=clad, region=+s1)
+    fuel.add_cells((c23, c24))
+
+    tube = openmc.Universe(name='Instrumentation guide tube',
+                               universe_id=5)
+    c25 = openmc.Cell(cell_id=25, fill=hot_water, region=-s3)
+    c26 = openmc.Cell(cell_id=26, fill=clad, region=+s3)
+    tube.add_cells((c25, c26))
+
+    ## Pin universes
+    fuel_hot = openmc.Universe(name='Fuel pin, cladding, hot water',
+                               universe_id=10)
+    c30 = openmc.Cell(cell_id=30, fill=fuel, region=-s2)
+    c31 = openmc.Cell(cell_id=31, fill=inf_water, region=+s2)
+    fuel_hot.add_cells((c30, c31))
+
+    tube_hot = openmc.Universe(name='Instrumentation guide tube, hot water',
+                               universe_id=11)
+    c32 = openmc.Cell(cell_id=32, fill=tube, region=-s4)
+    c33 = openmc.Cell(cell_id=33, fill=inf_water, region=+s4)
+    tube_hot.add_cells((c32, c33))
+
+
+    # Set positions occupied by guide tubes
+    tube_x = np.array([5, 8, 11, 3, 13, 2, 5, 8, 11, 14, 2, 5, 8, 11, 14,
+                       2, 5, 8, 11, 14, 3, 13, 5, 8, 11])
+    tube_y = np.array([2, 2, 2, 3, 3, 5, 5, 5, 5, 5, 8, 8, 8, 8, 8,
+                       11, 11, 11, 11, 11, 13, 13, 14, 14, 14])
+
+    # Define fuel lattices.
+    l101 = openmc.RectLattice(
+        name='Fuel assembly', lattice_id=101)
+    l101.lower_left = (-10.71, -10.71)
+    l101.pitch = (1.26, 1.26)
+    l101.universes = np.tile(fuel_hot, (17, 17))
+    l101.universes[tube_x, tube_y] = tube_hot
+
+    # Define assemblies.
+    fa_hw = openmc.Universe(name='Water assembly (hot)', universe_id=20)
+    c40 = openmc.Cell(cell_id=40, fill=hot_water)
+    fa_hw.add_cell(c40)
+
+    fa_hot = openmc.Universe(name='Fuel assembly (hot)', universe_id=21)
+    c50 = openmc.Cell(cell_id=50, fill=l101)
+    fa_hot.add_cell(c50)
+
+    # Define core lattices
+    l201 = openmc.RectLattice(name='Core lattice (lower half)', lattice_id=201)
+    l201.lower_left = (-224.91, -224.91)
+    l201.pitch = (21.42, 21.42)
+    l201.universes = [
+        [fa_hw]*21,
+        [fa_hw]*21,
+        [fa_hw]*7 + [fa_hot]*7 + [fa_hw]*7,
+        [fa_hw]*5 + [fa_hot]*11 + [fa_hw]*5,
+        [fa_hw]*4 + [fa_hot]*13 + [fa_hw]*4,
+        [fa_hw]*3 + [fa_hot]*15 + [fa_hw]*3,
+        [fa_hw]*3 + [fa_hot]*15 + [fa_hw]*3,
+        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
+        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
+        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
+        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
+        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
+        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
+        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
+        [fa_hw]*3 + [fa_hot]*15 + [fa_hw]*3,
+        [fa_hw]*3 + [fa_hot]*15 + [fa_hw]*3,
+        [fa_hw]*4 + [fa_hot]*13 + [fa_hw]*4,
+        [fa_hw]*5 + [fa_hot]*11 + [fa_hw]*5,
+        [fa_hw]*7 + [fa_hot]*7 + [fa_hw]*7,
+        [fa_hw]*21,
+        [fa_hw]*21]
+
+    # Define root universe.
+    root = openmc.Universe(universe_id=0, name='root universe')
+    c1 = openmc.Cell(cell_id=1, fill=l201, region=-s6 & +s10 & +s11)
+    c2 = openmc.Cell(cell_id=2, fill=inf_bot_nozzle,
+                     region=+s6 & -s7 & +s10 & +s11)
+    c3 = openmc.Cell(cell_id=3, fill=inf_rpv_steel,
+                      region=+s7 & -s8 & +s10 & +s11)
+    root.add_cells((c1, c2, c3))
+
+    # Assign root universe to geometry
+    model.geometry.root_universe = root
+
+    model.settings.batches = 10
+    model.settings.inactive = 5
+    model.settings.particles = 100
+    model.settings.source = openmc.IndependentSource(space=openmc.stats.Box(
+        [0, 0, -1], [160, 160, 1]))
+
+
+    plot = openmc.SlicePlot()
+    plot.origin = (125, 125, 0)
+    plot.width = (250, 250)
+    plot.pixels = (3000, 3000)
+    plot.color_by = 'material'
+    model.plots.append(plot)
+
+    return model
 
 def pwr_core() -> openmc.Model:
     """Create a PWR full-core model.
@@ -1414,7 +1617,7 @@ def reflected_absorbing_jezebel():
     b4c_cell = openmc.Cell(name='Absorber Blocks', fill=b4c)
 
     pu_cell.region = -s_pu
-    wc_cell.region = +s_pu & +left & -right & +back & -front & -midplane & +bottom 
+    wc_cell.region = +s_pu & +left & -right & +back & -front & -midplane & +bottom
     b4c_cell.region = +s_pu & +left & -right & +back & -front & +midplane & -top
 
     geometry = openmc.Geometry([pu_cell, wc_cell, b4c_cell])
