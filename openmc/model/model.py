@@ -2223,7 +2223,7 @@ class Model:
     def convert_to_multigroup(
         self,
         domain_type: str = "material",
-        domains: list | None = None,
+        domains: Iterable[int] | None = None,
         material_method: str | None = None,
         energy_groups: str = "CASMO-2",
         nparticles: int = 2000,
@@ -2243,8 +2243,8 @@ class Model:
         ----------
         domain_type : {"material", "universe"}
             Domain type for spatial homogenization.
-        domains : list, optional
-            Domains to use in MGXS generation. Uses all domains available
+        domains : iterable of int, optional
+            Domain IDs to use in MGXS generation. Uses all domains available
             if nothing is passed.
         material_method : {"material_wise", "stochastic_slab", "infinite_medium"}, optional
             Method to generate the MGXS when using material domains.
@@ -2306,17 +2306,28 @@ class Model:
 
             # Get all domains if none are specified
             if domain_type == 'material':
-                if domains is None:
-                    domains = self.geometry.get_all_materials().values()
-                else:
-                    check_type('domain', domains, Iterable, openmc.Material)
+                all_domains = self.geometry.get_all_materials()
+                iter_type = openmc.Material
             elif domain_type == 'universe':
-                if domains is None:
-                    domains = self.geometry.get_all_universes().values()
-                else:
-                    check_type('domain', domains, Iterable, openmc.Universe)
+                all_domains = self.geometry.get_all_universes()
+                iter_type = openmc.Universe
             else:
                 raise ValueError("Invalide domain_type: '{domain_type}'.")
+
+            # Get domain objects from model
+            check_type('domain', domains, Iterable, int)
+            converted_domains = []
+            for domain in domains:
+                try:
+                    assert domain in all_domains.keys()
+                    converted_domains += [all_domains[domain]]
+                except AssertionError:
+                    print(f'{iter_type} object with ID={domain} does '
+                          'not exist in the model.')
+
+            # Double check we have the correct object type
+            domains = converted_domains
+            check_type('domain', domains, Iterable, iter_type)
 
             # Make sure all domains have a name, and that the name is a valid HDF5
             # dataset name
@@ -2361,8 +2372,8 @@ class Model:
                 # TODO: support cell domain type
                 # This currently only works for universes
                 if domain_type != 'material':
-                    for cell in self.geometry.find_all_cells().values:
-                        if cell.fill == domain:
+                    for cell in self.geometry.get_all_cells().values():
+                        if cell.fill.id == domain.id:
                             cell.fill = material
 
             self.settings.energy_mode = 'multi-group'

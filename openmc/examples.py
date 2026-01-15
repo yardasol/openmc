@@ -156,7 +156,7 @@ def pwr_pin_cell_homogenizable() -> openmc.Model:
     fuel_univ = openmc.Universe(name="Homogenized Fuel")
     fuel_univ.add_cells((fuel_pin, cladding))
     water_univ = openmc.Universe(name="Homogenized Water")
-    water_univ.add_cell(water_univ)
+    water_univ.add_cell(water)
 
     # Instantiate Cells
     fuel_pin = openmc.Cell(name='Fuel', fill=fuel_univ)
