@@ -151,7 +151,6 @@ def pwr_pin_cell_homogenizable() -> openmc.Model:
     cladding = openmc.Cell(name='Cladding', fill=clad)
     cladding.region = +fuel_or
     water = openmc.Cell(name='Water', fill=hot_water)
-    water.region = +clad_or
 
     fuel_univ = openmc.Universe(name="Homogenized Fuel")
     fuel_univ.add_cells((fuel_pin, cladding))
@@ -164,15 +163,15 @@ def pwr_pin_cell_homogenizable() -> openmc.Model:
 
     # Use surface half-spaces to define regions
     fuel_pin.region = -clad_or
-    water.region = +left & -right & +bottom & -top
+    water.region = +clad_or & +left & -right & +bottom & -top
 
     # Create root universe
     model.geometry.root_universe = openmc.Universe(0, name='root universe')
     model.geometry.root_universe.add_cells([fuel_pin, water])
 
-    model.settings.batches = 10
-    model.settings.inactive = 5
-    model.settings.particles = 100
+    model.settings.batches = 200
+    model.settings.inactive = 50
+    model.settings.particles = 1000
     model.settings.source = openmc.IndependentSource(
         space=openmc.stats.Box([-pitch/2, -pitch/2, -1],
                                [pitch/2, pitch/2, 1]),
@@ -309,7 +308,7 @@ def pwr_2d_quarter_core() -> openmc.Model:
 
     tube_hot = openmc.Universe(name='Instrumentation guide tube, hot water',
                                universe_id=11)
-    c32 = openmc.Cell(cell_id=32, fill=tube, region=-s4)
+    c32 = openmc.Cell(cell_id=32, fill=tube, region= -s4)
     c33 = openmc.Cell(cell_id=33, fill=inf_water, region=+s4)
     tube_hot.add_cells((c32, c33))
 
@@ -338,31 +337,21 @@ def pwr_2d_quarter_core() -> openmc.Model:
     fa_hot.add_cell(c50)
 
     # Define core lattices
-    l201 = openmc.RectLattice(name='Core lattice (lower half)', lattice_id=201)
-    l201.lower_left = (-224.91, -224.91)
+    l201 = openmc.RectLattice(name='Quarter core lattice', lattice_id=201)
+    l201.lower_left = (-10.71, -10.71)
     l201.pitch = (21.42, 21.42)
     l201.universes = [
-        [fa_hw]*21,
-        [fa_hw]*21,
-        [fa_hw]*7 + [fa_hot]*7 + [fa_hw]*7,
-        [fa_hw]*5 + [fa_hot]*11 + [fa_hw]*5,
-        [fa_hw]*4 + [fa_hot]*13 + [fa_hw]*4,
-        [fa_hw]*3 + [fa_hot]*15 + [fa_hw]*3,
-        [fa_hw]*3 + [fa_hot]*15 + [fa_hw]*3,
-        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
-        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
-        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
-        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
-        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
-        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
-        [fa_hw]*2 + [fa_hot]*17 + [fa_hw]*2,
-        [fa_hw]*3 + [fa_hot]*15 + [fa_hw]*3,
-        [fa_hw]*3 + [fa_hot]*15 + [fa_hw]*3,
-        [fa_hw]*4 + [fa_hot]*13 + [fa_hw]*4,
-        [fa_hw]*5 + [fa_hot]*11 + [fa_hw]*5,
-        [fa_hw]*7 + [fa_hot]*7 + [fa_hw]*7,
-        [fa_hw]*21,
-        [fa_hw]*21]
+        [fa_hw]*11,
+        [fa_hw]*11,
+        [fa_hot]*4 + [fa_hw]*7,
+        [fa_hot]*6 + [fa_hw]*5,
+        [fa_hot]*7 + [fa_hw]*4,
+        [fa_hot]*8 + [fa_hw]*3,
+        [fa_hot]*8 + [fa_hw]*3,
+        [fa_hot]*9 + [fa_hw]*2,
+        [fa_hot]*9 + [fa_hw]*2,
+        [fa_hot]*9 + [fa_hw]*2,
+        [fa_hot]*9 + [fa_hw]*2]
 
     # Define root universe.
     root = openmc.Universe(universe_id=0, name='root universe')
@@ -382,6 +371,22 @@ def pwr_2d_quarter_core() -> openmc.Model:
     model.settings.source = openmc.IndependentSource(space=openmc.stats.Box(
         [0, 0, -1], [160, 160, 1]))
 
+
+    # Mesh tally:
+    mesh = openmc.RegularMesh()
+    mesh.dimension = (13, 13)
+    mesh.lower_left = (-10.71, -10.71)
+    mesh.upper_right = (267.57, 267.57)
+
+    mesh_filter = openmc.MeshFilter(mesh)
+
+    # Now use the mesh filter in a tally and indicate what scores are desired
+    tally = openmc.Tally(name="Mesh tally")
+    tally.filters = [mesh_filter]
+    tally.scores = ['flux', 'fission', 'nu-fission']
+    tally.estimator = 'analog'
+
+    model.tallies.append(tallies)
 
     plot = openmc.SlicePlot()
     plot.origin = (125, 125, 0)
