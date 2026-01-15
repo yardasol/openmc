@@ -1694,6 +1694,8 @@ class Model:
         self,
         model: openmc.model.model,
         energy_groups: openmc.mgxs.EnergyGroups,
+        domain_type: str,
+        domains: list,
         correction: str | none,
         directory: pathlike,
         kinetic: bool | None = None,
@@ -1707,6 +1709,10 @@ class Model:
         ----------
         energy_groups : openmc.mgxs.EnergyGroups
             Energy group structure for the MGXS.
+        domain_type : str, optional
+            Domain type for spatial homogenization.
+        domains : list, optional.
+            Domains to use in MGXS generation.
         nparticles : int
             Number of particles to simulate per batch when generating MGXS.
         mgxs_path : str
@@ -1754,11 +1760,11 @@ class Model:
             mgxs_lib.mgxs_types += ['chi-prompt', 'chi-delayed',
                                     'decay-rate', 'inverse-velocity', 'beta']
 
-        # Specify a "cell" domain type for the cross section tally filters
-        mgxs_lib.domain_type = "material"
+        # Specify the domain type for the cross section tally filters
+        mgxs_lib.domain_type = domain_type
 
-        # Specify the cell domains over which to compute multi-group cross sections
-        mgxs_lib.domains = model.geometry.get_all_materials().values()
+        # Specify the domains over which to compute multi-group cross sections
+        mgxs_lib.domains = domains
 
         # Do not compute cross sections on a nuclide-by-nuclide basis
         mgxs_lib.by_nuclide = False
@@ -1870,6 +1876,7 @@ class Model:
     def _generate_infinite_medium_mgxs(
         self,
         energy_groups: openmc.mgxs.EnergyGroups,
+        materials: Iterable[openmc.Material],
         nparticles: int,
         mgxs_path: PathLike,
         correction: str | None,
@@ -1903,6 +1910,8 @@ class Model:
         ----------
         energy_groups : openmc.mgxs.EnergyGroups
             Energy group structure for the MGXS.
+        materials : Iterable of openmc.Material
+            Materials to generate MGXS for.
         nparticles : int
             Number of particles to simulate per batch when generating MGXS.
         mgxs_path : str
@@ -1922,7 +1931,7 @@ class Model:
 
         """
         mgxs_sets = []
-        for material in self.materials:
+        for material in materials:
             model = openmc.Model()
 
             # Set materials on the model
@@ -1954,7 +1963,7 @@ class Model:
 
             # Add MGXS Tallies
             mgxs_lib = self._auto_generate_mgxs_lib(
-                model, energy_groups, correction, directory, kinetic, num_delayed_groups)
+                model, energy_groups, 'material', model.materials, correction, directory, kinetic, num_delayed_groups)
 
             # Create a MGXS File which can then be written to disk
             mgxs_set = mgxs_lib.get_xsdata(domain=material, xsdata_name=name)
@@ -2044,6 +2053,7 @@ class Model:
     def _generate_stochastic_slab_mgxs(
         self,
         energy_groups: openmc.mgxs.EnergyGroups,
+        materials : Iterable[openmc.Material],
         nparticles: int,
         mgxs_path: PathLike,
         correction: str | None,
@@ -2066,6 +2076,8 @@ class Model:
         ----------
         energy_groups : openmc.mgxs.EnergyGroups
             Energy group structure for the MGXS.
+        materials : Iterable of openmc.Material
+            Materials to generate MGXS for
         nparticles : int
             Number of particles to simulate per batch when generating MGXS.
         mgxs_path : str
@@ -2099,7 +2111,7 @@ class Model:
 
         """
         model = openmc.Model()
-        model.materials = self.materials
+        model.materials = openmc.Materials(materials)
 
         # Settings
         model.settings.batches = 200
@@ -2125,7 +2137,7 @@ class Model:
 
         # Add MGXS Tallies
         mgxs_lib = self._auto_generate_mgxs_lib(
-            model, energy_groups, correction, directory, kinetic, num_delayed_groups)
+            model, energy_groups, 'material', model.materials, correction, directory, kinetic, num_delayed_groups)
 
         names = [mat.name for mat in mgxs_lib.domains]
 
@@ -2134,9 +2146,11 @@ class Model:
             xs_type='macro', xsdata_names=names)
         mgxs_file.export_to_hdf5(mgxs_path)
 
-    def _generate_material_wise_mgxs(
+    def _generate_domain_wise_mgxs(
         self,
         energy_groups: openmc.mgxs.EnergyGroups,
+        domain_type: str,
+        domains: list,
         nparticles: int,
         mgxs_path: PathLike,
         correction: str | None,
@@ -2158,6 +2172,10 @@ class Model:
         ----------
         energy_groups : openmc.mgxs.EnergyGroups
             Energy group structure for the MGXS.
+        domain_type : str
+            Domain type for spatial homogenization.
+        domains : list
+            Domains to use to generate MGXS.
         nparticles : int
             Number of particles to simulate per batch when generating MGXS.
         mgxs_path : PathLike
@@ -2174,6 +2192,15 @@ class Model:
 
         """
         model = copy.deepcopy(self)
+
+        # Get deepcopies of the domain objects
+        if domain_type == 'material':
+            all_domains = model.geometry.get_all_materials().values()
+        elif domain_type == 'universe':
+            all_domains = model.geometry.get_all_universes().values()
+        domain_ids = [domain.id for domain in domains]
+        domains = [domain for domain in all_domains if domain.id in domain_ids]
+
         model.tallies = openmc.Tallies()
 
         # Settings
@@ -2184,9 +2211,9 @@ class Model:
 
         # Add MGXS Tallies
         mgxs_lib = self._auto_generate_mgxs_lib(
-            model, energy_groups, correction, directory, kinetic, num_delayed_groups)
+            model, energy_groups, domain_type, domains, correction, directory, kinetic, num_delayed_groups)
 
-        names = [mat.name for mat in mgxs_lib.domains]
+        names = [domain.name for domain in mgxs_lib.domains]
 
         # Create a MGXS File which can then be written to disk
         mgxs_file = mgxs_lib.create_mg_library(
@@ -2195,7 +2222,9 @@ class Model:
 
     def convert_to_multigroup(
         self,
-        method: str = "material_wise",
+        domain_type: str = "material",
+        domains: list | None = None,
+        material_method: str | None = None,
         energy_groups: str = "CASMO-2",
         nparticles: int = 2000,
         overwrite_mgxs_library: bool = False,
@@ -2212,8 +2241,13 @@ class Model:
 
         Parameters
         ----------
-        method : {"material_wise", "stochastic_slab", "infinite_medium"}, optional
-            Method to generate the MGXS.
+        domain_type : {"material", "universe"}
+            Domain type for spatial homogenization.
+        domains : list, optional
+            Domains to use in MGXS generation. Uses all domains available
+            if nothing is passed.
+        material_method : {"material_wise", "stochastic_slab", "infinite_medium"}, optional
+            Method to generate the MGXS when using material domains.
         energy_groups : openmc.mgxs.EnergyGroups or str, optional
             Energy group structure for the MGXS or the name of the group
             structure (based on keys from openmc.mgxs.GROUP_STRUCTURES).
@@ -2252,6 +2286,10 @@ class Model:
         if isinstance(energy_groups, str):
             energy_groups = openmc.mgxs.EnergyGroups(energy_groups)
 
+        if domain_type != 'material' and material_method is not None:
+            warning(f"'{material_method}' material_method passed for "
+                    f"'{domain_type}' domain type. Ignoring...")
+
         # Do all work (including MGXS generation) in a temporary directory
         # to avoid polluting the working directory with residual XML files
         with TemporaryDirectory() as tmpdir:
@@ -2266,37 +2304,66 @@ class Model:
                     self.finalize_lib()
                     break
 
-            # Make sure all materials have a name, and that the name is a valid HDF5
+            # Get all domains if none are specified
+            if domain_type == 'material':
+                if domains is None:
+                    domains = self.geometry.get_all_materials().values()
+                else:
+                    check_type('domain', domains, Iterable, openmc.Material)
+            elif domain_type == 'universe':
+                if domains is None:
+                    domains = self.geometry.get_all_universes().values()
+                else:
+                    check_type('domain', domains, Iterable, openmc.Universe)
+            else:
+                raise ValueError("Invalide domain_type: '{domain_type}'.")
+
+            # Make sure all domains have a name, and that the name is a valid HDF5
             # dataset name
-            for material in self.materials:
-                if not material.name or not material.name.strip():
-                    material.name = f"material {material.id}"
-                material.name = re.sub(r'[^a-zA-Z0-9]', '_', material.name)
+            for domain in domains:
+                if not domain.name or not domain.name.strip():
+                    domain.name = f"domain {domain.id}"
+                domain.name = re.sub(r'[^a-zA-Z0-9]', '_', domain.name)
 
             # If needed, generate the needed MGXS data library file
             if not Path(mgxs_path).is_file() or overwrite_mgxs_library:
-                if method == "infinite_medium":
-                    self._generate_infinite_medium_mgxs(
-                        energy_groups, nparticles, mgxs_path, correction, tmpdir, source_energy, kinetic, num_delayed_groups)
-                elif method == "material_wise":
-                    self._generate_material_wise_mgxs(
-                        energy_groups, nparticles, mgxs_path, correction, tmpdir, kinetic, num_delayed_groups)
-                elif method == "stochastic_slab":
-                    self._generate_stochastic_slab_mgxs(
-                        energy_groups, nparticles, mgxs_path, correction, tmpdir, source_energy, kinetic, num_delayed_groups)
+                if domain_type == 'material' and material_method != 'material_wise':
+                    if material_method == "infinite_medium":
+                        self._generate_infinite_medium_mgxs(
+                            energy_groups, domains, nparticles, mgxs_path, correction, tmpdir, source_energy, kinetic, num_delayed_groups)
+                    elif material_method == "stochastic_slab":
+                        self._generate_stochastic_slab_mgxs(
+                            energy_groups, domains, nparticles, mgxs_path, correction, tmpdir, source_energy, kinetic, num_delayed_groups)
+                    else:
+                        raise ValueError(
+                            f'MGXS material generation method "{method}" not recognized')
                 else:
-                    raise ValueError(
-                        f'MGXS generation method "{method}" not recognized')
+                    self._generate_domain_wise_mgxs(
+                        energy_groups, domain_type, domains, nparticles, mgxs_path, correction, tmpdir, kinetic, num_delayed_groups)
+
             else:
                 print(f'Existing MGXS library file "{mgxs_path}" will be used')
 
-            # Convert all continuous energy materials to multigroup
+            # Create multigroup materials
+            openmc.reset_auto_ids()
+            self.materials = openmc.Materials()
             self.materials.cross_sections = mgxs_path
-            for material in self.materials:
+            for domain in domains:
+                if domain_type != 'material':
+                    material = openmc.Material(name=domain.name)
+                else:
+                    material = copy.deepcopy(domain)
                 material.set_density('macro', 1.0)
                 material._nuclides = []
                 material._sab = []
-                material.add_macroscopic(material.name)
+                material.add_macroscopic(domain.name)
+                self.materials.append(material)
+                # TODO: support cell domain type
+                # This currently only works for universes
+                if domain_type != 'material':
+                    for cell in self.geometry.find_all_cells().values:
+                        if cell.fill == domain:
+                            cell.fill = material
 
             self.settings.energy_mode = 'multi-group'
 

@@ -39,7 +39,7 @@ def test_random_ray_auto_convert_kinetic(generation_method, time_method):
 
         # Convert to a multi-group model
         model.convert_to_multigroup(
-            method=generation_method, energy_groups='CASMO-2', nparticles=30,
+            material_method=generation_method, energy_groups='CASMO-2', nparticles=30,
             overwrite_mgxs_library=False, mgxs_path="mgxs.h5", kinetic=True,
             num_delayed_groups=6
         )
