@@ -376,7 +376,7 @@ def pwr_2d_quarter_core() -> openmc.Model:
     mesh = openmc.RegularMesh()
     mesh.dimension = (13, 13)
     mesh.lower_left = (-10.71, -10.71)
-    mesh.upper_right = (267.57, 267.57)
+    mesh.upper_right = (267.75, 267.75)
 
     mesh_filter = openmc.MeshFilter(mesh)
 

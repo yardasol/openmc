@@ -23,25 +23,26 @@ if convert:
     model.convert_to_random_ray()
 
     # Set the number of particles
-    model.settings.particles = 650
+    model.settings.particles = 10000
     model.settings.batches = 10000
     model.settings.inactive = 3500
-    model.settings.random_ray['distance_inactive'] = 15.0
-    model.settings.random_ray['distance_active'] = 150.0
+    model.settings.random_ray['distance_inactive'] = 17.0
+    model.settings.random_ray['distance_active'] = 550.0
 
     # Overlay a mesh
-    n = 10
-    pitch = 1.26
+    m = 8
+    n = int(m * 17 * 12.5)
+    pitch = 1.26 / m
     mesh = RegularMesh()
     mesh.dimension = (n, n)
     mesh.lower_left = (-pitch / 2, -pitch / 2)
-    mesh.upper_right = (pitch / 2, pitch / 2)
-    #mesh = model.tallies[0].filters[0].mesh
+    mesh.upper_right = (267.75, 267.75)
     model.settings.random_ray['source_region_meshes'] = [
         (mesh, [model.geometry.root_universe])]
 
+    ww_mesh = model.tallies[0].filters[0].mesh
     wwg = openmc.WeightWindowGenerator(
-        method="fw_cadis", mesh=mesh, max_realizations=model.settings.batches - model.settings.inactive)
+        method="fw_cadis", mesh=ww_mesh, max_realizations=model.settings.batches - model.settings.inactive)
     model.settings.weight_window_generators = wwg
 if weight_windows:
     model.settings.weight_window_checkpoints = {'collision': True, 'surface': True}
