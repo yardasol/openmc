@@ -386,7 +386,7 @@ def pwr_2d_quarter_core() -> openmc.Model:
     tally.scores = ['flux', 'fission', 'nu-fission']
     tally.estimator = 'analog'
 
-    model.tallies.append(tallies)
+    model.tallies.append(tally)
 
     plot = openmc.SlicePlot()
     plot.origin = (125, 125, 0)
