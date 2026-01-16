@@ -330,7 +330,7 @@ def pwr_2d_quarter_core() -> openmc.Model:
 
     # Define assemblies.
     fa_hw = openmc.Universe(name='Water assembly (hot)', universe_id=20)
-    c40 = openmc.Cell(cell_id=40, fill=hot_water)
+    c40 = openmc.Cell(cell_id=40, fill=inf_water)
     fa_hw.add_cell(c40)
 
     fa_hot = openmc.Universe(name='Fuel assembly (hot)', universe_id=21)
