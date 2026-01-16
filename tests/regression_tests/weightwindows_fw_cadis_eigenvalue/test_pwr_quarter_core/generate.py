@@ -34,6 +34,7 @@ if convert:
     model.settings.random_ray['distance_active'] = 820.0
 
     # Overlay a mesh
+    base_mesh = model.tallies[0].filters[0].mesh
     m = 4
     n = int(m * 17 * 12.5)
     pitch = 1.26 / m

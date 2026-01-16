@@ -322,8 +322,9 @@ def pwr_2d_quarter_core() -> openmc.Model:
     # Define fuel lattices.
     l101 = openmc.RectLattice(
         name='Fuel assembly', lattice_id=101)
-    l101.lower_left = (-10.71, -10.71)
-    l101.pitch = (1.26, 1.26)
+    pitch = PINCELL_PITCH
+    l101.lower_left = (-17 * pitch / 2, 17 * pitch / 2)
+    l101.pitch = (pitch, pitch)
     l101.universes = np.tile(fuel_hot, (17, 17))
     l101.universes[tube_x, tube_y] = tube_hot
 
@@ -338,8 +339,8 @@ def pwr_2d_quarter_core() -> openmc.Model:
 
     # Define core lattices
     l201 = openmc.RectLattice(name='Quarter core lattice', lattice_id=201)
-    l201.lower_left = (-10.71, -10.71)
-    l201.pitch = (21.42, 21.42)
+    l201.lower_left = (-17 * pitch / 2, -17 * pitch / 2)
+    l201.pitch = (17 * pitch, 17 * pitch)
     l201.universes = [
         [fa_hw]*11,
         [fa_hw]*11,
@@ -372,11 +373,12 @@ def pwr_2d_quarter_core() -> openmc.Model:
         [0, 0, -1], [160, 160, 1]))
 
 
-    # Mesh tally:
+    # Mesh tally over pin cells:
     mesh = openmc.RegularMesh()
-    mesh.dimension = (13, 13)
-    mesh.lower_left = (-10.71, -10.71)
-    mesh.upper_right = (267.75, 267.75)
+    n = 13 * 17
+    mesh.dimension = (n, n)
+    mesh.lower_left = (-pitch / 2, -pitch / 2)
+    mesh.upper_right = (12.5 * 17 * pitch, 12.5 * 17 * pitch)
 
     mesh_filter = openmc.MeshFilter(mesh)
 
