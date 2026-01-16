@@ -187,7 +187,7 @@ def pwr_pin_cell_homogenizable() -> openmc.Model:
 
 
 
-def pwr_2d_quarter_core() -> openmc.Model:
+def pwr_2d_quarter_core(homog_pin_cell=False) -> openmc.Model:
     """Create a 2D PWR quarter core model.
 
     This model is based on the OECD/NEA Monte Carlo Performance benchmark which is a
@@ -287,31 +287,53 @@ def pwr_2d_quarter_core() -> openmc.Model:
     c22 = openmc.Cell(cell_id=22, fill=bot_nozzle)
     inf_bot_nozzle.add_cell(c22)
 
-    fuel = openmc.Universe(name='Fuel pin, cladding',
-                               universe_id=4)
-    c23 = openmc.Cell(cell_id=23, fill=fuel_mat, region=-s1)
-    c24 = openmc.Cell(cell_id=24, fill=clad, region=+s1)
-    fuel.add_cells((c23, c24))
+    if homog_pin_cell:
+        fuel = openmc.Universe(name='Fuel pin, cladding, hot water',
+                                   universe_id=4)
+        c23 = openmc.Cell(cell_id=23, fill=fuel_mat, region=-s1)
+        c24 = openmc.Cell(cell_id=24, fill=clad, region=+s1 & -s2)
+        c25 = openmc.Cell(cell_id=25, fill=hot_water, region=+s2)
+        fuel.add_cells((c23, c24, c25))
 
-    tube = openmc.Universe(name='Instrumentation guide tube',
-                               universe_id=5)
-    c25 = openmc.Cell(cell_id=25, fill=hot_water, region=-s3)
-    c26 = openmc.Cell(cell_id=26, fill=clad, region=+s3)
-    tube.add_cells((c25, c26))
+        tube = openmc.Universe(name='Instrumentation guide tube, hot water',
+                                   universe_id=5)
+        c26 = openmc.Cell(cell_id=26, fill=hot_water, region=-s3)
+        c27 = openmc.Cell(cell_id=27, fill=clad, region=+s3 & -s4)
+        c28 = openmc.Cell(cell_id=28, fill=hot_water, region=+s4)
+        tube.add_cells((c26, c27, c28))
+    else:
+        fuel = openmc.Universe(name='Fuel pin, cladding',
+                                   universe_id=4)
+        c23 = openmc.Cell(cell_id=23, fill=fuel_mat, region=-s1)
+        c24 = openmc.Cell(cell_id=24, fill=clad, region=+s1)
+        fuel.add_cells((c23, c24))
+
+        tube = openmc.Universe(name='Instrumentation guide tube',
+                                   universe_id=5)
+        c25 = openmc.Cell(cell_id=25, fill=hot_water, region=-s3)
+        c26 = openmc.Cell(cell_id=26, fill=clad, region=+s3)
+        tube.add_cells((c25, c26))
 
     ## Pin universes
     fuel_hot = openmc.Universe(name='Fuel pin, cladding, hot water',
                                universe_id=10)
-    c30 = openmc.Cell(cell_id=30, fill=fuel, region=-s2)
-    c31 = openmc.Cell(cell_id=31, fill=inf_water, region=+s2)
-    fuel_hot.add_cells((c30, c31))
+    if homog_pin_cell:
+      c30 = openmc.Cell(cell_id=30, fill=fuel)
+      fuel_hot.add_cell(c30)
+    else:
+      c30 = openmc.Cell(cell_id=30, fill=fuel, region=-s2)
+      c31 = openmc.Cell(cell_id=31, fill=inf_water, region=+s2)
+      fuel_hot.add_cells((c30, c31))
 
     tube_hot = openmc.Universe(name='Instrumentation guide tube, hot water',
                                universe_id=11)
-    c32 = openmc.Cell(cell_id=32, fill=tube, region= -s4)
-    c33 = openmc.Cell(cell_id=33, fill=inf_water, region=+s4)
-    tube_hot.add_cells((c32, c33))
-
+    if homog_pin_cell:
+        c32 = openmc.Cell(cell_id=32, fill=tube)
+        tube_hot.add_cell(c32)
+    else:
+        c32 = openmc.Cell(cell_id=32, fill=tube, region= -s4)
+        c33 = openmc.Cell(cell_id=33, fill=inf_water, region=+s4)
+        tube_hot.add_cells((c32, c33))
 
     # Set positions occupied by guide tubes
     tube_x = np.array([5, 8, 11, 3, 13, 2, 5, 8, 11, 14, 2, 5, 8, 11, 14,

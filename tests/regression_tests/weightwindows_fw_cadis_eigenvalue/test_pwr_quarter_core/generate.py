@@ -3,15 +3,17 @@ import os
 import openmc
 from openmc import RegularMesh
 from openmc.examples import pwr_2d_quarter_core
-model = pwr_2d_quarter_core()
+
+convert = False
+weight_windows = False
+homog_pin_cell = False
+
+model = pwr_2d_quarter_core(homog_pin_cell)
 
 # settings from Wagner paper
 model.settings.batches = 600
 model.settings.inactive = 50
 model.settings.particles = 15000
-
-convert = True
-weight_windows = False
 if convert:
     ebounds = [1e-5, 0.05, 0.15, 0.275, 0.625, 3, 1.7e4, 8.2e5, 2.e7]
     groups = openmc.mgxs.EnergyGroups(ebounds)
