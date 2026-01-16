@@ -323,18 +323,14 @@ def pwr_2d_quarter_core() -> openmc.Model:
     l101 = openmc.RectLattice(
         name='Fuel assembly', lattice_id=101)
     pitch = PINCELL_PITCH
-    l101.lower_left = (-17 * pitch / 2, 17 * pitch / 2)
+    l101.lower_left = (-17 * pitch / 2, -17 * pitch / 2)
     l101.pitch = (pitch, pitch)
     l101.universes = np.tile(fuel_hot, (17, 17))
     l101.universes[tube_x, tube_y] = tube_hot
 
     # Define assemblies.
-    fa_hw = openmc.Universe(name='Water assembly (hot)', universe_id=20)
-    c40 = openmc.Cell(cell_id=40, fill=inf_water)
-    fa_hw.add_cell(c40)
-
-    fa_hot = openmc.Universe(name='Fuel assembly (hot)', universe_id=21)
-    c50 = openmc.Cell(cell_id=50, fill=l101)
+    fa_hot = openmc.Universe(name='Fuel assembly (hot)', universe_id=20)
+    c50 = openmc.Cell(cell_id=40, fill=l101)
     fa_hot.add_cell(c50)
 
     # Define core lattices
@@ -342,17 +338,17 @@ def pwr_2d_quarter_core() -> openmc.Model:
     l201.lower_left = (-17 * pitch / 2, -17 * pitch / 2)
     l201.pitch = (17 * pitch, 17 * pitch)
     l201.universes = [
-        [fa_hw]*11,
-        [fa_hw]*11,
-        [fa_hot]*4 + [fa_hw]*7,
-        [fa_hot]*6 + [fa_hw]*5,
-        [fa_hot]*7 + [fa_hw]*4,
-        [fa_hot]*8 + [fa_hw]*3,
-        [fa_hot]*8 + [fa_hw]*3,
-        [fa_hot]*9 + [fa_hw]*2,
-        [fa_hot]*9 + [fa_hw]*2,
-        [fa_hot]*9 + [fa_hw]*2,
-        [fa_hot]*9 + [fa_hw]*2]
+        [inf_water]*11,
+        [inf_water]*11,
+        [fa_hot]*4 + [inf_water]*7,
+        [fa_hot]*6 + [inf_water]*5,
+        [fa_hot]*7 + [inf_water]*4,
+        [fa_hot]*8 + [inf_water]*3,
+        [fa_hot]*8 + [inf_water]*3,
+        [fa_hot]*9 + [inf_water]*2,
+        [fa_hot]*9 + [inf_water]*2,
+        [fa_hot]*9 + [inf_water]*2,
+        [fa_hot]*9 + [inf_water]*2]
 
     # Define root universe.
     root = openmc.Universe(universe_id=0, name='root universe')
