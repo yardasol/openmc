@@ -4,9 +4,11 @@ import openmc
 from openmc import RegularMesh
 from openmc.examples import pwr_2d_quarter_core
 model = pwr_2d_quarter_core()
-model.settings.batches = 300
+
+# settings from Wagner paper
+model.settings.batches = 600
 model.settings.inactive = 50
-model.settings.particles = 10000
+model.settings.particles = 15000
 
 convert = True
 weight_windows = False
@@ -17,7 +19,8 @@ if convert:
     model.materials.cross_sections = '/home/olek/projects/cross-section-libraries/endfb71_hdf5/cross_sections.xml'
     model.convert_to_multigroup(
         domain_type='universe', domains=[1, 2, 3, 4, 5], energy_groups=groups,
-        nparticles=10000, overwrite_mgxs_library=False, mgxs_path="mgxs.h5"
+        nparticles = model.settings.particles,
+        overwrite_mgxs_library=False, correction='P0'
     )
 
     # Convert to a random ray model
@@ -27,8 +30,8 @@ if convert:
     model.settings.particles = 10000
     model.settings.batches = 10000
     model.settings.inactive = 3500
-    model.settings.random_ray['distance_inactive'] = 17.0
-    model.settings.random_ray['distance_active'] = 550.0
+    model.settings.random_ray['distance_inactive'] = 25.0
+    model.settings.random_ray['distance_active'] = 820.0
 
     # Overlay a mesh
     m = 4
@@ -51,5 +54,6 @@ if weight_windows:
     model.settings.survival_biasing = False
     model.settings.weight_windows_file = "weight_windows.h5"
     model.settings.weight_windows_on = True
+    model.materials.cross_sections = '/home/olek/projects/cross-section-libraries/endfb71_hdf5/cross_sections.xml'
 
 model.export_to_model_xml()
