@@ -228,48 +228,20 @@ def pwr_2d_quarter_core(homog_pin_cell=False) -> openmc.Model:
     hot_water.add_nuclide('B11', 2.689e-3)
     hot_water.add_s_alpha_beta('c_H_in_H2O')
 
-    rpv_steel = openmc.Material(4, name='Reactor pressure vessel steel')
-    rpv_steel.set_density('g/cm3', 7.9)
-    rpv_steel.add_nuclide('Fe54', 0.05437098, 'wo')
-    rpv_steel.add_nuclide('Fe56', 0.88500663, 'wo')
-    rpv_steel.add_nuclide('Fe57', 0.0208008, 'wo')
-    rpv_steel.add_nuclide('Fe58', 0.00282159, 'wo')
-    rpv_steel.add_nuclide('Ni58', 0.0067198, 'wo')
-    rpv_steel.add_nuclide('Ni60', 0.0026776, 'wo')
-    rpv_steel.add_nuclide('Mn55', 0.01, 'wo')
-    rpv_steel.add_nuclide('Cr52', 0.002092475, 'wo')
-    rpv_steel.add_nuclide('C0', 0.0025, 'wo')
-    rpv_steel.add_nuclide('Cu63', 0.0013696, 'wo')
-
-    bot_nozzle = openmc.Material(5, name='Bottom nozzle region')
-    bot_nozzle.set_density('g/cm3', 2.53)
-    bot_nozzle.add_nuclide('H1', 0.0245014, 'wo')
-    bot_nozzle.add_nuclide('O16', 0.1944274, 'wo')
-    bot_nozzle.add_nuclide('B10', 7.89917e-5, 'wo')
-    bot_nozzle.add_nuclide('B11', 3.59854e-4, 'wo')
-    bot_nozzle.add_nuclide('Fe54', 0.030411411144, 'wo')
-    bot_nozzle.add_nuclide('Fe56', 0.495012237964, 'wo')
-    bot_nozzle.add_nuclide('Fe57', 0.01163454624, 'wo')
-    bot_nozzle.add_nuclide('Fe58', 0.001578204652, 'wo')
-    bot_nozzle.add_nuclide('Ni58', 0.047211231662, 'wo')
-    bot_nozzle.add_nuclide('Mn55', 0.0156126, 'wo')
-    bot_nozzle.add_nuclide('Cr52', 0.124142524198, 'wo')
-    bot_nozzle.add_s_alpha_beta('c_H_in_H2O')
-
     # Define the materials file.
-    model.materials = (fuel_mat, clad, hot_water, rpv_steel, bot_nozzle)
+    model.materials = (fuel_mat, clad, hot_water)
 
     # Define surfaces.
     s1 = openmc.ZCylinder(r=0.41, surface_id=1)
     s2 = openmc.ZCylinder(r=0.475, surface_id=2)
     s3 = openmc.ZCylinder(r=0.56, surface_id=3)
     s4 = openmc.ZCylinder(r=0.62, surface_id=4)
-    s6 = openmc.ZCylinder(r=209.0, surface_id=6)
-    s7 = openmc.ZCylinder(r=229.0, surface_id=7)
-    s8 = openmc.ZCylinder(r=249.0, surface_id=8, boundary_type='vacuum')
 
     s10 = openmc.XPlane(boundary_type='reflective')
     s11 = openmc.YPlane(boundary_type='reflective')
+    s12 = openmc.XPlane(x0=PINCELL_PITCH * 10.5 * 17, boundary_type='vacuum')
+    s13 = openmc.YPlane(y0=PINCELL_PITCH * 10.5 * 17, boundary_type='vacuum')
+
 
     # Define universes for MGXS homogenization.
     inf_water = openmc.Universe(name='Infinite hot water',
@@ -277,39 +249,29 @@ def pwr_2d_quarter_core(homog_pin_cell=False) -> openmc.Model:
     c20 = openmc.Cell(cell_id=20, fill=hot_water)
     inf_water.add_cell(c20)
 
-    inf_rpv_steel = openmc.Universe(name='Infinite rpv steel',
-                               universe_id=2)
-    c21 = openmc.Cell(cell_id=21, fill=rpv_steel)
-    inf_rpv_steel.add_cell(c21)
-
-    inf_bot_nozzle = openmc.Universe(name='Infinite bottom nozzle',
-                               universe_id=3)
-    c22 = openmc.Cell(cell_id=22, fill=bot_nozzle)
-    inf_bot_nozzle.add_cell(c22)
-
     if homog_pin_cell:
         fuel = openmc.Universe(name='Fuel pin, cladding, hot water',
-                                   universe_id=4)
+                                   universe_id=2)
         c23 = openmc.Cell(cell_id=23, fill=fuel_mat, region=-s1)
         c24 = openmc.Cell(cell_id=24, fill=clad, region=+s1 & -s2)
         c25 = openmc.Cell(cell_id=25, fill=hot_water, region=+s2)
         fuel.add_cells((c23, c24, c25))
 
         tube = openmc.Universe(name='Instrumentation guide tube, hot water',
-                                   universe_id=5)
+                                   universe_id=3)
         c26 = openmc.Cell(cell_id=26, fill=hot_water, region=-s3)
         c27 = openmc.Cell(cell_id=27, fill=clad, region=+s3 & -s4)
         c28 = openmc.Cell(cell_id=28, fill=hot_water, region=+s4)
         tube.add_cells((c26, c27, c28))
     else:
         fuel = openmc.Universe(name='Fuel pin, cladding',
-                                   universe_id=4)
+                                   universe_id=2)
         c23 = openmc.Cell(cell_id=23, fill=fuel_mat, region=-s1)
         c24 = openmc.Cell(cell_id=24, fill=clad, region=+s1)
         fuel.add_cells((c23, c24))
 
         tube = openmc.Universe(name='Instrumentation guide tube',
-                                   universe_id=5)
+                                   universe_id=3)
         c25 = openmc.Cell(cell_id=25, fill=hot_water, region=-s3)
         c26 = openmc.Cell(cell_id=26, fill=clad, region=+s3)
         tube.add_cells((c25, c26))
@@ -328,7 +290,7 @@ def pwr_2d_quarter_core(homog_pin_cell=False) -> openmc.Model:
     tube_hot = openmc.Universe(name='Instrumentation guide tube, hot water',
                                universe_id=11)
     if homog_pin_cell:
-        c32 = openmc.Cell(cell_id=32, fill=tube)
+        c32 = openmc.Cell(cell_id=31, fill=tube)
         tube_hot.add_cell(c32)
     else:
         c32 = openmc.Cell(cell_id=32, fill=tube, region= -s4)
@@ -374,12 +336,9 @@ def pwr_2d_quarter_core(homog_pin_cell=False) -> openmc.Model:
 
     # Define root universe.
     root = openmc.Universe(universe_id=0, name='root universe')
-    c1 = openmc.Cell(cell_id=1, fill=l201, region=-s6 & +s10 & +s11)
-    c2 = openmc.Cell(cell_id=2, fill=inf_bot_nozzle,
-                     region=+s6 & -s7 & +s10 & +s11)
-    c3 = openmc.Cell(cell_id=3, fill=inf_rpv_steel,
-                      region=+s7 & -s8 & +s10 & +s11)
-    root.add_cells((c1, c2, c3))
+    c1 = openmc.Cell(cell_id=1, fill=l201, region=+s10 & +s11 & -s12 &
+                     -s13)
+    root.add_cell(c1)
 
     # Assign root universe to geometry
     model.geometry.root_universe = root
@@ -387,16 +346,17 @@ def pwr_2d_quarter_core(homog_pin_cell=False) -> openmc.Model:
     model.settings.batches = 10
     model.settings.inactive = 5
     model.settings.particles = 100
+    # TODO
     model.settings.source = openmc.IndependentSource(space=openmc.stats.Box(
-        [0, 0, -1], [160, 160, 1]))
+        [0, 0, -1], [8.5 * 17 * pitch, 8.5 * 17 * pitch, 1]))
 
 
     # Mesh tally over pin cells:
     mesh = openmc.RegularMesh()
-    n = 13 * 17
+    n = int((10.5 * 17) + 0.5)
     mesh.dimension = (n, n)
     mesh.lower_left = (-pitch / 2, -pitch / 2)
-    mesh.upper_right = (12.5 * 17 * pitch, 12.5 * 17 * pitch)
+    mesh.upper_right = (10.5 * 17 * pitch, 10.5 * 17 * pitch)
 
     mesh_filter = openmc.MeshFilter(mesh)
 
@@ -409,8 +369,9 @@ def pwr_2d_quarter_core(homog_pin_cell=False) -> openmc.Model:
     model.tallies.append(tally)
 
     plot = openmc.SlicePlot()
-    plot.origin = (125, 125, 0)
-    plot.width = (250, 250)
+    x = 10.5 * 17 * pitch
+    plot.origin = (x / 2, x / 2, 0)
+    plot.width = (x, x)
     plot.pixels = (3000, 3000)
     plot.color_by = 'material'
     model.plots.append(plot)

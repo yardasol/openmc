@@ -4,7 +4,7 @@ import openmc
 from openmc import RegularMesh
 from openmc.examples import pwr_2d_quarter_core
 
-convert = False
+convert = True
 weight_windows = False
 homog_pin_cell = False
 
@@ -14,13 +14,13 @@ model = pwr_2d_quarter_core(homog_pin_cell)
 model.settings.batches = 600
 model.settings.inactive = 50
 model.settings.particles = 15000
+model.materials.cross_sections = '/home/olek/projects/cross-section-libraries/endfb71_hdf5/cross_sections.xml'
 if convert:
     ebounds = [1e-5, 0.05, 0.15, 0.275, 0.625, 3, 1.7e4, 8.2e5, 2.e7]
     groups = openmc.mgxs.EnergyGroups(ebounds)
 
-    model.materials.cross_sections = '/home/olek/projects/cross-section-libraries/endfb71_hdf5/cross_sections.xml'
     model.convert_to_multigroup(
-        domain_type='universe', domains=[1, 2, 3, 4, 5], energy_groups=groups,
+        domain_type='universe', domains=[1, 2, 3], energy_groups=groups,
         nparticles = model.settings.particles,
         overwrite_mgxs_library=False, correction='P0'
     )
@@ -61,3 +61,6 @@ if weight_windows:
     model.materials.cross_sections = '/home/olek/projects/cross-section-libraries/endfb71_hdf5/cross_sections.xml'
 
 model.export_to_model_xml()
+# Repace the line <cell id="20" material="3" universe="1"/>
+# with            <cell id="20" material="1" universe="1"/>
+
