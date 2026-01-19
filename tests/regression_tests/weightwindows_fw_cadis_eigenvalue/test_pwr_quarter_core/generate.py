@@ -30,8 +30,8 @@ if convert:
 
     # Set the number of particles
     model.settings.particles = 10000
-    model.settings.batches = 10000
-    model.settings.inactive = 3500
+    model.settings.batches = 7500
+    model.settings.inactive = 2500
     model.settings.random_ray['distance_inactive'] = 25.0
     model.settings.random_ray['distance_active'] = 820.0
 
