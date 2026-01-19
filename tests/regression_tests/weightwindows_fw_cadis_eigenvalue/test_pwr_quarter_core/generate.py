@@ -15,6 +15,8 @@ model.settings.batches = 600
 model.settings.inactive = 50
 model.settings.particles = 15000
 model.materials.cross_sections = '/home/olek/projects/cross-section-libraries/endfb71_hdf5/cross_sections.xml'
+#model.settings.entropy_mesh = model.tallies[0].filters[0].mesh
+#model.settings.entropy_mesh.dimesnion = (21, 21)
 if convert:
     ebounds = [1e-5, 0.05, 0.15, 0.275, 0.625, 3, 1.7e4, 8.2e5, 2.e7]
     groups = openmc.mgxs.EnergyGroups(ebounds)
@@ -29,14 +31,16 @@ if convert:
     model.convert_to_random_ray()
 
     # Set the number of particles
-    model.settings.particles = 10000
+    if homog_pincell:
+        model.settings.particles = 2000
+    else:
+        model.settings.particles = 4000
     model.settings.batches = 7500
     model.settings.inactive = 2500
     model.settings.random_ray['distance_inactive'] = 25.0
     model.settings.random_ray['distance_active'] = 820.0
 
     # Overlay a mesh
-    base_mesh = model.tallies[0].filters[0].mesh
     m = 4
     x = int(17 * 10.5 + 0.5)
     n = m * x
