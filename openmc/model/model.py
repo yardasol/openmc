@@ -2361,7 +2361,8 @@ class Model:
             self.materials.cross_sections = mgxs_path
             for domain in domains:
                 if domain_type != 'material':
-                    material = openmc.Material(name=domain.name)
+                    material = openmc.Material(name=domain.name,
+                                               material_id=domain.id)
                 else:
                     material = copy.deepcopy(domain)
                 material.set_density('macro', 1.0)
@@ -2372,8 +2373,10 @@ class Model:
                 # TODO: support cell domain type
                 # This currently only works for universes
                 if domain_type != 'material':
+                    cells_to_delete = []
                     for cell in self.geometry.get_all_cells().values():
-                        if cell.fill.id == domain.id:
+                        if cell.fill.id == domain.id and isinstance(cell.fill,
+                                                                    iter_type):
                             cell.fill = material
 
             self.settings.energy_mode = 'multi-group'

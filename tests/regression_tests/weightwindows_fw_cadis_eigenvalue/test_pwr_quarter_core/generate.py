@@ -38,12 +38,13 @@ if convert:
     # Overlay a mesh
     base_mesh = model.tallies[0].filters[0].mesh
     m = 4
-    n = int(m * 17 * 12.5)
+    x = int(17 * 10.5 + 0.5)
+    n = m * x
     pitch = 1.26 / m
     mesh = RegularMesh(mesh_id=2)
     mesh.dimension = (n, n)
     mesh.lower_left = (-pitch / 2, -pitch / 2)
-    mesh.upper_right = (267.75, 267.75)
+    mesh.upper_right = (1.26 * 17 * 10.5, 1.26 * 17 * 10.5)
     model.settings.random_ray['source_region_meshes'] = [
         (mesh, [model.geometry.root_universe])]
     model.settings.random_ray['source_shape'] = 'linear'
