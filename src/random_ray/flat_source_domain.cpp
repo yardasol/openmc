@@ -1428,22 +1428,23 @@ void FlatSourceDomain::set_adjoint_sources()
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     for (int g = 0; g < negroups_; g++) {
       double flux = source_regions_.scalar_flux_final(sr, g);
-      if (flux <= ZERO_FLUX_CUTOFF * max_flux) {
-        source_regions_.external_source(sr, g) = 0.0;
-      } else {
-        source_regions_.external_source(sr, g) = 1.0 / flux;
-      }
-      if (eigenvalue_fw_cadis_){
-	//double inverse_k_eff = 1.0 / simulation::keff;
+      if (eigenvalue_fw_cadis_) {
         int material = source_regions_.material(sr);
         double density_mult = source_regions_.density_mult(sr);
-        double fission_source = 0.0;
+	double sigma_t = sigma_t_[material * negroups_ + g];
+	double fission_source = 0.0;
         for (int g_in = 0; g_in < negroups_; g_in++) {
           double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
           double chi = chi_[material * negroups_ + g];
           fission_source += nu_sigma_f * density_mult * flux * chi;
         }
-	source_regions_.external_source(sr, g) = fission_source; //* inverse_k_eff);
+	fission_source /= sigma_t;
+	flux += fission_source;
+      }
+      if (flux <= ZERO_FLUX_CUTOFF * max_flux) {
+        source_regions_.external_source(sr, g) = 0.0;
+      } else {
+        source_regions_.external_source(sr, g) = 1.0 / flux;
       }
       // There should be flux if the fission source is nonzero
       if (flux > 0.0) {
@@ -2120,7 +2121,7 @@ void FlatSourceDomain::normalize_final_quantities()
   double source_normalization_factor;
   if (!settings::kinetic_simulation ||
       settings::kinetic_simulation &&
-        simulation::current_timestep == settings::n_timesteps)
+        simulation::current_timestep == settings::n_timesteps || adjoint_)
     source_normalization_factor =
       compute_fixed_source_normalization_factor() * normalization_factor;
   else
@@ -2163,6 +2164,9 @@ void FlatSourceDomain::propagate_final_quantities()
 
 void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
 {
+//  if (adjoint needed and not last timestep) {
+//    double source_normalization_factor = compute_fixed_source_normalization_factor();
+//  }
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     for (int g = 0; g < negroups_; g++) {
@@ -2172,6 +2176,9 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
       add_value_to_bd_vector(source_regions_.scalar_flux_bd(sr, g),
         source_regions_.scalar_flux_final(sr, g), increment_not_initialize,
         RandomRay::bd_order_ + j);
+//      if (adjoint needed) {
+//	source_regions.scalar_flux_timeseries(sr, g) 
+//      }
       if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
         // Multiply out sigma_t to store the base source
         int material = source_regions_.material(sr);

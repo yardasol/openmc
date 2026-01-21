@@ -590,11 +590,18 @@ void RandomRaySimulation::kinetic_initial_condition()
 void RandomRaySimulation::kinetic_single_time_step(int i)
 {
   // Increment time step
-  simulation::current_timestep = i + 1;
-  simulation::current_time += settings::dt;
+  if (FlatSourceDomain::adjoint_) {
+    simulation::current_timestep = i - 1;
+    simulation::current_time -= settings::dt;
+  } else {
+    simulation::current_timestep = i + 1;
+    simulation::current_time += settings::dt;
+  }
 
-  // Propogate results of previous simulation
-  domain_->k_eff_ = static_avg_k_eff_;
+  // Propagate results of previous simulation
+  if (settings::run_mode == RunMode::EIGENVALUE) {
+    domain_->k_eff_ = static_avg_k_eff_;
+  }
   domain_->source_regions_.adjoint_reset();
   domain_->propagate_final_quantities();
   domain_->source_regions_.time_step_reset();
