@@ -1433,6 +1433,19 @@ void FlatSourceDomain::set_adjoint_sources()
       } else {
         source_regions_.external_source(sr, g) = 1.0 / flux;
       }
+      if (eigenvalue_fw_cadis_){
+	//double inverse_k_eff = 1.0 / simulation::keff;
+        int material = source_regions_.material(sr);
+        double density_mult = source_regions_.density_mult(sr);
+        double fission_source = 0.0;
+        for (int g_in = 0; g_in < negroups_; g_in++) {
+          double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
+          double chi = chi_[material * negroups_ + g];
+          fission_source += nu_sigma_f * density_mult * flux * chi;
+        }
+	source_regions_.external_source(sr, g) = fission_source; //* inverse_k_eff);
+      }
+      // There should be flux if the fission source is nonzero
       if (flux > 0.0) {
         source_regions_.external_source_present(sr) = 1;
       }
