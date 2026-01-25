@@ -2317,18 +2317,21 @@ class Model:
                 raise ValueError("Invalide domain_type: '{domain_type}'.")
 
             # Get domain objects from model
-            check_type('domain', domains, Iterable, int)
-            converted_domains = []
-            for domain in domains:
-                try:
-                    assert domain in all_domains.keys()
-                    converted_domains += [all_domains[domain]]
-                except AssertionError:
-                    print(f'{iter_type} object with ID={domain} does '
-                          'not exist in the model.')
+            if domains is not None:
+                converted_domains = []
+                check_type('domain', domains, Iterable, int)
+                for domain in domains:
+                    try:
+                        assert domain in all_domains.keys()
+                        converted_domains += [all_domains[domain]]
+                    except AssertionError:
+                        print(f'{iter_type} object with ID={domain} does '
+                              'not exist in the model.')
+            else:
+                converted_domains = all_domains
 
             # Double check we have the correct object type
-            domains = converted_domains
+            domains = converted_domains.values()
             check_type('domain', domains, Iterable, iter_type)
 
             # Make sure all domains have a name, and that the name is a valid HDF5
