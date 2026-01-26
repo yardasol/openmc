@@ -877,6 +877,10 @@ WeightWindowsGenerator::WeightWindowsGenerator(pugi::xml_node node)
     }
     FlatSourceDomain::adjoint_ = true;
     if (settings::run_mode == RunMode::EIGENVALUE) {
+      // Turn off adjoint fission
+      settings::create_fission_neutrons = false;
+      settings::create_delayed_neutrons = false;
+
       // Utillize the k-eigenvalue method for FW-CADIS
       FlatSourceDomain::eigenvalue_fw_cadis_ = true;
     }

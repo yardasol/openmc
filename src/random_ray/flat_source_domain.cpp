@@ -159,11 +159,10 @@ void FlatSourceDomain::update_single_neutron_source(SourceRegionHandle& srh)
           settings::create_delayed_neutrons) {
         double delayed_source = 0.0;
         for (int dg = 0; dg < ndgroups_; dg++) {
-          double chi_d =
-            chi_d_[material * negroups_ * ndgroups_ + dg * negroups_ + g_out];
-          double lambda = lambda_[material * ndgroups_ + dg];
+          double chi_d_lambda = chi_d_lambda_[material * negroups_ * ndgroups_ +
+                                              dg * negroups_ + g_out];
           double precursors = srh.precursors_old(dg);
-          delayed_source += chi_d * precursors * lambda;
+          delayed_source += chi_d_lambda * precursors;
         }
         total_source += delayed_source;
       }
@@ -1401,13 +1400,13 @@ void FlatSourceDomain::flatten_xs()
               // material is fissionable but has very small sigma_f.
               chi_d = 0.0;
             }
-            chi_d_.push_back(chi_d);
+            chi_d_lambda_.push_back(chi_d * lambda);
           }
         } else {
           lambda_.push_back(0);
           for (int g_out = 0; g_out < negroups_; g_out++) {
             nu_d_sigma_f_.push_back(0);
-            chi_d_.push_back(0);
+            chi_d_lambda_.push_back(0);
           }
         }
       }
@@ -2250,13 +2249,22 @@ void FlatSourceDomain::update_material_density(int i)
       double density_factor = mat->density_timeseries_[i] / mat->density_;
       mat->density_ = mat->density_timeseries_[i];
       for (int g_out = 0; g_out < negroups_; g_out++) {
-        for (int dg = 0; dg < ndgroups_; dg++) {
-          nu_d_sigma_f_[j * negroups_ * ndgroups_ + dg * negroups_ + g_out] *=
-            density_factor;
+        if (adjoint_) {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+            chi_d_lambda_[j * negroups_ * ndgroups_ + dg * negroups_ + g_out] *=
+              density_factor;
+          }
+          chi_p_[j * negroups_ + g_out] *= density_factor;
+          chi_[j * negroups_ + g_out] *= density_factor;
+        } else {
+          for (int dg = 0; dg < ndgroups_; dg++) {
+            nu_d_sigma_f_[j * negroups_ * ndgroups_ + dg * negroups_ + g_out] *=
+              density_factor;
+          }
+          nu_p_sigma_f_[j * negroups_ + g_out] *= density_factor;
+          nu_sigma_f_[j * negroups_ + g_out] *= density_factor;
         }
-        nu_p_sigma_f_[j * negroups_ + g_out] *= density_factor;
         sigma_t_[j * negroups_ + g_out] *= density_factor;
-        nu_sigma_f_[j * negroups_ + g_out] *= density_factor;
         sigma_f_[j * negroups_ + g_out] *= density_factor;
         for (int g_in = 0; g_in < negroups_; g_in++) {
           sigma_s_[j * negroups_ * negroups_ + g_out * negroups_ + g_in] *=

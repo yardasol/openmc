@@ -505,6 +505,12 @@ void RandomRaySimulation::prepare_adjoint_simulation()
 
   // Swap nu_sigma_f and chi
   domain_->nu_sigma_f_.swap(domain_->chi_);
+  if (settings::kinetic_simulation) {
+    // Swap nu_p_sigma_f and chi_p if a kinetic simulation
+    domain_->nu_p_sigma_f_.swap(domain_->chi_p_);
+    // Swap nu_d_sigma_f and chi_d * lambada if a kinetic simulation
+    domain_->nu_d_sigma_f_.swap(domain_->chi_d_lambda_);
+  }
 }
 
 // TODO: Add support for time-dependent restart
@@ -519,7 +525,7 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
   }
 
   // Increment time step
-  if (FlatSourcedomain::adjoint_) {
+  if (FlatSourceDomain::adjoint_) {
     simulation::current_timestep = i - 1;
     if (i < settings::n_timesteps)
       // Decrement the current time for all 
@@ -534,7 +540,7 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
       // Else, increment the current time
       simulation::current_time += settings::dt;
   }
-  
+
   // Propagate results of previous simulation
   if (settings::run_mode == RunMode::EIGENVALUE) {
     domain_->k_eff_ = static_avg_k_eff_;
