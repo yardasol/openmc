@@ -698,6 +698,11 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
   double source_normalization_factor =
     user_external_source_strength / simulation_external_source_strength;
 
+  // source normalization factor may be 0 / 0 for certain settings, in which
+  // case it should be set to zero
+  if (!std::isfinite(source_normalization_factor))
+    source_normalization_factor = 0.0;
+
   return source_normalization_factor;
 }
 
@@ -1225,7 +1230,6 @@ void FlatSourceDomain::convert_external_sources()
     // Extract source information
     Source* s = model::external_sources[es].get();
     IndependentSource* is = dynamic_cast<IndependentSource*>(s);
-    Discrete* energy = dynamic_cast<Discrete*>(is->energy());
     const std::unordered_set<int32_t>& domain_ids = is->domain_ids();
     double strength_factor = is->strength();
 
@@ -1445,7 +1449,7 @@ void FlatSourceDomain::set_adjoint_sources()
         source_regions_.external_source(sr, g) = 1.0 / flux;
       }
       // There should be flux if the fission source is nonzero
-      if (flux > 0.0) {
+      if (source_regions_.external_source(sr, g) > 0.0) {
         source_regions_.external_source_present(sr) = 1;
       }
       source_regions_.scalar_flux_final(sr, g) = 0.0;
@@ -2194,8 +2198,9 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
 
 void FlatSourceDomain::store_quantity_time_series()
 {
-  double source_normalization_factor =
-    compute_fixed_source_normalization_factor();
+  double source_normalization_factor = 1.0;
+  if (simulation::current_timestep < settings::n_timesteps)
+    source_normalization_factor = compute_fixed_source_normalization_factor();
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     for (int g = 0; g < negroups_; g++) {
@@ -2311,6 +2316,25 @@ void FlatSourceDomain::update_material_density(int i)
             density_factor;
         }
       }
+    }
+  }
+}
+
+// Update external source strength
+// TODO: will not work in adjoint if zero strength values are present
+void FlatSourceDomain::update_external_source_strength(int i)
+{
+#pragma omp parallel for
+  for (auto& ext_source : model::external_sources) {
+    if (ext_source->strength_timeseries().size() != 0) {
+      double strength_factor =
+        ext_source->strength_timeseries()[i] / ext_source->strength();
+      ext_source->strength() = ext_source->strength_timeseries()[i];
+      // Set to zero if we have a nan value
+      if (!std::isfinite(strength_factor))
+        strength_factor = 0.0;
+      for (int64_t se = 0; se < n_source_elements(); se++)
+        source_regions_.external_source(se) *= strength_factor;
     }
   }
 }

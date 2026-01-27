@@ -63,6 +63,11 @@ public:
 
   // Methods that can be overridden
   virtual double strength() const { return strength_; }
+  virtual double& strength() { return strength_; }
+  virtual vector<double> strength_timeseries() const
+  {
+    return strength_timeseries_;
+  }
 
   //! Sample a source site and apply constraints
   //
@@ -107,6 +112,9 @@ protected:
     false}; //!< Whether site must be in fissionable material
   RejectionStrategy rejection_strategy_ {
     RejectionStrategy::RESAMPLE}; //!< Procedure for rejecting
+
+  // Time dependent data
+  vector<double> strength_timeseries_; //!< Source strength timeseries
 };
 
 //==============================================================================

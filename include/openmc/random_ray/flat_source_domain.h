@@ -97,6 +97,7 @@ public:
   void set_td_adjoint_sources(int i);
   void compute_rhs_bd_quantities();
   void update_material_density(int i);
+  void update_external_source_strength(int i);
 
   int64_t n_delay_elements() const
   {

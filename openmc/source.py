@@ -29,6 +29,10 @@ class SourceBase(ABC):
     ----------
     strength : float
         Strength of the source
+    strength_timeseries : list of float
+        Source strength timeseries for time-dependent simulations.
+
+        .. versionadded:: 0.16.0
     constraints : dict
         Constraints on sampled source particles. Valid keys include 'domains',
         'time_bounds', 'energy_bounds', 'fissionable', and 'rejection_strategy'.
@@ -49,19 +53,24 @@ class SourceBase(ABC):
         Indicator of source type.
     strength : float
         Strength of the source
+    strength_timeseries : list of float
+        Source strength timeseries for time-dependent simulations.
+
+        .. versionadded:: 0.16.0
     constraints : dict
         Constraints on sampled source particles. Valid keys include
         'domain_type', 'domain_ids', 'time_bounds', 'energy_bounds',
         'fissionable', and 'rejection_strategy'.
-
     """
 
     def __init__(
         self,
         strength: float | None = 1.0,
+        strength_timeseries: list[float] | None = None,
         constraints: dict[str, Any] | None = None
     ):
         self.strength = strength
+        self.strength_timeseries = strength_timeseries
         self.constraints = constraints
 
     @property
@@ -74,6 +83,18 @@ class SourceBase(ABC):
         if strength is not None:
             cv.check_greater_than('source strength', strength, 0.0, True)
         self._strength = strength
+
+    @property
+    def strength_timeseries(self):
+        return self._strength_timeseries
+
+    @strength_timeseries.setter
+    def strength_timeseries(self, strength_timeseries):
+        cv.check_type('source strength timeseries', strength_timeseries, Iterable, Real, none_ok=True)
+        if strength_timeseries is not None:
+          [cv.check_greater_than(f'an element in the source strength timeseries',
+                               x, 0.0, equality=True) for x in strength_timeseries]
+        self._strength_timeseries = strength_timeseries
 
     @property
     def constraints(self) -> dict[str, Any]:
@@ -137,6 +158,10 @@ class SourceBase(ABC):
         element.set("type", self.type)
         if self.strength is not None:
             element.set("strength", str(self.strength))
+        if self.strength_timeseries is not None:
+                timeseries_text = " ".join(str(x)
+                                           for x in self.strength_timeseries)
+                element.set("strength_timeseries", timeseries_text)
         self.populate_xml_element(element)
         constraints = self.constraints
         if constraints:
@@ -205,6 +230,17 @@ class SourceBase(ABC):
             else:
                 raise ValueError(
                     f'Source type {source_type} is not recognized')
+
+    def _get_strength_from_xml_element(self, elem):
+        strength = get_text(elem, 'strength')
+        if strength is not None:
+            self.strength = float(strength)
+
+        text = get_text(elem, 'strength_timeseries')
+        if text is not None:
+            self.strength_timeseries = [float(x) for x in text.split()]
+        else:
+            self.strength_timeseries = None
 
     @staticmethod
     def _get_constraints(elem: ET.Element) -> dict[str, Any]:
@@ -454,10 +490,8 @@ class IndependentSource(SourceBase):
         constraints = cls._get_constraints(elem)
         source = cls(constraints=constraints)
 
-        strength = get_text(elem, 'strength')
-        if strength is not None:
-            source.strength = float(strength)
-
+        source._get_strength_from_xml_element(elem)
+        
         particle = get_text(elem, 'particle')
         if particle is not None:
             source.particle = particle
@@ -481,6 +515,7 @@ class IndependentSource(SourceBase):
         return source
 
 
+# TODO: add support for strength timeseries
 class MeshSource(SourceBase):
     """A source with a spatial distribution over mesh elements
 
@@ -600,6 +635,7 @@ class MeshSource(SourceBase):
             cv.check_type('mesh source strength', val, Real)
             self.set_total_strength(val)
 
+    # TODO: add support for strength timeseries
     def set_total_strength(self, strength: float):
         """Scales the element source strengths based on a desired total strength.
 
@@ -785,10 +821,7 @@ class CompiledSource(SourceBase):
         kwargs['library'] = get_text(elem, 'library')
 
         source = cls(**kwargs)
-
-        strength = get_text(elem, 'strength')
-        if strength is not None:
-            source.strength = float(strength)
+        source._get_strength_from_xml_element(elem)
 
         parameters = get_text(elem, 'parameters')
         if parameters is not None:
@@ -891,9 +924,7 @@ class FileSource(SourceBase):
         """
         kwargs = {'constraints': cls._get_constraints(elem)}
         kwargs['path'] = get_text(elem, 'file')
-        strength = get_text(elem, 'strength')
-        if strength is not None:
-            kwargs['strength'] = float(strength)
+        source._get_strength_from_xml_element(elem)
 
         return cls(**kwargs)
 

@@ -49,10 +49,11 @@ void openmc_run_random_ray()
   // Initialize fixed sources, if present
   sim.apply_fixed_sources_and_mesh_domains();
 
-  // Run initial random ray simulation
-  sim.simulate();
+  if (!settings::kinetic_simulation ||
+      settings::kinetic_simulation && settings::run_mode == RunMode::EIGENVALUE)
+    // Run initial random ray simulation
+    sim.simulate();
 
-  // TODO: eliminate keff correction for fixed source sims
   if (settings::kinetic_simulation) {
     // Timestepping loop, including k-eff correction initial
     // condition (i = -1)
@@ -68,11 +69,13 @@ void openmc_run_random_ray()
     // Setup for adjoint simulation
     sim.prepare_adjoint_simulation();
 
-    // Run adjoint simulation (serves as initial condtion for kinetic
-    // simulation)
-    sim.simulate();
+    if (!settings::kinetic_simulation ||
+        settings::kinetic_simulation &&
+          settings::run_mode == RunMode::EIGENVALUE)
+      // Run adjoint simulation (serves as initial condtion for kinetic
+      // simulation)
+      sim.simulate();
 
-    // TODO: eliminate keff correction for fixed source sims
     if (settings::kinetic_simulation) {
       // Timestepping loop, including k-eff correction initial
       // condition (i = -1)
@@ -501,6 +504,9 @@ void RandomRaySimulation::prepare_fixed_sources_adjoint()
 
 void RandomRaySimulation::prepare_adjoint_simulation()
 {
+  // Reset all simulation values
+  domain_->source_regions_.simulation_reset();
+
   // Configure the domain for adjoint simulation
   FlatSourceDomain::adjoint_ = true;
 
@@ -538,8 +544,6 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
       simulation::current_time -= settings::dt;
     }
     // Set adjoint sources for the current timestep
-    // TODO: implement, also duplicate the final time forward flux on the flux
-    // timeseries array to make ths indexing work
     domain_->set_td_adjoint_sources(simulation::current_timestep);
   } else {
     simulation::current_timestep = i + 1;
@@ -561,7 +565,7 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
     domain_->k_eff_ = static_avg_k_eff_;
   }
   // Propagate results of previous simulation
-  domain_->source_regions_.adjoint_reset();
+  domain_->source_regions_.simulation_reset();
   domain_->propagate_final_quantities();
   domain_->source_regions_.time_step_reset();
 
@@ -573,6 +577,13 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
     // Update time dependent cross section based on the density
     domain_->update_material_density(i);
   }
+
+  // Update the external sorce strength if specified. This will only
+  // be done in the forward calculation, as the inverse calculation
+  // uses 1 / phi. When CADIS is implemented, this will need to be updated
+  // to account for detector cross sections.
+  if (i >= 0 && !FlatSourceDomain::adjoint_)
+    domain_->update_external_source_strength(i);
 
   // Run the initial condition
   simulate();
