@@ -1439,19 +1439,6 @@ void FlatSourceDomain::set_adjoint_sources()
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     for (int g = 0; g < negroups_; g++) {
       double flux = source_regions_.scalar_flux_final(sr, g);
-      if (eigenvalue_fw_cadis_) {
-        int material = source_regions_.material(sr);
-        double density_mult = source_regions_.density_mult(sr);
-	double sigma_t = sigma_t_[material * negroups_ + g];
-	double fission_source = 0.0;
-        for (int g_in = 0; g_in < negroups_; g_in++) {
-          double nu_sigma_f = nu_sigma_f_[material * negroups_ + g_in];
-          double chi = chi_[material * negroups_ + g];
-          fission_source += nu_sigma_f * density_mult * flux * chi;
-        }
-	fission_source /= sigma_t;
-	flux += fission_source;
-      }
       if (flux <= ZERO_FLUX_CUTOFF * max_flux) {
         source_regions_.external_source(sr, g) = 0.0;
       } else {
@@ -2175,9 +2162,6 @@ void FlatSourceDomain::propagate_final_quantities()
 
 void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
 {
-//  if (adjoint needed and not last timestep) {
-//    double source_normalization_factor = compute_fixed_source_normalization_factor();
-//  }
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     for (int g = 0; g < negroups_; g++) {
@@ -2187,9 +2171,6 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
       add_value_to_bd_vector(source_regions_.scalar_flux_bd(sr, g),
         source_regions_.scalar_flux_final(sr, g), increment_not_initialize,
         RandomRay::bd_order_ + j);
-//      if (adjoint needed) {
-//	source_regions.scalar_flux_timeseries(sr, g) 
-//      }
       if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
         // Multiply out sigma_t to store the base source
         int material = source_regions_.material(sr);
@@ -2209,6 +2190,65 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
       }
     }
   }
+}
+
+void FlatSourceDomain::store_quantity_time_series()
+{
+  double source_normalization_factor =
+    compute_fixed_source_normalization_factor();
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    for (int g = 0; g < negroups_; g++) {
+      source_regions_.scalar_flux_time_series(sr, g).push_back(
+        source_regions_.scalar_flux_final(sr, g) * source_normalization_factor);
+    }
+    if (settings::create_delayed_neutrons) {
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        source_regions_.precursors_time_series(sr, dg).push_back(
+          source_regions_.precursors_final(sr, dg) *
+          source_normalization_factor);
+      }
+    }
+  }
+}
+
+void FlatSourceDomain::reset_bd_vectors()
+{
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    for (int g = 0; g < negroups_; g++) {
+      int j = 0;
+      if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION)
+        j = 1;
+      for (int i = 0; i < RandomRay::bd_order_ + j; i++)
+        source_regions_.scalar_flux_bd(sr, g).pop_back();
+      if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
+        for (int i = 0; i < RandomRay::bd_order_; i++)
+          source_regions_.source_bd(sr, g).pop_back();
+      }
+    }
+    if (settings::create_delayed_neutrons) {
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        for (int i = 0; i < RandomRay::bd_order_; i++)
+          source_regions_.precursors_bd(sr, dg).pop_back();
+      }
+    }
+  }
+}
+
+void FlatSourceDomain::set_td_adjoint_sources(int i)
+{
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    for (int g = 0; g < negroups_; g++)
+      source_regions_.scalar_flux_final(sr, g) =
+        source_regions_.scalar_flux_time_series(sr, g)[i];
+    for (int dg = 0; dg < ndgroups_; dg++)
+      source_regions_.precursors_final(sr, dg) =
+        source_regions_.precursors_time_series(sr, dg)[i];
+  }
+  // Update the adjoint sources
+  set_adjoint_sources();
 }
 
 void FlatSourceDomain::compute_rhs_bd_quantities()

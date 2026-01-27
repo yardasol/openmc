@@ -44,6 +44,8 @@ SourceRegionHandle::SourceRegionHandle(SourceRegion& sr)
     source_rhs_bd_(sr.source_rhs_bd_.data()),
     scalar_flux_rhs_bd_2_(sr.scalar_flux_rhs_bd_2_.data()),
     precursors_rhs_bd_(sr.precursors_rhs_bd_.data()),
+    scalar_flux_time_series_(sr.scalar_flux_time_series_.data()),
+    precursors_time_series_(sr.precursors_time_series_.data()),
     tally_delay_task_(sr.tally_delay_task_.data())
 {}
 
@@ -79,6 +81,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     scalar_flux_bd_.resize(negroups);
     scalar_flux_rhs_bd_.resize(negroups);
 
+    scalar_flux_time_series_.resize(negroups);
+
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       // Time Isotropic arrays
       phi_prime_.assign(negroups, 0.0);
@@ -101,6 +105,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 
       precursors_bd_.resize(ndgroups);
       precursors_rhs_bd_.resize(ndgroups);
+
+      precursors_time_series_.resize(ndgroups);
 
       tally_delay_task_.resize(ndgroups);
     }
@@ -169,6 +175,8 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       scalar_flux_bd_.push_back(sr.scalar_flux_bd_[g]);
       scalar_flux_rhs_bd_.push_back(sr.scalar_flux_rhs_bd_[g]);
 
+      scalar_flux_time_series_.push_back(sr.scalar_flux_time_series_[g]);
+
       if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
         // Time Isotropic arrays
         phi_prime_.push_back(sr.phi_prime_[g]);
@@ -196,6 +204,9 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       // Backward difference arrays
       precursors_bd_.push_back(sr.precursors_bd_[dg]);
       precursors_rhs_bd_.push_back(sr.precursors_rhs_bd_[dg]);
+
+      // Time series array
+      precursors_time_series_.push_back(sr.precursors_time_series_[dg]);
     }
   }
 }
@@ -250,6 +261,7 @@ void SourceRegionContainer::assign(
     scalar_flux_bd_.clear();
     scalar_flux_rhs_bd_.clear();
 
+    scalar_flux_time_series_.clear();
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       phi_prime_.clear();
     } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
@@ -265,6 +277,8 @@ void SourceRegionContainer::assign(
     if (settings::create_delayed_neutrons) {
       precursors_bd_.clear();
       precursors_rhs_bd_.clear();
+
+      precursors_time_series_.clear();
 
       delayed_fission_source_.clear();
       precursors_old_.clear();
@@ -336,6 +350,8 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
     handle.scalar_flux_bd_ = &scalar_flux_bd(sr, 0);
     handle.scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd(sr, 0);
 
+    handle.scalar_flux_time_series_ = &scalar_flux_time_series(sr, 0);
+
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       handle.phi_prime_ = &phi_prime(sr, 0);
     } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
@@ -356,6 +372,8 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
 
       handle.precursors_bd_ = &precursors_bd(sr, 0);
       handle.precursors_rhs_bd_ = &precursors_rhs_bd(sr, 0);
+
+      handle.precursors_time_series_ = &precursors_time_series(sr, 0);
 
       handle.tally_delay_task_ = &tally_delay_task(sr, 0);
     }

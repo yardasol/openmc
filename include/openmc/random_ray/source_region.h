@@ -209,10 +209,10 @@ public:
 
   // Energy group-wise 2D BD arrays (g x time step)
   std::deque<double>* scalar_flux_bd_;
-  std::deque<double>* precursors_bd_;
+  std::deque<float>* source_bd_;
 
   // Delay group-wise 2D BD arrays (dg x time step)
-  std::deque<float>* source_bd_;
+  std::deque<double>* precursors_bd_;
 
   // Energy group-wise 1D RHS BD arrays
   double* scalar_flux_rhs_bd_;
@@ -221,6 +221,12 @@ public:
 
   // Delay group-wise 1D RHS BD arrays
   double* precursors_rhs_bd_;
+
+  // Energy group-wise 2D time series array (g x time step)
+  std::deque<double>* scalar_flux_time_series_;
+
+  // Delay group-wise 2D time series array (dg x time step)
+  std::deque<double>* precursors_time_series_;
 
   // 2D array representing values for all delay groups x tally
   // tasks. Each group may have a different number of tally tasks
@@ -374,14 +380,14 @@ public:
     return scalar_flux_bd_[g];
   }
 
+  std::deque<float>& source_bd(int g) { return source_bd_[g]; }
+  const std::deque<float>& source_bd(int g) const { return source_bd_[g]; }
+
   std::deque<double>& precursors_bd(int dg) { return precursors_bd_[dg]; }
   const std::deque<double>& precursors_bd(int dg) const
   {
     return precursors_bd_[dg];
   }
-
-  std::deque<float>& source_bd(int g) { return source_bd_[g]; }
-  const std::deque<float>& source_bd(int g) const { return source_bd_[g]; }
 
   double& scalar_flux_rhs_bd(int g) { return scalar_flux_rhs_bd_[g]; }
   const double scalar_flux_rhs_bd(int g) const
@@ -402,6 +408,24 @@ public:
   const double precursors_rhs_bd(int dg) const
   {
     return precursors_rhs_bd_[dg];
+  }
+
+  std::deque<double>& scalar_flux_time_series(int g)
+  {
+    return scalar_flux_time_series_[g];
+  }
+  const std::deque<double>& scalar_flux_time_series(int g) const
+  {
+    return scalar_flux_time_series_[g];
+  }
+
+  std::deque<double>& precursors_time_series(int dg)
+  {
+    return precursors_time_series_[dg];
+  }
+  const std::deque<double>& precursors_time_series(int dg) const
+  {
+    return precursors_time_series_[dg];
   }
 
   vector<TallyTask>& tally_delay_task(int dg) { return tally_delay_task_[dg]; }
@@ -522,17 +546,17 @@ public:
                      //!< finite number of previous time steps (used for
                      //!< computing the first order (and second order, for SDP)
                      //!< scalar flux time derivative)
-  vector<std::deque<double>>
-    precursors_bd_; //!< The final scalar flux in each energy group from a
-                    //!< finite number of previous time steps (used for
-                    //!< computing the first order source time derivative for
-                    //!< SDP)
+  vector<std::deque<float>>
+    source_bd_; //!< The final scalar flux in each energy group from a
+                //!< finite number of previous time steps (used for
+                //!< computing the first order source time derivative for
+                //!< SDP)
 
   // Delay group-wise 2D BD arrays (dg x time step)
-  vector<std::deque<float>>
-    source_bd_; //!< The final precursor population in each energy group from a
-                //!< finite number of previous time steps (used for computing
-                //!< the first order precursor time derivative)
+  vector<std::deque<double>>
+    precursors_bd_; //!< The final precursor population in each energy group
+                    //!< from a finite number of previous time steps (used for
+                    //!< computing the first order precursor time derivative)
 
   // Energy group-wise 1D RHS BD arrays
   vector<double>
@@ -555,6 +579,21 @@ public:
                         //!< timesteps. Used to compute the total precursor time
                         //!< derivative for solving the precursor equation using
                         //!< backwards differences.
+
+  // Energy group-wise 2D time series arrays (g x time step)
+  vector<std::deque<double>>
+    scalar_flux_time_series_; //!< The final scalar flux in each energy group
+                              //!< from all all previous time steps (used for
+                              //!< weighting the adjoint neutron source with the
+                              //!< forward flux for time-dependent FW-CADIS
+                              //!< simulations)
+  // Delay group-wise 2D time series arrays (dg x time step)
+  vector<std::deque<double>>
+    precursors_time_series_; //!< The final precursor population in each energy
+                             //!< group from all previous time steps (used for
+                             //!< weightin the adjoint precursors source with
+                             //!< the forward precursor population for
+                             //!< time-dependent FW-CADIS simulations)
 
   // 2D array representing values for all delay groups x tally
   // tasks. Each group may have a different number of tally tasks
@@ -877,20 +916,6 @@ public:
     return scalar_flux_bd_[se];
   }
 
-  std::deque<double>& precursors_bd(int64_t sr, int dg)
-  {
-    return precursors_bd_[dindex(sr, dg)];
-  }
-  const std::deque<double>& precursors_bd(int64_t sr, int dg) const
-  {
-    return precursors_bd_[dindex(sr, dg)];
-  }
-  std::deque<double>& precursors_bd(int64_t de) { return precursors_bd_[de]; }
-  const std::deque<double>& precursors_bd(int64_t de) const
-  {
-    return precursors_bd_[de];
-  }
-
   std::deque<float>& source_bd(int64_t sr, int g)
   {
     return source_bd_[index(sr, g)];
@@ -903,6 +928,20 @@ public:
   const std::deque<float>& source_bd(int64_t se) const
   {
     return source_bd_[se];
+  }
+
+  std::deque<double>& precursors_bd(int64_t sr, int dg)
+  {
+    return precursors_bd_[dindex(sr, dg)];
+  }
+  const std::deque<double>& precursors_bd(int64_t sr, int dg) const
+  {
+    return precursors_bd_[dindex(sr, dg)];
+  }
+  std::deque<double>& precursors_bd(int64_t de) { return precursors_bd_[de]; }
+  const std::deque<double>& precursors_bd(int64_t de) const
+  {
+    return precursors_bd_[de];
   }
 
   double& scalar_flux_rhs_bd(int64_t sr, int g)
@@ -956,6 +995,40 @@ public:
   const double& scalar_flux_rhs_bd_2(int64_t se) const
   {
     return scalar_flux_rhs_bd_2_[se];
+  }
+
+  std::deque<double>& scalar_flux_time_series(int64_t sr, int g)
+  {
+    return scalar_flux_time_series_[index(sr, g)];
+  }
+  const std::deque<double>& scalar_flux_time_series(int64_t sr, int g) const
+  {
+    return scalar_flux_time_series_[index(sr, g)];
+  }
+  std::deque<double>& scalar_flux_time_series(int64_t se)
+  {
+    return scalar_flux_time_series_[se];
+  }
+  const std::deque<double>& scalar_flux_time_series(int64_t se) const
+  {
+    return scalar_flux_time_series_[se];
+  }
+
+  std::deque<double>& precursors_time_series(int64_t sr, int dg)
+  {
+    return precursors_time_series_[dindex(sr, dg)];
+  }
+  const std::deque<double>& precursors_time_series(int64_t sr, int dg) const
+  {
+    return precursors_time_series_[dindex(sr, dg)];
+  }
+  std::deque<double>& precursors_time_series(int64_t de)
+  {
+    return precursors_time_series_[de];
+  }
+  const std::deque<double>& precursors_time_series(int64_t de) const
+  {
+    return precursors_time_series_[de];
   }
 
   vector<TallyTask>& tally_delay_task(int64_t sr, int dg)
@@ -1067,10 +1140,12 @@ private:
   vector<double> precursors_new_;
   vector<double> precursors_final_;
 
-  // SoA energy group-wise 3D BD arrays (sr x g/dg X timestep) flattened to 2D
+  // SoA energy group-wise 3D BD arrays (sr x g X timestep) flattened to 2D
   vector<std::deque<double>> scalar_flux_bd_;
-  vector<std::deque<double>> precursors_bd_;
   vector<std::deque<float>> source_bd_;
+
+  // SoA delay group-wise 3D BD arrays (sr x dg X timestep) flattened to 2D
+  vector<std::deque<double>> precursors_bd_;
 
   // SoA energy group-wise 2D RHS BD arrays flattened to 1D
   vector<double> scalar_flux_rhs_bd_;
@@ -1079,6 +1154,14 @@ private:
 
   // SoA delay group-wise 2D RHS BD arrays flattened to 1D
   vector<double> precursors_rhs_bd_;
+
+  // SoA energy group-wise 3D time series arrays (sr x g X timestep) flattened
+  // to 2D
+  vector<std::deque<double>> scalar_flux_time_series_;
+
+  // SoA delay group-wise 3D time series arrays (sr x dg X timestep) flattened
+  // to 2D
+  vector<std::deque<double>> precursors_time_series_;
 
   // SoA 3D array representing values for all source regions x delay groups x
   // tally tasks. The outer two dimensions (source regions and delay groups)
