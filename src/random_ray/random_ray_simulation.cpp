@@ -530,17 +530,6 @@ void RandomRaySimulation::prepare_adjoint_simulation()
 // TODO: Add support for time-dependent restart
 void RandomRaySimulation::kinetic_single_time_step(int i)
 {
-  if (((i == -1 && !FlatSourceDomain::adjoint_) ||
-        (i == settings::n_timesteps && FlatSourceDomain::adjoint_)) &&
-      settings::run_mode == RunMode::EIGENVALUE) {
-    // Set flag for k_eff correction if initial condition
-    simulation::k_eff_correction = true;
-
-    // Store average keff from initial simulation
-    static_avg_k_eff_ = simulation::keff;
-  }
-
-  // Increment time step
   if (FlatSourceDomain::adjoint_) {
     simulation::current_timestep = i - 1;
     // Final condition has an index of settings::n_timesteps + 1
@@ -559,10 +548,19 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
       simulation::current_time += settings::dt;
   }
 
-  // Propagate results of previous simulation
+  // Set eigenvalue if needed
   if (settings::run_mode == RunMode::EIGENVALUE) {
+    if ((i == -1 && !FlatSourceDomain::adjoint_) ||
+        (i == settings::n_timesteps && FlatSourceDomain::adjoint_)) {
+      // Set flag for k_eff correction if initial condition
+      simulation::k_eff_correction = true;
+
+      // Store average keff from initial simulation
+      static_avg_k_eff_ = simulation::keff;
+    }
     domain_->k_eff_ = static_avg_k_eff_;
   }
+  // Propagate results of previous simulation
   domain_->source_regions_.adjoint_reset();
   domain_->propagate_final_quantities();
   domain_->source_regions_.time_step_reset();
