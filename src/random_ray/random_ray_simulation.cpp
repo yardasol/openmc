@@ -513,6 +513,15 @@ void RandomRaySimulation::prepare_adjoint_simulation()
   // Reset k-eff
   domain_->k_eff_ = 1.0;
 
+  if (FlatSourceDomain::eigenvalue_fw_cadis_) {
+    // Turn off adjoint fission
+    settings::create_fission_neutrons = false;
+    settings::create_delayed_neutrons = false;
+
+    // Set to fixed source mode
+    settings::run_mode = RunMode::FIXED_SOURCE;
+  }
+
   // Initialize adjoint fixed sources, if present
   prepare_fixed_sources_adjoint();
 
