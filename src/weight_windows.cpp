@@ -1265,14 +1265,7 @@ extern "C" int openmc_weight_windows_export(const char* filename)
   if (!mpi::master)
     return 0;
 
-  std::string base_name = "weight_windows";
-  if (settings::kinetic_simulation)
-    base_name =
-      fmt::format("{0}_{1}.h5", base_name, simulation::current_timestep);
-  else
-    base_name = fmt::format("{0}.h5", base_name);
-
-  std::string name = filename ? filename : base_name;
+  std::string name = filename ? filename : "weight_windows.h5";
 
   write_message(fmt::format("Exporting weight windows to {}...", name), 5);
 
@@ -1317,17 +1310,9 @@ extern "C" int openmc_weight_windows_export(const char* filename)
   return 0;
 }
 
-// TODO: add support for this i
 extern "C" int openmc_weight_windows_import(const char* filename)
 {
-  std::string base_name = "weight_windows";
-  if (settings::kinetic_simulation)
-    base_name =
-      fmt::format("{0}_{1}.h5", base_name, simulation::current_timestep);
-  else
-    base_name = fmt::format("{0}.h5", base_name);
-
-  std::string name = filename ? filename : base_name;
+  std::string name = filename ? filename : "weight_windows.h5";
 
   if (mpi::master)
     write_message(fmt::format("Importing weight windows from {}...", name), 5);
