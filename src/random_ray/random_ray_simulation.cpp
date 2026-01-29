@@ -582,7 +582,8 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
   // be done in the forward calculation, as the inverse calculation
   // uses 1 / phi. When CADIS is implemented, this will need to be updated
   // to account for detector cross sections.
-  if (i >= 0 && !FlatSourceDomain::adjoint_)
+  if (i >= 0 && !FlatSourceDomain::adjoint_ &&
+      settings::run_mode == RunMode::FIXED_SOURCE)
     domain_->update_external_source_strength(i);
 
   // Run the initial condition

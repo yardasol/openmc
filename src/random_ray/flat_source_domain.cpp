@@ -1448,7 +1448,6 @@ void FlatSourceDomain::set_adjoint_sources()
       } else {
         source_regions_.external_source(sr, g) = 1.0 / flux;
       }
-      // There should be flux if the fission source is nonzero
       if (source_regions_.external_source(sr, g) > 0.0) {
         source_regions_.external_source_present(sr) = 1;
       }
