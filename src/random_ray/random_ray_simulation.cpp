@@ -50,9 +50,17 @@ void openmc_run_random_ray()
   sim.apply_fixed_sources_and_mesh_domains();
 
   if (!settings::kinetic_simulation ||
-      settings::kinetic_simulation && settings::run_mode == RunMode::EIGENVALUE)
+      settings::kinetic_simulation &&
+        settings::run_mode == RunMode::EIGENVALUE) {
     // Run initial random ray simulation
     sim.simulate();
+    if (!settings::kinetic_simulation && sim.adjoint_needed_) {
+      rename_time_step_file(
+        fmt::format("statepoint.{0}", settings::n_batches), ".h5", -1);
+      if (settings::output_tallies)
+        rename_time_step_file("tallies", ".out", -1);
+    }
+  }
 
   if (settings::kinetic_simulation) {
     // Timestepping loop, including k-eff correction initial
@@ -424,8 +432,15 @@ void rename_time_step_file(
   // Rename file
   std::string old_filename_ =
     fmt::format("{0}{1}{2}", settings::path_output, base_filename, extension);
-  std::string new_filename_ = fmt::format(
-    "{0}{1}_{2}{3}", settings::path_output, base_filename, i, extension);
+  std::string new_filename_ =
+    fmt::format("{0}{1}", settings::path_output, base_filename);
+  if (i != -1) {
+    new_filename_ = fmt::format("{0}_{1}", new_filename_, i);
+  }
+  if (FlatSourceDomain::save_forward_output_) {
+    new_filename_ = fmt::format("{0}_{1}", new_filename_, "forward");
+  }
+  new_filename_ = fmt::format("{0}{1}", new_filename_, extension);
 
   const char* old_fname = old_filename_.c_str();
   const char* new_fname = new_filename_.c_str();

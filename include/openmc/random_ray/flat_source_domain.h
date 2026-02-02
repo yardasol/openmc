@@ -108,6 +108,8 @@ public:
   // Static Data members
   static bool volume_normalized_flux_tallies_;
   static bool adjoint_; // If the user wants outputs based on the adjoint flux
+  static bool save_forward_output_; // If the user wants to save the forward
+                                    // output for an adjoint simulation
   static bool eigenvalue_fw_cadis_; // If the user wants adjoint fission turned
                                     // on.
   static double

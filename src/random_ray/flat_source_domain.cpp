@@ -33,6 +33,7 @@ RandomRayVolumeEstimator FlatSourceDomain::volume_estimator_ {
   RandomRayVolumeEstimator::HYBRID};
 bool FlatSourceDomain::volume_normalized_flux_tallies_ {false};
 bool FlatSourceDomain::adjoint_ {false};
+bool FlatSourceDomain::save_forward_output_ {false};
 bool FlatSourceDomain::eigenvalue_fw_cadis_ {false};
 double FlatSourceDomain::diagonal_stabilization_rho_ {1.0};
 std::unordered_map<int, vector<std::pair<Source::DomainType, int>>>
@@ -900,6 +901,7 @@ double FlatSourceDomain::evaluate_flux_at_point(
          (settings::n_batches - settings::n_inactive);
 }
 
+// TODO: Output different plot at each time step
 // Outputs all basic material, FSR ID, multigroup flux, and
 // fission source data to .vtk file that can be directly
 // loaded and displayed by Paraview. Note that .vtk binary
