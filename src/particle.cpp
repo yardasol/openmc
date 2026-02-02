@@ -248,9 +248,15 @@ void Particle::event_advance()
   double distance_cutoff =
     (time_cutoff < INFTY) ? (time_cutoff - time()) * speed : INFTY;
 
-  // Select smaller of the three distances
+  // Basic implementation, more infrastructure needed
+  double time_census = settings::time_census[...]; //TODO: implement data structure for this, should be a simple vector...
+  double distance_census =
+    (time_census < INFTY) ? (time_census - time()) * speed : INFTY;
+
+
+  // Select smaller of the four distances
   double distance =
-    std::min({boundary().distance(), collision_distance(), distance_cutoff});
+    std::min({boundary().distance(), collision_distance(), distance_cutoff, distance_census});
 
   // Advance particle in space and time
   this->move_distance(distance);
@@ -282,6 +288,39 @@ void Particle::event_advance()
   // Set particle weight to zero if it hit the time boundary
   if (distance == distance_cutoff) {
     wgt() = 0.0;
+  }
+
+  // TODO: Store the particle in the census bank if it hit the census boundary
+  if (distance == distance_census) {
+    // Store particle in bank as a source site
+    SourceSite site;
+    site.r = ();
+    site.particle = ParticleType::neutron;
+    site.time = time();
+    site.wgt = wgt();
+    site.surf_id = 0;
+
+    //TODO: implement use_census_bank (base it on a setting or something)
+    if (use_census_bank) {
+      // TODO: implement simulation::census_bank
+      int64_t idx = simulation::census_bank.thread_safe_append(site);
+      wgt() = 0.0;
+      if (idx == -1) {
+        warning(
+          "The shared fission bank is full. Additional fission sites created "
+          "in this generation will not be banked. Results may be "
+          "non-deterministic.");
+
+	//TODO: is the below needed??
+        // Decrement number of particle progeny as storage was unsuccessful.
+        // This step is needed so that the sum of all progeny is equal to the
+        // size of the shared fission bank.
+        p.n_progeny()--;
+
+        // Break out of loop as no more sites can be added to fission bank
+        break;
+      }
+    }
   }
 }
 
