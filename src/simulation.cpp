@@ -254,6 +254,8 @@ int openmc_next_batch(int* status)
   }
 
   initialize_batch();
+  
+  // TODO: loop over time grid for pop. control??
 
   // =======================================================================
   // LOOP OVER GENERATIONS

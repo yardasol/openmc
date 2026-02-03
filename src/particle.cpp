@@ -249,10 +249,11 @@ void Particle::event_advance()
     (time_cutoff < INFTY) ? (time_cutoff - time()) * speed : INFTY;
 
   // Basic implementation, more infrastructure needed
+  // There is some existing time grid infrastructure in tally.cpp
+  // amd tally_scoring.cpp... consider reusing!
   double time_census = settings::time_census[...]; //TODO: implement data structure for this, should be a simple vector...
   double distance_census =
     (time_census < INFTY) ? (time_census - time()) * speed : INFTY;
-
 
   // Select smaller of the four distances
   double distance =
@@ -307,18 +308,9 @@ void Particle::event_advance()
       wgt() = 0.0;
       if (idx == -1) {
         warning(
-          "The shared fission bank is full. Additional fission sites created "
-          "in this generation will not be banked. Results may be "
-          "non-deterministic.");
-
-	//TODO: is the below needed??
-        // Decrement number of particle progeny as storage was unsuccessful.
-        // This step is needed so that the sum of all progeny is equal to the
-        // size of the shared fission bank.
-        p.n_progeny()--;
-
-        // Break out of loop as no more sites can be added to fission bank
-        break;
+          "The shared time census bank is full. Additional particles that "
+          "reach the time boundary in this generation will not be banked. "
+          "Results may be non-deterministic.");
       }
     }
   }

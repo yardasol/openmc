@@ -216,6 +216,7 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
     // Sample delayed group and angle/energy for fission reaction
     sample_fission_neutron(i_nuclide, rx, &site, p);
 
+    // TODO: forced precursor decay here
     // Reject site if it exceeds time cutoff
     if (site.delayed_group > 0) {
       double t_cutoff = settings::time_cutoff[static_cast<int>(site.particle)];
@@ -224,6 +225,7 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
       }
     }
 
+    //TODO: add site to census bank if
     // Set parent and progeny IDs
     site.parent_id = p.id();
     site.progeny_id = p.n_progeny()++;
@@ -1079,6 +1081,7 @@ void sample_fission_neutron(
     // set the delayed group for the particle born from fission
     site->delayed_group = group;
 
+    //TODO: add forced precursor decay here?
     // Sample time of emission based on decay constant of precursor
     double decay_rate = rx.products_[site->delayed_group].decay_rate_;
     site->time -= std::log(prn(p.current_seed())) / decay_rate;
