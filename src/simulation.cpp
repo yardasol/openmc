@@ -141,8 +141,8 @@ int openmc_simulation_init()
   if (mpi::master) {
     if (settings::kinetic_simulation) {
       if (simulation::is_initial_condition) {
-        if (simulation::k_eff_correction)
-          header("KINETIC SIMULATION INITIAL CONDITION (K-EFF CORRECTION)", 3);
+        if (simulation::source_correction)
+          header("KINETIC SIMULATION INITIAL CONDITION (SOURCE CORRECTION)", 3);
         else
           header("KINETIC SIMULATION INITIAL CONDITION", 3);
       } else {
@@ -341,7 +341,7 @@ vector<int64_t> work_index;
 bool is_initial_condition {true};
 int current_timestep;
 double current_time {0.0};
-bool k_eff_correction {false};
+bool source_correction {false};
 
 } // namespace simulation
 

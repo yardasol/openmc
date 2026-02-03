@@ -49,22 +49,21 @@ void openmc_run_random_ray()
   // Initialize fixed sources, if present
   sim.apply_fixed_sources_and_mesh_domains();
 
-  if (!settings::kinetic_simulation ||
-      settings::kinetic_simulation &&
-        settings::run_mode == RunMode::EIGENVALUE) {
-    // Run initial random ray simulation
-    sim.simulate();
-    if (!settings::kinetic_simulation && sim.adjoint_needed_) {
-      rename_time_step_file(
-        fmt::format("statepoint.{0}", settings::n_batches), ".h5", -1);
-      if (settings::output_tallies)
-        rename_time_step_file("tallies", ".out", -1);
-    }
+  // Simulate single random ray simulation (static case)
+  // OR get an initial estimate for scattering and fission
+  // distributions (if fissile material exist),
+  // and k-eff (if kinetic eigenvalue simulation)
+  sim.simulate();
+  if (!settings::kinetic_simulation && sim.adjoint_needed_) {
+    rename_time_step_file(
+      fmt::format("statepoint.{0}", settings::n_batches), ".h5", -1);
+    if (settings::output_tallies)
+      rename_time_step_file("tallies", ".out", -1);
   }
 
   if (settings::kinetic_simulation) {
-    // Timestepping loop, including k-eff correction initial
-    // condition (i = -1)
+    // Timestepping loop, including source/k-eff correction
+    // (i = -1)
     for (int i = -1; i < settings::n_timesteps; i++)
       sim.kinetic_single_time_step(i);
   }
@@ -77,16 +76,13 @@ void openmc_run_random_ray()
     // Setup for adjoint simulation
     sim.prepare_adjoint_simulation();
 
-    if (!settings::kinetic_simulation ||
-        settings::kinetic_simulation &&
-          settings::run_mode == RunMode::EIGENVALUE)
-      // Run adjoint simulation (serves as initial condtion for kinetic
-      // simulation)
-      sim.simulate();
+    // Run adjoint simulation (serves as adjoint final condition for kinetic
+    // simulation)
+    sim.simulate();
 
     if (settings::kinetic_simulation) {
-      // Timestepping loop, including k-eff correction initial
-      // condition (i = -1)
+      // Timestepping loop, including source/k-eff correction
+      // (i = n_timesteps)
       for (int i = settings::n_timesteps; i > -1; i--)
         sim.kinetic_single_time_step(i);
     }
@@ -576,18 +572,21 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
       simulation::current_time += settings::dt;
   }
 
+  if ((i == -1 && !FlatSourceDomain::adjoint_) ||
+      (i == settings::n_timesteps && FlatSourceDomain::adjoint_))
+    // Set flag for source correction if initial condition
+    simulation::source_correction = true;
+
   // Set eigenvalue if needed
   if (settings::run_mode == RunMode::EIGENVALUE) {
     if ((i == -1 && !FlatSourceDomain::adjoint_) ||
         (i == settings::n_timesteps && FlatSourceDomain::adjoint_)) {
-      // Set flag for k_eff correction if initial condition
-      simulation::k_eff_correction = true;
-
       // Store average keff from initial simulation
       static_avg_k_eff_ = simulation::keff;
     }
     domain_->k_eff_ = static_avg_k_eff_;
   }
+
   // Propagate results of previous simulation
   domain_->source_regions_.simulation_reset();
   domain_->propagate_final_quantities();
@@ -619,7 +618,7 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
     domain_->store_time_step_quantities(false);
     // Reset flags for kinetic simulation if initial condition
     simulation::is_initial_condition = false;
-    simulation::k_eff_correction = false;
+    simulation::source_correction = false;
   } else {
     // Else, store final quantities for the current time step
     domain_->store_time_step_quantities();
@@ -712,7 +711,7 @@ void RandomRaySimulation::simulate()
         if (!settings::kinetic_simulation ||
             settings::kinetic_simulation && simulation::is_initial_condition) {
           domain_->compute_k_eff();
-          if (simulation::k_eff_correction) {
+          if (simulation::source_correction) {
             static_fission_rate_.push_back(domain_->fission_rate_);
             static_k_eff_.push_back(domain_->k_eff_);
           }
