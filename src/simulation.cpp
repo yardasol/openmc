@@ -357,14 +357,8 @@ void allocate_banks()
     // Allocate fission bank
     init_fission_bank(3 * simulation::work_per_rank);
 
-    // Allocate census bank
-    if (settings::time_census) {
-      init_census_bank(3 * simulation::work_per_rank);
-    }
-
     // Allocate IFP bank
     if (settings::ifp_on) {
-      simulation::source_bank.resize(simulation::work_per_rank);
       resize_simulation_ifp_banks();
     }
   }
