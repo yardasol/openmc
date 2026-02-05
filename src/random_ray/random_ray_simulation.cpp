@@ -82,8 +82,8 @@ void openmc_run_random_ray()
 
     if (settings::kinetic_simulation) {
       // Timestepping loop, including source/k-eff correction
-      // (i = n_timesteps)
-      for (int i = settings::n_timesteps; i > -1; i--)
+      // (i = n_timesteps + 1)
+      for (int i = settings::n_timesteps + 1; i > 0; i--)
         sim.kinetic_single_time_step(i);
     }
   }
@@ -559,7 +559,7 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
   if (FlatSourceDomain::adjoint_) {
     simulation::current_timestep = i - 1;
     // Final condition has an index of settings::n_timesteps + 1
-    if (i < settings::n_timesteps) {
+    if (!simulation::is_initial_condition) {
       // Decrement the current time
       simulation::current_time -= settings::dt;
     }
@@ -573,7 +573,7 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
   }
 
   if ((i == -1 && !FlatSourceDomain::adjoint_) ||
-      (i == settings::n_timesteps && FlatSourceDomain::adjoint_))
+      (i == settings::n_timesteps + 1 && FlatSourceDomain::adjoint_))
     // Set flag for source correction if initial condition
     simulation::source_correction = true;
 
