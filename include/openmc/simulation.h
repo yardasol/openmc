@@ -77,6 +77,9 @@ void initialize_data();
 //! Initialize a batch
 void initialize_batch();
 
+//! Initialize a time grid cell for time censusing
+void initialize_time_step();
+
 //! Initialize a fission generation
 void initialize_generation();
 
@@ -89,6 +92,9 @@ void initialize_history(Particle& p, int64_t index_source);
 //! entropy, getting single-batch estimate of keff, and turning on tallies when
 //! appropriate
 void finalize_batch();
+
+//! Finalize a time grid cell for time censusing
+void finalize_time_step();
 
 //! Finalize a fission generation
 void finalize_generation();
@@ -107,7 +113,7 @@ void free_memory_simulation();
 void transport_history_based_single_particle(Particle& p);
 
 //! Simulate all particle histories using history-based parallelism
-void transport_history_based();
+void transport_history_based(int time_bound_idx);
 
 //! Simulate all particle histories using event-based parallelism
 void transport_event_based();

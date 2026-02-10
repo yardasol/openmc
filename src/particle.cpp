@@ -248,9 +248,14 @@ void Particle::event_advance()
   double distance_cutoff =
     (time_cutoff < INFTY) ? (time_cutoff - time()) * speed : INFTY;
 
-  // Select smaller of the three distances
-  double distance =
-    std::min({boundary().distance(), collision_distance(), distance_cutoff});
+  // This should be INFTY by default
+  double time_boundary = settings::time_census_boundaries[time_bound_idx()];
+  double distance_time =
+    (time_boundary < INFTY) ? (time_boundary - time()) * speed : INFTY;
+
+  // Select smaller of the four distances
+  double distance = std::min({boundary().distance(), collision_distance(),
+    distance_cutoff, distance_time});
 
   // Advance particle in space and time
   this->move_distance(distance);
@@ -258,6 +263,7 @@ void Particle::event_advance()
   this->time() += dt;
   this->lifetime() += dt;
 
+  // TODO: anything need to be done here?
   // Score timed track-length tallies
   if (!model::active_timed_tracklength_tallies.empty()) {
     score_timed_tracklength_tally(*this, distance);
@@ -268,12 +274,14 @@ void Particle::event_advance()
     score_tracklength_tally(*this, distance);
   }
 
+  // TODO: turn off for kinetic sim?
   // Score track-length estimate of k-eff
   if (settings::run_mode == RunMode::EIGENVALUE &&
       type() == ParticleType::neutron) {
     keff_tally_tracklength() += wgt() * distance * macro_xs().nu_fission;
   }
 
+  // TODO: turn off for kinetic sim?
   // Score flux derivative accumulators for differential tallies.
   if (!model::active_tallies.empty()) {
     score_track_derivative(*this, distance);
@@ -282,6 +290,34 @@ void Particle::event_advance()
   // Set particle weight to zero if it hit the time boundary
   if (distance == distance_cutoff) {
     wgt() = 0.0;
+  }
+
+  // TODO: Store the particle in the census bank if it hit the census boundary
+  // This will only happen if TIME CENSUS is on
+  if (distance == distance_time) {
+    // Store particle in time census bank as a source site
+    SourceSite site;
+    site.r = r();
+    site.particle = ParticleType::neutron;
+    site.time = time();
+    site.wgt = wgt();
+    site.surf_id = 0;
+
+    // Set parent and progeny IDs
+    site.parent_id = id();
+    site.progeny_id = ++n_progeny(); // Should be 1
+
+    // TODO: implement simulation::fission_bank
+    // it will be the same as fission bank
+    int64_t idx = simulation::time_census_bank.thread_safe_append(site);
+    wgt() = 0.0;
+    if (idx == -1) {
+      warning("The shared time census bank is full. Additional time boundary "
+              "crossing "
+              "in this generation will not be banked. Results may be "
+              "non-deterministic.");
+      n_progeny()--;
+    }
   }
 }
 
@@ -331,6 +367,7 @@ void Particle::event_cross_surface()
 void Particle::event_collide()
 {
   // Score collision estimate of keff
+  // TODO: turn off for kinetic sim?
   if (settings::run_mode == RunMode::EIGENVALUE &&
       type() == ParticleType::neutron) {
     keff_tally_collision() += wgt() * macro_xs().nu_fission / macro_xs().total;

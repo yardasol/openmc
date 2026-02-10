@@ -38,6 +38,13 @@ vector<vector<int>> ifp_fission_delayed_group_bank;
 
 vector<vector<double>> ifp_fission_lifetime_bank;
 
+// The time census bank is allocated as a SharedArray, rather than a vector, as
+// it will be shared by all threads in the simulation. It will be allocated to a
+// fixed maximum capacity in the init_fission_bank() function. Then, Elements
+// will be added to it by using SharedArray's special thread_safe_append()
+// function.
+SharedArray<SourceSite> time_census_bank;
+
 // Each entry in this vector corresponds to the number of progeny produced
 // this generation for the particle located at that index. This vector is
 // used to efficiently sort the fission bank after each iteration.
@@ -62,7 +69,7 @@ void free_memory_bank()
   simulation::ifp_fission_lifetime_bank.clear();
 }
 
-void init_fission_bank(SharedArray<SourceSite>& census_bank, int64_t max)
+void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max)
 {
   census_bank.reserve(max);
   simulation::progeny_per_particle.resize(simulation::work_per_rank);

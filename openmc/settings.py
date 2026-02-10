@@ -119,6 +119,10 @@ class Settings:
         .. versionadded:: 0.12
     inactive : int
         Number of inactive batches
+    branchless_collition : bool
+        Indicate whether branchless collision shoud be used.
+
+        .. versionadded:: 0.16
     keff_trigger : dict
         Dictionary defining a trigger on eigenvalue. The dictionary must have
         two keys, 'type' and 'threshold'. Acceptable values corresponding to
@@ -334,6 +338,8 @@ class Settings:
 
         .. versionadded:: 0.16
 
+    time_census_boundaries : tuple or list of float
+        Time grid boundaries for time censusing.
     trace : tuple or list
         Show detailed information about a single particle, indicated by three
         integers: the batch number, generation number, and particle number
@@ -414,6 +420,7 @@ class Settings:
         self._source = cv.CheckedList(SourceBase, 'source distributions')
         self._source_rejection_fraction = None
 
+        self._branchless_collision = None
         self._confidence_intervals = None
         self._electron_treatment = None
         self._photon_transport = None
@@ -424,6 +431,7 @@ class Settings:
         self._stride = None
         self._survival_biasing = None
         self._free_gas_threshold = None
+        self._time_census_boundaries = None
 
         # Shannon entropy mesh
         self._entropy_mesh = None
@@ -755,6 +763,15 @@ class Settings:
         cv.check_type('random number generator stride', stride, Integral)
         cv.check_greater_than('random number generator stride', stride, 0)
         self._stride = stride
+
+    @property
+    def branchless_collision(self) -> bool:
+        return self._branchless_collision
+
+    @branchless_collision.setter
+    def branchless_collision(self, branchless_collision: bool):
+        cv.check_type('survival biasing', branchless_collision, bool)
+        self._branchless_collision = branchless_collision
 
     @property
     def survival_biasing(self) -> bool:
@@ -1457,6 +1474,17 @@ class Settings:
                                   free_gas_threshold, 0.0)
         self._free_gas_threshold = free_gas_threshold
 
+    @property
+    def time_census_boundaries(self) -> Iterable[float]:
+        return self._time_census_boundaries
+
+    @time_census_boundaries.setter
+    def time_census_boundaries(self, time_census_boundaries: Iterable[float]):
+        cv.check_type('time_census_boundaries', time_census_boundaries,
+                      Iterable, float)
+        # TODO: ensure the list is sorted?
+        self._time_census_boundaries = time_census_boundaries
+
     def _create_run_mode_subelement(self, root):
         elem = ET.SubElement(root, "run_mode")
         elem.text = self._run_mode.value
@@ -1693,6 +1721,11 @@ class Settings:
         if self._stride is not None:
             element = ET.SubElement(root, "stride")
             element.text = str(self._stride)
+
+    def _create_branchless_collision_subelement(self, root):
+        if self._branchless_collision is not None:
+            element = ET.SubElement(root, "branchless_collision")
+            element.text = str(self._branchless_collision).lower()
 
     def _create_survival_biasing_subelement(self, root):
         if self._survival_biasing is not None:
@@ -2002,6 +2035,12 @@ class Settings:
             element = ET.SubElement(root, "free_gas_threshold")
             element.text = str(self._free_gas_threshold)
 
+    def _create_time_census_boundaries_subelement(self, root):
+        if self._time_census_boundaries is not None:
+            element = ET.SubElement(root, "time_census_boundaries")
+            element.text = ' '.join(map(str, self._time_census_boundaries))
+
+
     def _eigenvalue_from_xml_element(self, root):
         elem = root.find('eigenvalue')
         if elem is not None:
@@ -2214,6 +2253,11 @@ class Settings:
         text = get_text(root, 'stride')
         if text is not None:
             self.stride = int(text)
+
+    def _branchless_collision_from_xml_element(self, root):
+        text = get_text(root, 'branchless_collision')
+        if text is not None:
+            self.branchless_collision = text in ('true', '1')
 
     def _survival_biasing_from_xml_element(self, root):
         text = get_text(root, 'survival_biasing')
@@ -2493,6 +2537,11 @@ class Settings:
         if text is not None:
             self.free_gas_threshold = float(text)
 
+    def _time_census_boundaries_from_xml_element(self, root):
+        text = get_elem_list(root, "time_census_boundaries", float)
+        if text is not None:
+            self.time_census_boundaries = text
+
     def to_xml_element(self, mesh_memo=None):
         """Create a 'settings' element to be written to an XML file.
 
@@ -2532,6 +2581,7 @@ class Settings:
         self._create_ptables_subelement(element)
         self._create_seed_subelement(element)
         self._create_stride_subelement(element)
+        self._create_branchless_collision_subelement(element)
         self._create_survival_biasing_subelement(element)
         self._create_cutoff_subelement(element)
         self._create_entropy_mesh_subelement(element, mesh_memo)
@@ -2567,6 +2617,7 @@ class Settings:
         self._create_use_decay_photons_subelement(element)
         self._create_source_rejection_fraction_subelement(element)
         self._create_free_gas_threshold_subelement(element)
+        self._create_time_census_boundaries_subelement(element)
 
         # Clean the indentation in the file to be user-readable
         clean_indentation(element)
@@ -2648,6 +2699,7 @@ class Settings:
         settings._ptables_from_xml_element(elem)
         settings._seed_from_xml_element(elem)
         settings._stride_from_xml_element(elem)
+        settings._branchless_collision_from_xml_element(elem)
         settings._survival_biasing_from_xml_element(elem)
         settings._cutoff_from_xml_element(elem)
         settings._entropy_mesh_from_xml_element(elem, meshes)
@@ -2682,6 +2734,7 @@ class Settings:
         settings._use_decay_photons_from_xml_element(elem)
         settings._source_rejection_fraction_from_xml_element(elem)
         settings._free_gas_threshold_from_xml_element(elem)
+        settings._time_census_boundaires_from_xml_element(elem)
 
         return settings
 

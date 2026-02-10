@@ -74,6 +74,7 @@ bool source_mcpl_write {false};
 bool surf_source_write {false};
 bool surf_mcpl_write {false};
 bool surf_source_read {false};
+bool branchless_collision {false};
 bool survival_biasing {false};
 bool survival_normalization {false};
 bool temperature_multipole {false};
@@ -151,8 +152,9 @@ double weight_cutoff {0.25};
 double weight_survive {1.0};
 
 // Timestep variables for kinetic simulation
-int n_timesteps;
+int n_timesteps {1};
 double dt;
+vector<double> time_census_boundaries {INFTY};
 
 } // namespace settings
 
@@ -276,6 +278,12 @@ void get_run_parameters(pugi::xml_node node_base)
 
   // Get timestep parameters for kinetic simulations
   if (kinetic_simulation) {
+    if (check_for_node(node_base, "time_census_boundaries")) {
+      time_census_boundaries =
+        get_node_array<double>(node_base, "time_census_boundaries");
+    }
+    // TODO REPLACE TIMESTEP PARAMETERS WITH TIME FILTER TIME GRID
+    // use model::time_grid (see tally.cpp, add to time grid)
     xml_node ts_node = node_base.child("timestep_parameters");
     if (check_for_node(ts_node, "n_timesteps")) {
       n_timesteps = std::stoi(get_node_value(ts_node, "n_timesteps"));
@@ -759,6 +767,11 @@ void read_settings_xml(pugi::xml_node root)
 
   if (check_for_node(root, "free_gas_threshold")) {
     free_gas_threshold = std::stod(get_node_value(root, "free_gas_threshold"));
+  }
+
+  // Branchless collision
+  if (check_for_node(root, "branchless_collision")) {
+    branchless_collision = get_node_value_bool(root, "branchless_collision");
   }
 
   // Survival biasing

@@ -268,7 +268,17 @@ int openmc_next_batch(int* status)
     if (settings::event_based) {
       transport_event_based();
     } else {
-      transport_history_based();
+      // Loop over time census boundaries (should only work for kinetic
+      // simullation)
+      int time_bound_idx = 0;
+      while (time_bound_idx < settings::time_census_boundaries.size()) {
+        if (settings::kinetic_simulation)
+          initialize_time_step();
+        transport_history_based(time_bound_idx);
+        if (settings::kinetic_simulation)
+          finalize_time_step();
+        time_bound_idx++;
+      }
     }
 
     // Accumulate time for transport
@@ -353,13 +363,21 @@ void allocate_banks()
       settings::solver_type == SolverType::MONTE_CARLO) {
     // Allocate source bank
     simulation::source_bank.resize(simulation::work_per_rank);
+    if (!settings::kinetic_simulation ||
+        (settings::kinetic_simulation && simulation::is_initial_condition)) {
+      // Allocate bank for fission census
+      init_census_bank(simulation::fission_bank, 3 * simulation::work_per_rank);
 
-    // Allocate fission bank
-    init_fission_bank(simulation::fission_bank, 3 * simulation::work_per_rank);
-
-    // Allocate IFP bank
-    if (settings::ifp_on) {
-      resize_simulation_ifp_banks();
+      // Allocate IFP bank
+      if (settings::ifp_on)
+        resize_simulation_ifp_banks();
+    } else if (settings::kinetic_simulation &&
+               !simulation::is_initial_condition) {
+      // Allocate bank for time census
+      // TODO: forced branchless method will be used, so
+      // we don't need to worry about using the fission bank
+      init_census_bank(
+        simulation::time_census_bank, 3 * simulation::work_per_rank);
     }
   }
 
@@ -560,7 +578,9 @@ void finalize_generation()
   global_tally_leakage = 0.0;
 
   if (settings::run_mode == RunMode::EIGENVALUE &&
-      settings::solver_type == SolverType::MONTE_CARLO) {
+      settings::solver_type == SolverType::MONTE_CARLO &&
+      (!settings::kinetic_simulation ||
+        (settings::kinetic_simulation && simulation::is_initial_condition))) {
     // If using shared memory, stable sort the fission bank (by parent IDs)
     // so as to allow for reproducibility regardless of which order particles
     // are run in.
@@ -570,7 +590,10 @@ void finalize_generation()
     synchronize_bank(simulation::fission_bank);
   }
 
-  if (settings::run_mode == RunMode::EIGENVALUE) {
+  // TODO: will this prevent dynamic keff?
+  if (settings::run_mode == RunMode::EIGENVALUE &&
+      (!settings::kinetic_simulation ||
+        (settings::kinetic_simulation && simulation::is_initial_condition))) {
 
     // Calculate shannon entropy
     if (settings::entropy_on &&
@@ -586,6 +609,23 @@ void finalize_generation()
       print_generation();
     }
   }
+}
+
+void initialize_time_step()
+{
+  // Clear out the time census bank
+  simulation::time_census_bank.resize(0);
+}
+
+void finalize_time_step()
+{
+  // If using shared memory, stable sort the time census bank (by parent IDs)
+  // so as to allow for reproducibility regardless of which order particles
+  // are run in.
+  sort_census_bank(simulation::time_census_bank);
+
+  // Distribute time census bank across processors evenly
+  synchronize_bank(simulation::time_census_bank);
 }
 
 void initialize_history(Particle& p, int64_t index_source)
@@ -838,12 +878,13 @@ void transport_history_based_single_particle(Particle& p)
   p.event_death();
 }
 
-void transport_history_based()
+void transport_history_based(int time_bound_idx)
 {
 #pragma omp parallel for schedule(runtime)
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     Particle p;
     initialize_history(p, i_work);
+    p.time_bound_idx() = time_bound_idx;
     transport_history_based_single_particle(p);
   }
 }

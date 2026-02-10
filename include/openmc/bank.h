@@ -32,6 +32,8 @@ extern vector<vector<int>> ifp_fission_delayed_group_bank;
 
 extern vector<vector<double>> ifp_fission_lifetime_bank;
 
+extern SharedArray<SourceSite> time_census_bank;
+
 extern vector<int64_t> progeny_per_particle;
 
 } // namespace simulation
@@ -44,7 +46,7 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank);
 
 void free_memory_bank();
 
-void init_fission_bank(SharedArray<SourceSite>& census_bank, int64_t max);
+void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max);
 
 //! Sample/redistribute source sites from accumulated fission sites
 void synchronize_bank(SharedArray<SourceSite>& census_bank);

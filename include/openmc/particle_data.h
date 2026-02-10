@@ -508,6 +508,7 @@ private:
   double wgt_ww_born_ {-1.0};
   double mu_;
   double time_ {0.0};
+  int time_bound_idx_ {0};
   double time_last_ {0.0};
   double wgt_last_ {1.0};
 
@@ -637,6 +638,10 @@ public:
   const double& time() const { return time_; }
   double& time_last() { return time_last_; }
   const double& time_last() const { return time_last_; }
+
+  // Particle time boundary index for time censusing
+  int& time_bound_idx() { return time_bound_idx_; }
+  const int& time_bound_idx() const { return time_bound_idx_; }
 
   // Particle lifetime
   double& lifetime() { return lifetime_; }

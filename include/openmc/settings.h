@@ -90,6 +90,7 @@ extern bool source_mcpl_write;       //!< write source in mcpl files?
 extern bool surf_source_write;       //!< write surface source file?
 extern bool surf_mcpl_write;         //!< write surface mcpl file?
 extern bool surf_source_read;        //!< read surface source file?
+extern bool branchless_collision;    //!< use branchless collision?
 extern bool survival_biasing;        //!< use survival biasing?
 extern bool survival_normalization;  //!< use survival normalization?
 extern bool temperature_multipole;   //!< use multipole data?
@@ -203,6 +204,9 @@ extern double weight_survive;      //!< Survival weight after Russian roulette
 // Timestep variables for kinetic simulation
 extern int n_timesteps; //!< number of timesteps
 extern double dt;       //!< fixed timestep size
+extern vector<double>
+  time_census_boundaries; //!< time grid boundaries for time censis
+
 } // namespace settings
 
 //==============================================================================
