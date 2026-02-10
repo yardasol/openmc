@@ -105,6 +105,7 @@ void sample_neutron_reaction(Particle& p)
 
   const auto& nuc {data::nuclides[i_nuclide]};
 
+  // TODO: implement improved branchless collision here?
   if (nuc->fissionable_ && p.neutron_xs(i_nuclide).fission > 0.0) {
     auto& rx = sample_fission(i_nuclide, p);
     if (settings::run_mode == RunMode::EIGENVALUE) {
@@ -167,6 +168,7 @@ void sample_neutron_reaction(Particle& p)
   }
 }
 
+// TODO: modifications for branchless collsiion
 void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
 {
   // If uniform fission source weighting is turned on, we increase or decrease

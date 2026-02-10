@@ -2489,6 +2489,7 @@ void score_tracklength_tally_general(
     match.bins_present_ = false;
 }
 
+// TODO: anything need to be done here?
 void score_timed_tracklength_tally(Particle& p, double total_distance)
 {
   double speed = p.speed();

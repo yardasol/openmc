@@ -95,6 +95,7 @@ void scatter(Particle& p)
   p.event() = TallyEvent::SCATTER;
 }
 
+// TODO: modifications for branchless collision
 void create_fission_sites(Particle& p)
 {
   // If uniform fission source weighting is turned on, we increase or decrease
