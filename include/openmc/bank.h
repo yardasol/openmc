@@ -40,11 +40,14 @@ extern vector<int64_t> progeny_per_particle;
 // Non-member functions
 //==============================================================================
 
-void sort_fission_bank();
+void sort_census_bank(SharedArray<SourceSite>& census_bank);
 
 void free_memory_bank();
 
-void init_fission_bank(int64_t max);
+void init_fission_bank(SharedArray<SourceSite>& census_bank, int64_t max);
+
+//! Sample/redistribute source sites from accumulated fission sites
+void synchronize_bank(SharedArray<SourceSite>& census_bank);
 
 } // namespace openmc
 

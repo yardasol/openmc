@@ -355,7 +355,7 @@ void allocate_banks()
     simulation::source_bank.resize(simulation::work_per_rank);
 
     // Allocate fission bank
-    init_fission_bank(3 * simulation::work_per_rank);
+    init_fission_bank(simulation::fission_bank, 3 * simulation::work_per_rank);
 
     // Allocate IFP bank
     if (settings::ifp_on) {
@@ -564,10 +564,10 @@ void finalize_generation()
     // If using shared memory, stable sort the fission bank (by parent IDs)
     // so as to allow for reproducibility regardless of which order particles
     // are run in.
-    sort_fission_bank();
+    sort_census_bank(simulation::fission_bank);
 
     // Distribute fission bank across processors evenly
-    synchronize_bank();
+    synchronize_bank(simulation::fission_bank);
   }
 
   if (settings::run_mode == RunMode::EIGENVALUE) {
