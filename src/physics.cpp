@@ -48,7 +48,10 @@ void collision(Particle& p)
   // Sample reaction for the material the particle is in
   switch (p.type()) {
   case ParticleType::neutron:
-    sample_neutron_reaction(p);
+    if (!settings::branchless_collision)
+      sample_neutron_reaction(p);
+    else
+      sample_branchless_neutron_reaction(p);
     break;
   case ParticleType::photon:
     sample_photon_reaction(p);
@@ -105,7 +108,6 @@ void sample_neutron_reaction(Particle& p)
 
   const auto& nuc {data::nuclides[i_nuclide]};
 
-  // TODO: implement improved branchless collision here?
   if (nuc->fissionable_ && p.neutron_xs(i_nuclide).fission > 0.0) {
     auto& rx = sample_fission(i_nuclide, p);
     if (settings::run_mode == RunMode::EIGENVALUE) {
@@ -165,6 +167,153 @@ void sample_neutron_reaction(Particle& p)
     } else if (p.wgt() < settings::weight_cutoff) {
       russian_roulette(p, settings::weight_survive);
     }
+  }
+}
+
+void sample_branchless_neutron_reaction(Particle& p)
+{
+  // Sample a nuclide within the material
+  int i_nuclide = sample_nuclide(p);
+
+  // Save which nuclide particle had collision with
+  p.event_nuclide() = i_nuclide;
+
+  // Sample reaction
+  const auto& micro {p.neutron_xs(i_nuclide)};
+  double sigma_s = micro.total - micro.absorption;
+  double nu_sigma_t = sigma_s + micro.nu_fission;
+  // There is probably a cleaner way to do this...
+  double prob_fission = micro.nu_fission / nu_sigma_t;
+  double sampled_probability = prn(p.current_seed());
+
+  // Create fission bank sites. Note that while a fission reaction is sampled,
+  // it never actually "happens", i.e. the weight of the particle does not
+  // change when sampling fission sites. The following block handles all
+  // absorption (including fission)
+
+  if (prob_fission > sampled_probability) {
+    auto& rx = sample_fission(i_nuclide, p);
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      // TODO: implement precursor particles in this function?
+      create_branchless_fission_sites(p, i_nuclide, rx);
+    } else if (settings::run_mode == RunMode::FIXED_SOURCE &&
+               settings::create_fission_neutrons) {
+      create_branchless_fission_sites(p, i_nuclide, rx);
+    }
+    p.event_mt() = rx.mt_;
+  }
+
+  // Create secondary photons
+  if (settings::photon_transport) {
+    sample_secondary_photons(p, i_nuclide);
+  }
+
+  // Scattering
+  if (prob_fission < sampled_probability) {
+    // Sample a scattering reaction and determine the secondary energy of the
+    // exiting neutron
+    const auto& ncrystal_mat = model::materials[p.material()]->ncrystal_mat();
+    // TODO: add support for branchless collision
+    if (ncrystal_mat && p.E() < NCRYSTAL_MAX_ENERGY) {
+      ncrystal_mat.scatter(p);
+    } else {
+      scatter(p, i_nuclide);
+    }
+  }
+
+  // Advance URR seed stream 'N' times after energy changes
+  if (p.E() != p.E_last()) {
+    advance_prn_seed(data::nuclides.size(), &p.seeds(STREAM_URR_PTABLE));
+  }
+
+  // branchless collision weight change
+  const double wgt_branchless =
+    p.wgt() * (micro.nu_fission + sigma_s) / micro.total;
+  p.wgt() *= wgt_branchless;
+
+  // Play russian roulette
+  // if survival normalization is on, use normalized weight cutoff and
+  // normalized weight survive
+  if (settings::survival_normalization) {
+    if (p.wgt() < settings::weight_cutoff * p.wgt_born()) {
+      russian_roulette(p, settings::weight_survive * p.wgt_born());
+    }
+  } else if (p.wgt() < settings::weight_cutoff) {
+    russian_roulette(p, settings::weight_survive);
+  }
+}
+
+// TODO: remove creation of bank?
+// TODO add prob of precursor particle creation
+void create_branchless_fission_sites(
+  Particle& p, int i_nuclide, const Reaction& rx)
+{
+  // Initialize the counter of delayed neutrons encountered for each delayed
+  // group.
+  double nu_d[MAX_DELAYED_GROUPS] = {0.};
+
+  // Clear out particle's nu fission bank
+  p.nu_bank().clear();
+
+  p.fission() = true;
+
+  // Counter for the number of fission sites successfully stored to the shared
+  // fission bank or the secondary particle bank
+  int n_sites_stored;
+
+  for (n_sites_stored = 0; n_sites_stored < 1; n_sites_stored++) {
+    // Initialize fission site object with particle data
+    SourceSite site;
+    site.r = p.r();
+    site.particle = ParticleType::neutron;
+    site.time = p.time();
+    site.wgt = 1.0;
+    site.surf_id = 0;
+
+    // Sample delayed group and angle/energy for fission reaction
+    sample_fission_neutron(i_nuclide, rx, &site, p);
+
+    // Reject site if it exceeds time cutoff
+    if (site.delayed_group > 0) {
+      double t_cutoff = settings::time_cutoff[static_cast<int>(site.particle)];
+      if (site.time > t_cutoff) {
+        continue;
+      }
+    }
+
+    // Set parent and progeny IDs
+    site.parent_id = p.id();
+    site.progeny_id = p.n_progeny()++;
+
+    // Increment the number of neutrons born delayed
+    if (site.delayed_group > 0) {
+      nu_d[site.delayed_group - 1]++;
+    }
+
+    // Write fission particles to nuBank
+    NuBank& nu_bank_entry = p.nu_bank().emplace_back();
+    nu_bank_entry.wgt = site.wgt;
+    nu_bank_entry.E = site.E;
+    nu_bank_entry.delayed_group = site.delayed_group;
+  }
+
+  // If shared fission bank was full, and no fissions could be added,
+  // set the particle fission flag to false.
+  if (n_sites_stored == 0) {
+    p.fission() = false;
+    return;
+  }
+
+  // Set nu to the number of fission sites successfully stored. If the fission
+  // bank was not found to be full then these values are already equivalent.
+  int nu = 1.0;
+  double weight = 1.0;
+
+  // Store the total weight banked for analog fission tallies
+  p.n_bank() = nu;
+  p.wgt_bank() = nu / weight;
+  for (size_t d = 0; d < MAX_DELAYED_GROUPS; d++) {
+    p.n_delayed_bank(d) = nu_d[d];
   }
 }
 
@@ -658,6 +807,7 @@ void absorption(Particle& p, int i_nuclide)
     if (p.neutron_xs(i_nuclide).absorption >
         prn(p.current_seed()) * p.neutron_xs(i_nuclide).total) {
       // Score absorption estimate of keff
+      // TODO: disable for kinetic sim
       if (settings::run_mode == RunMode::EIGENVALUE) {
         p.keff_tally_absorption() += p.wgt() *
                                      p.neutron_xs(i_nuclide).nu_fission /

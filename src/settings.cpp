@@ -772,6 +772,8 @@ void read_settings_xml(pugi::xml_node root)
   // Branchless collision
   if (check_for_node(root, "branchless_collision")) {
     branchless_collision = get_node_value_bool(root, "branchless_collision");
+    warning("Branchless collision will create large variations in particle "
+            " weights. Weight windows are strongly recommended.");
   }
 
   // Survival biasing

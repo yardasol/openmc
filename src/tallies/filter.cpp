@@ -123,6 +123,8 @@ Filter* Filter::create(const std::string& type, int32_t id)
   } else if (type == "collision") {
     return Filter::create<CollisionFilter>(id);
   } else if (type == "energyout") {
+    if (settings::branchless_collision)
+      fatal_error("EnergyoutFilter is not usable with branchless collision");
     return Filter::create<EnergyoutFilter>(id);
   } else if (type == "legendre") {
     return Filter::create<LegendreFilter>(id);

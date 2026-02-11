@@ -201,10 +201,10 @@ double score_fission_q(const Particle& p, int score_bin, const Tally& tally,
 {
   if (tally.estimator_ == TallyEstimator::ANALOG) {
     const Nuclide& nuc {*data::nuclides[p.event_nuclide()]};
-    if (settings::survival_biasing) {
-      // No fission events occur if survival biasing is on -- need to
-      // calculate fraction of absorptions that would have resulted in
-      // fission scaled by the Q-value
+    if (settings::survival_biasing || settings::branchless_collision) {
+      // No fission events occur if survival biasing or branchless collision is
+      // on -- need to calculate fraction of absorptions that would have
+      // resulted in fission scaled by the Q-value
       if (p.neutron_xs(p.event_nuclide()).total > 0) {
         return p.wgt_last() * get_nuc_fission_q(nuc, p, score_bin) *
                p.neutron_xs(p.event_nuclide()).fission * flux /
@@ -1123,11 +1123,14 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
   auto E = p.E_last();
 
   // Determine how much weight was absorbed due to survival biasing
-  double wgt_absorb = settings::survival_biasing
-                        ? p.wgt_last() *
-                            p.neutron_xs(p.event_nuclide()).absorption /
-                            p.neutron_xs(p.event_nuclide()).total
-                        : 0.0;
+  // Absorption doesn't happen in branchless collision, but the expected
+  // absorbed weight is similar to survival biasing
+  double wgt_absorb =
+    (settings::survival_biasing || settings::branchless_collision)
+      ? p.wgt_last() * p.neutron_xs(p.event_nuclide()).absorption /
+          p.neutron_xs(p.event_nuclide()).total
+      : 0.0;
+  // TODO: do the same but for survival biasing
 
   using Type = ParticleType;
 
@@ -1205,7 +1208,7 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
       if (p.type() != Type::neutron && p.type() != Type::photon)
         continue;
 
-      if (settings::survival_biasing) {
+      if (settings::survival_biasing || settings::branchless_collision) {
         // No absorption events actually occur if survival biasing is on --
         // just use weight absorbed in survival biasing
         score = wgt_absorb * flux;
@@ -1222,7 +1225,7 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
     case SCORE_FISSION:
       if (p.macro_xs().fission == 0)
         continue;
-      if (settings::survival_biasing) {
+      if (settings::survival_biasing || settings::branchless_collision) {
         // No fission events occur if survival biasing is on -- use collision
         // estimator instead
         if (p.neutron_xs(p.event_nuclide()).total > 0) {
@@ -1243,9 +1246,12 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
       }
       break;
 
+    // TODO: add support for branchless collision
     case SCORE_NU_FISSION:
       if (p.macro_xs().fission == 0)
         continue;
+      // TODO: disable for branchless collision
+      // Add warning when using energyout filter??
       if (settings::survival_biasing || p.fission()) {
         if (tally.energyout_filter_ != C_NONE) {
           // Fission has multiple outgoing neutrons so this helper function
@@ -1254,7 +1260,7 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
           continue;
         }
       }
-      if (settings::survival_biasing) {
+      if (settings::survival_biasing || settings::branchless_collision) {
         // No fission events occur if survival biasing is on -- use collision
         // estimator instead
         if (p.neutron_xs(p.event_nuclide()).total > 0) {
@@ -1279,6 +1285,8 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
     case SCORE_PROMPT_NU_FISSION:
       if (p.macro_xs().fission == 0)
         continue;
+      // TODO: disable for branchless collision
+      // Add warning when using energyout filter??
       if (settings::survival_biasing || p.fission()) {
         if (tally.energyout_filter_ != C_NONE) {
           // Fission has multiple outgoing neutrons so this helper function
@@ -1287,7 +1295,7 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
           continue;
         }
       }
-      if (settings::survival_biasing) {
+      if (settings::survival_biasing || settings::branchless_collision) {
         // No fission events occur if survival biasing is on -- need to
         // calculate fraction of absorptions that would have resulted in
         // prompt-nu-fission
@@ -1315,9 +1323,12 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
       }
       break;
 
+    // TODO: needs modificaiton for precursor particles??
     case SCORE_DELAYED_NU_FISSION:
       if (p.macro_xs().fission == 0)
         continue;
+      // TODO: disable for branchless collision
+      // Add warning when using energyout filter??
       if (settings::survival_biasing || p.fission()) {
         if (tally.energyout_filter_ != C_NONE) {
           // Fission has multiple outgoing neutrons so this helper function
@@ -1326,7 +1337,7 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
           continue;
         }
       }
-      if (settings::survival_biasing) {
+      if (settings::survival_biasing || settings::branchless_collision) {
         // No fission events occur if survival biasing is on -- need to
         // calculate fraction of absorptions that would have resulted in
         // delayed-nu-fission
@@ -1395,7 +1406,7 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
     case SCORE_DECAY_RATE:
       if (p.macro_xs().fission == 0)
         continue;
-      if (settings::survival_biasing) {
+      if (settings::survival_biasing || settings::branchless_collision) {
         // No fission events occur if survival biasing is on -- need to
         // calculate fraction of absorptions that would have resulted in
         // delayed-nu-fission
@@ -1487,7 +1498,7 @@ void score_general_ce_analog(Particle& p, int i_tally, int start_index,
       score = 0.;
       // Kappa-fission values are determined from the Q-value listed for the
       // fission cross section.
-      if (settings::survival_biasing) {
+      if (settings::survival_biasing || settings::branchless_collision) {
         // No fission events occur if survival biasing is on -- need to
         // calculate fraction of absorptions that would have resulted in
         // fission scaled by the Q-value
@@ -1631,7 +1642,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
   double wgt_absorb = 0.0;
   if (tally.estimator_ == TallyEstimator::ANALOG ||
       tally.estimator_ == TallyEstimator::COLLISION) {
-    if (settings::survival_biasing) {
+    if (settings::survival_biasing || settings::branchless_collision) {
       // Determine weight that was absorbed
       wgt_absorb = p.wgt_last() * p.macro_xs().absorption / p.macro_xs().total;
 
@@ -1803,7 +1814,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
 
     case SCORE_ABSORPTION:
       if (tally.estimator_ == TallyEstimator::ANALOG) {
-        if (settings::survival_biasing) {
+        if (settings::survival_biasing || settings::branchless_collision) {
           // No absorption events actually occur if survival biasing is on --
           // just use weight absorbed in survival biasing
           score = wgt_absorb * flux;
@@ -1832,7 +1843,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
 
     case SCORE_FISSION:
       if (tally.estimator_ == TallyEstimator::ANALOG) {
-        if (settings::survival_biasing) {
+        if (settings::survival_biasing || settings::branchless_collision) {
           // No fission events occur if survival biasing is on -- need to
           // calculate fraction of absorptions that would have resulted in
           // fission
@@ -1867,6 +1878,8 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
 
     case SCORE_NU_FISSION:
       if (tally.estimator_ == TallyEstimator::ANALOG) {
+        // TODO: disable for branchless collision
+        // Add warning when using energyout filter??
         if (settings::survival_biasing || p.fission()) {
           if (tally.energyout_filter_ != C_NONE) {
             // Fission has multiple outgoing neutrons so this helper function
@@ -1875,7 +1888,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
             continue;
           }
         }
-        if (settings::survival_biasing) {
+        if (settings::survival_biasing || settings::branchless_collision) {
           // No fission events occur if survival biasing is on -- need to
           // calculate fraction of absorptions that would have resulted in
           // nu-fission
@@ -1919,6 +1932,8 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
 
     case SCORE_PROMPT_NU_FISSION:
       if (tally.estimator_ == TallyEstimator::ANALOG) {
+        // TODO: disable for branchless collision
+        // Add warning when using energyout filter??
         if (settings::survival_biasing || p.fission()) {
           if (tally.energyout_filter_ != C_NONE) {
             // Fission has multiple outgoing neutrons so this helper function
@@ -1927,7 +1942,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
             continue;
           }
         }
-        if (settings::survival_biasing) {
+        if (settings::survival_biasing || settings::branchless_collision) {
           // No fission events occur if survival biasing is on -- need to
           // calculate fraction of absorptions that would have resulted in
           // prompt-nu-fission
@@ -1975,6 +1990,8 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
 
     case SCORE_DELAYED_NU_FISSION:
       if (tally.estimator_ == TallyEstimator::ANALOG) {
+        // TODO: disable for branchless collision
+        // Add warning when using energyout filter??
         if (settings::survival_biasing || p.fission()) {
           if (tally.energyout_filter_ != C_NONE) {
             // Fission has multiple outgoing neutrons so this helper function
@@ -1983,7 +2000,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
             continue;
           }
         }
-        if (settings::survival_biasing) {
+        if (settings::survival_biasing || settings::branchless_collision) {
           // No fission events occur if survival biasing is on -- need to
           // calculate fraction of absorptions that would have resulted in
           // delayed-nu-fission
@@ -2107,7 +2124,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
 
     case SCORE_DECAY_RATE:
       if (tally.estimator_ == TallyEstimator::ANALOG) {
-        if (settings::survival_biasing) {
+        if (settings::survival_biasing || settings::branchless_collision) {
           // No fission events occur if survival biasing is on -- need to
           // calculate fraction of absorptions that would have resulted in
           // delayed-nu-fission
@@ -2260,7 +2277,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
 
     case SCORE_KAPPA_FISSION:
       if (tally.estimator_ == TallyEstimator::ANALOG) {
-        if (settings::survival_biasing) {
+        if (settings::survival_biasing || settings::branchless_collision) {
           // No fission events occur if survival biasing is on -- need to
           // calculate fraction of absorptions that would have resulted in
           // fission scaled by the Q-value

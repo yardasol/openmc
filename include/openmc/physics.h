@@ -20,6 +20,10 @@ void collision(Particle& p);
 //! Samples an incident neutron reaction
 void sample_neutron_reaction(Particle& p);
 
+//! Samples an incident neutron reaction using the branchless collision biased
+//! sampling method
+void sample_branchless_neutron_reaction(Particle& p);
+
 //! Samples an element based on the macroscopic cross sections for each nuclide
 //! within a material and then samples a reaction for that element and calls the
 //! appropriate routine to process the physics.
@@ -49,6 +53,9 @@ int sample_nuclide(Particle& p);
 //! Determine the average total, prompt, and delayed neutrons produced from
 //! fission and creates appropriate bank sites.
 void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx);
+
+void create_branchless_fission_sites(
+  Particle& p, int i_nuclide, const Reaction& rx);
 
 int sample_element(Particle& p);
 
