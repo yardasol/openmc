@@ -1972,11 +1972,11 @@ void FlatSourceDomain::compute_single_phi_prime(SourceRegionHandle& srh)
     double inverse_vbar = inverse_vbar_[material * negroups_ + g];
     // TODO: add support for explicit void
     double sigma_t = sigma_t_[material * negroups_ + g] * density_mult;
-    ;
 
     double scalar_flux_time_derivative =
       A0 * srh.scalar_flux_old(g) + srh.scalar_flux_rhs_bd(g);
-    srh.phi_prime(g) = scalar_flux_time_derivative * inverse_vbar / sigma_t;
+    srh.phi_prime(g) =
+      scalar_flux_time_derivative * inverse_vbar / (4 * PI * sigma_t);
   }
 }
 
@@ -2000,7 +2000,7 @@ void FlatSourceDomain::compute_single_T1(SourceRegionHandle& srh)
 
     double scalar_flux_time_derivative_2 =
       B0 * srh.scalar_flux_old(g) + srh.scalar_flux_rhs_bd_2(g);
-    scalar_flux_time_derivative_2 *= inverse_vbar;
+    scalar_flux_time_derivative_2 *= inverse_vbar / (4 * PI);
 
     // Divide by sigma_t to save time during transport
     srh.T1(g) =
