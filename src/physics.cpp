@@ -270,7 +270,8 @@ void create_branchless_fission_sites(
     site.wgt = 1.0;
     site.surf_id = 0;
 
-    // Sample delayed group and angle/energy for fission reaction
+    // TODO: neutron survives OR it becomes a precursor particle
+    //  Sample delayed group and angle/energy for fission reaction
     sample_fission_neutron(i_nuclide, rx, &site, p);
 
     // Reject site if it exceeds time cutoff
@@ -315,6 +316,37 @@ void create_branchless_fission_sites(
   for (size_t d = 0; d < MAX_DELAYED_GROUPS; d++) {
     p.n_delayed_bank(d) = nu_d[d];
   }
+}
+
+// TODO: modify this for precursor bank?
+// particle here is a precursor particle :)
+void sample_forced_decay(
+  int i_nuclide, const Reaction& rx, SourceSite* site, Particle& p)
+{
+  double E_in = p.E();
+  uint64_t* seed = p.current_seed();
+  // ====================================================================
+  // FORCED DECAY
+  double dt = settings::time_census_boundaries[p.time_bound_idx() + 1] -
+              settings::time_census_boundaries[p.time_bound_idx()];
+  site->time += prn(p.current_seed()) * dt;
+
+  int group = sample_delay_group(i_nuclide, rx, E_in, seed);
+
+  // set the delayed group for the particle born from forced decay
+  site->delayed_group = group;
+  double decay_rate = rx.products_[site->delayed_group].decay_rate_;
+
+  // Update delayed neutron and precursor particle weights
+  double exp = std::exp(-1.0 * dt * decay_rate);
+  site->wgt = p.wgt() * (1.0 - exp);
+  p.wgt() *= exp;
+
+  // sample from prompt neutron energy distribution
+  double mu = sample_fission_neutron_angle(i_nuclide, rx, site, E_in, seed);
+
+  // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
+  site->u = rotate_angle(p.u(), mu, nullptr, seed);
 }
 
 // TODO: modifications for branchless collsiion
@@ -1210,25 +1242,7 @@ void sample_fission_neutron(
     // DELAYED NEUTRON SAMPLED
 
     // sampled delayed precursor group
-    double xi = prn(seed) * nu_d;
-    double prob = 0.0;
-    int group;
-    for (group = 1; group < nuc->n_precursor_; ++group) {
-      // determine delayed neutron precursor yield for group j
-      double yield = (*rx.products_[group].yield_)(E_in);
-
-      // Check if this group is sampled
-      prob += yield;
-      if (xi < prob)
-        break;
-    }
-
-    // if the sum of the probabilities is slightly less than one and the
-    // random number is greater, j will be greater than nuc %
-    // n_precursor -- check for this condition
-    group = std::min(group, nuc->n_precursor_);
-
-    // set the delayed group for the particle born from fission
+    int group = sample_delay_group(i_nuclide, rx, E_in, seed);
     site->delayed_group = group;
 
     // Sample time of emission based on decay constant of precursor
@@ -1244,8 +1258,47 @@ void sample_fission_neutron(
   }
 
   // sample from prompt neutron energy distribution
-  int n_sample = 0;
+  double mu = sample_fission_neutron_angle(i_nuclide, rx, site, E_in, seed);
+
+  // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
+  site->u = rotate_angle(p.u(), mu, nullptr, seed);
+}
+
+int sample_delay_group(
+  int i_nuclide, const Reaction& rx, double E_in, uint64_t* seed)
+{
+  const auto& nuc {data::nuclides[i_nuclide]};
+  double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+
+  // sampled delayed precursor group
+  double xi = prn(seed) * nu_d;
+  double prob = 0.0;
+  int group;
+  for (group = 1; group < nuc->n_precursor_; ++group) {
+    // determine delayed neutron precursor yield for group j
+    double yield = (*rx.products_[group].yield_)(E_in);
+
+    // Check if this group is sampled
+    prob += yield;
+    if (xi < prob)
+      break;
+  }
+
+  // if the sum of the probabilities is slightly less than one and the
+  // random number is greater, j will be greater than nuc %
+  // n_precursor -- check for this condition
+  group = std::min(group, nuc->n_precursor_);
+
+  return group;
+}
+
+double sample_fission_neutron_angle(int i_nuclide, const Reaction& rx,
+  SourceSite* site, double E_in, uint64_t* seed)
+{
+  const auto& nuc {data::nuclides[i_nuclide]};
+
   double mu;
+  int n_sample = 0;
   while (true) {
     rx.products_[site->delayed_group].sample(E_in, site->E, mu, seed);
 
@@ -1263,9 +1316,7 @@ void sample_fission_neutron(
                   nuc->name_);
     }
   }
-
-  // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
-  site->u = rotate_angle(p.u(), mu, nullptr, seed);
+  return mu;
 }
 
 void inelastic_scatter(const Nuclide& nuc, const Reaction& rx, Particle& p)

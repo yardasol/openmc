@@ -57,6 +57,9 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx);
 void create_branchless_fission_sites(
   Particle& p, int i_nuclide, const Reaction& rx);
 
+void sample_forced_decay(
+  int i_nuclide, const Reaction& rx, SourceSite* site, Particle& p);
+
 int sample_element(Particle& p);
 
 Reaction& sample_fission(int i_nuclide, Particle& p);
@@ -89,6 +92,12 @@ Direction sample_cxs_target_velocity(
 
 void sample_fission_neutron(
   int i_nuclide, const Reaction& rx, SourceSite* site, Particle& p);
+
+int sample_delay_group(
+  int i_nuclide, const Reaction& rx, double E_in, uint64_t* seed);
+
+double sample_fission_neutron_angle(int i_nuclide, const Reaction& rx,
+  SourceSite* site, double E_in, uint64_t* seed);
 
 //! handles all reactions with a single secondary neutron (other than fission),
 //! i.e. level scattering, (n,np), (n,na), etc.
