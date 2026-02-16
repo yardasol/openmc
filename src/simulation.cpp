@@ -69,6 +69,37 @@ int openmc_run()
 
   openmc_simulation_finalize();
   openmc::simulation::time_total.stop();
+
+  if (openmc::settings::kinetic_simulation) {
+
+    // TODO: setup criticaity source bank for TD batches
+    //  fission bank or source bank from last batch?
+    //  either way this will require MPI... or can we just do this independently
+    //  on each processor?? I think yes...
+
+    // TODO: sample precursor particles during the last batch (or two) of the IC
+    //  calculation. Create a bank for this?
+
+    // Rename statepoint and tallies file for initial condition calculation
+    openmc::rename_time_step_file(
+      fmt::format("statepoint.{0}", openmc::settings::n_batches), ".h5", 0);
+    if (openmc::settings::output_tallies)
+      openmc::rename_time_step_file("tallies", ".out", 0);
+
+    openmc::simulation::time_total.start();
+    openmc_simulation_init();
+    // Loop over time census boundaries (should only work for kinetic
+    // simullation)
+    // Generations are now time steps
+    openmc::settings::gen_per_batch =
+      openmc::settings::time_census_boundaries.size();
+    openmc::simulation::is_initial_condition = false;
+    while (status == 0 && err == 0) {
+      err = openmc_next_batch(&status);
+    }
+    openmc_simulation_finalize();
+    openmc::simulation::time_total.stop();
+  }
   return err;
 }
 
@@ -256,7 +287,7 @@ int openmc_next_batch(int* status)
   initialize_batch();
 
   // =======================================================================
-  // LOOP OVER GENERATIONS
+  // LOOP OVER GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
   for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
 
     initialize_generation();
@@ -268,17 +299,7 @@ int openmc_next_batch(int* status)
     if (settings::event_based) {
       transport_event_based();
     } else {
-      // Loop over time census boundaries (should only work for kinetic
-      // simullation)
-      int time_bound_idx = 0;
-      while (time_bound_idx < settings::time_census_boundaries.size()) {
-        if (settings::kinetic_simulation)
-          initialize_time_step();
-        transport_history_based(time_bound_idx);
-        if (settings::kinetic_simulation)
-          finalize_time_step();
-        time_bound_idx++;
-      }
+      transport_history_based();
     }
 
     // Accumulate time for transport
@@ -541,7 +562,9 @@ void finalize_batch()
 
 void initialize_generation()
 {
-  if (settings::run_mode == RunMode::EIGENVALUE) {
+  if (settings::run_mode == RunMode::EIGENVALUE &&
+      (!settings::kinetic_simulation ||
+        (settings::kinetic_simulation && simulation::is_initial_condition))) {
     // Clear out the fission bank
     simulation::fission_bank.resize(0);
 
@@ -552,6 +575,10 @@ void initialize_generation()
     // Store current value of tracklength k
     simulation::keff_generation = simulation::global_tallies(
       GlobalTally::K_TRACKLENGTH, TallyResult::VALUE);
+  }
+  if (settings::kinetic_simulation && !simulation::is_initial_condition) {
+    // Clear out the time census bank
+    simulation::time_census_bank.resize(0);
   }
 }
 
@@ -590,6 +617,19 @@ void finalize_generation()
     synchronize_bank(simulation::fission_bank);
   }
 
+  // Time census
+  if (settings::solver_type == SolverType::MONTE_CARLO &&
+      settings::kinetic_simulation && !simulation::is_initial_condition) {
+
+    // If using shared memory, stable sort the time census bank (by parent IDs)
+    // so as to allow for reproducibility regardless of which order particles
+    // are run in.
+    sort_census_bank(simulation::time_census_bank);
+
+    // Distribute time census bank across processors evenly
+    synchronize_bank(simulation::time_census_bank);
+  }
+
   // TODO: will this prevent dynamic keff?
   if (settings::run_mode == RunMode::EIGENVALUE &&
       (!settings::kinetic_simulation ||
@@ -609,23 +649,6 @@ void finalize_generation()
       print_generation();
     }
   }
-}
-
-void initialize_time_step()
-{
-  // Clear out the time census bank
-  simulation::time_census_bank.resize(0);
-}
-
-void finalize_time_step()
-{
-  // If using shared memory, stable sort the time census bank (by parent IDs)
-  // so as to allow for reproducibility regardless of which order particles
-  // are run in.
-  sort_census_bank(simulation::time_census_bank);
-
-  // Distribute time census bank across processors evenly
-  synchronize_bank(simulation::time_census_bank);
 }
 
 void initialize_history(Particle& p, int64_t index_source)
@@ -674,6 +697,7 @@ void initialize_history(Particle& p, int64_t index_source)
   init_particle_seeds(particle_seed, p.seeds());
 
   // set particle trace
+  // TODO: Will this mess up for TD sims?
   p.trace() = false;
   if (simulation::current_batch == settings::trace_batch &&
       simulation::current_gen == settings::trace_gen &&
@@ -686,6 +710,11 @@ void initialize_history(Particle& p, int64_t index_source)
   // Set the particle's initial weight window value.
   p.wgt_ww_born() = -1.0;
   apply_weight_windows(p);
+
+  // Set particle time index if using time censusing
+  p.time_bound_idx() = 0;
+  if (openmc::settings::kinetic_simulation && !simulation::is_initial_condition)
+    p.time_bound_idx() = openmc::simulation::current_gen - 1;
 
   // Display message if high verbosity or trace is on
   if (settings::verbosity >= 9 || p.trace()) {
@@ -878,13 +907,12 @@ void transport_history_based_single_particle(Particle& p)
   p.event_death();
 }
 
-void transport_history_based(int time_bound_idx)
+void transport_history_based()
 {
 #pragma omp parallel for schedule(runtime)
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     Particle p;
     initialize_history(p, i_work);
-    p.time_bound_idx() = time_bound_idx;
     transport_history_based_single_particle(p);
   }
 }
@@ -939,6 +967,30 @@ void transport_event_based()
     remaining_work -= n_particles;
     source_offset += n_particles;
   }
+}
+
+//-----------------------------------------------------------------------------
+// Functions for kinetic simulations
+
+void rename_time_step_file(
+  std::string base_filename, std::string extension, int i)
+{
+  // Rename file
+  std::string old_filename_ = fmt::format(
+    "{0}{1}{2}", openmc::settings::path_output, base_filename, extension);
+  std::string new_filename_ =
+    fmt::format("{0}{1}", openmc::settings::path_output, base_filename);
+  if (i != -1) {
+    new_filename_ = fmt::format("{0}_{1}", new_filename_, i);
+  }
+  // if (FlatSourceDomain::save_forward_output_) {
+  //   new_filename_ = fmt::format("{0}_{1}", new_filename_, "forward");
+  // }
+  new_filename_ = fmt::format("{0}{1}", new_filename_, extension);
+
+  const char* old_fname = old_filename_.c_str();
+  const char* new_fname = new_filename_.c_str();
+  std::rename(old_fname, new_fname);
 }
 
 } // namespace openmc

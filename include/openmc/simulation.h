@@ -77,10 +77,7 @@ void initialize_data();
 //! Initialize a batch
 void initialize_batch();
 
-//! Initialize a time grid cell for time censusing
-void initialize_time_step();
-
-//! Initialize a fission generation
+//! Initialize a fission generation (or a time grid cell for time censusing)
 void initialize_generation();
 
 //! Full initialization of a particle history
@@ -93,10 +90,7 @@ void initialize_history(Particle& p, int64_t index_source);
 //! appropriate
 void finalize_batch();
 
-//! Finalize a time grid cell for time censusing
-void finalize_time_step();
-
-//! Finalize a fission generation
+//! Finalize a fission generation (or a time grid cell for time censusing)
 void finalize_generation();
 
 //! Determine overall generation number
@@ -113,10 +107,13 @@ void free_memory_simulation();
 void transport_history_based_single_particle(Particle& p);
 
 //! Simulate all particle histories using history-based parallelism
-void transport_history_based(int time_bound_idx);
+void transport_history_based();
 
 //! Simulate all particle histories using event-based parallelism
 void transport_event_based();
+
+void rename_time_step_file(
+  std::string base_filename, std::string extension, int i);
 
 } // namespace openmc
 

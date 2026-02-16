@@ -5,6 +5,7 @@
 //! \brief Settings for OpenMC
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <unordered_set>
 
@@ -204,7 +205,7 @@ extern double weight_survive;      //!< Survival weight after Russian roulette
 // Timestep variables for kinetic simulation
 extern int n_timesteps; //!< number of timesteps
 extern double dt;       //!< fixed timestep size
-extern vector<double>
+extern std::deque<double>
   time_census_boundaries; //!< time grid boundaries for time censis
 
 } // namespace settings

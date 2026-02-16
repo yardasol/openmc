@@ -1,7 +1,8 @@
 #include "openmc/settings.h"
 #include "openmc/random_ray/flat_source_domain.h"
 
-#include <cmath>  // for ceil, pow
+#include <cmath> // for ceil, pow
+#include <deque>
 #include <limits> // for numeric_limits
 #include <string>
 
@@ -154,7 +155,7 @@ double weight_survive {1.0};
 // Timestep variables for kinetic simulation
 int n_timesteps {1};
 double dt;
-vector<double> time_census_boundaries {INFTY};
+std::deque<double> time_census_boundaries {INFTY};
 
 } // namespace settings
 
@@ -279,8 +280,10 @@ void get_run_parameters(pugi::xml_node node_base)
   // Get timestep parameters for kinetic simulations
   if (kinetic_simulation) {
     if (check_for_node(node_base, "time_census_boundaries")) {
-      time_census_boundaries =
+      vector<double> t_bounds =
         get_node_array<double>(node_base, "time_census_boundaries");
+      std::move(
+        begin(t_bounds), end(t_bounds), back_inserter(time_census_boundaries));
     }
     // TODO REPLACE TIMESTEP PARAMETERS WITH TIME FILTER TIME GRID
     // use model::time_grid (see tally.cpp, add to time grid)
