@@ -156,6 +156,7 @@ double weight_survive {1.0};
 int n_timesteps {1};
 double dt;
 std::deque<double> time_census_boundaries {INFTY};
+int64_t n_precursor_particles {0};
 
 } // namespace settings
 

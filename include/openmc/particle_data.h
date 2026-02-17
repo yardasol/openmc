@@ -31,7 +31,7 @@ constexpr double CACHE_INVALID {-1.0};
 // Aliases and type definitions
 
 //! Particle types
-enum class ParticleType { neutron, photon, electron, positron };
+enum class ParticleType { neutron, photon, electron, positron, precursor };
 
 //! Saved ("banked") state of a particle
 //! NOTE: This structure's MPI type is built in initialize_mpi() of
@@ -45,6 +45,7 @@ struct SourceSite {
   Direction u;
   double E;
   double time {0.0};
+  double time_born {0.0};
   double wgt {1.0};
   int delayed_group {0};
   int surf_id {SURFACE_NONE};
@@ -508,6 +509,7 @@ private:
   double wgt_ww_born_ {-1.0};
   double mu_;
   double time_ {0.0};
+  double time_born_ {0.0};
   int time_bound_idx_ {0};
   double time_last_ {0.0};
   double wgt_last_ {1.0};

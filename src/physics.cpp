@@ -195,10 +195,10 @@ void sample_branchless_neutron_reaction(Particle& p)
     auto& rx = sample_fission(i_nuclide, p);
     if (settings::run_mode == RunMode::EIGENVALUE) {
       // TODO: implement precursor particles in this function?
-      create_branchless_fission_sites(p, i_nuclide, rx);
+      branchless_fission(p, i_nuclide, rx);
     } else if (settings::run_mode == RunMode::FIXED_SOURCE &&
                settings::create_fission_neutrons) {
-      create_branchless_fission_sites(p, i_nuclide, rx);
+      branchless_fission(p, i_nuclide, rx);
     }
     p.event_mt() = rx.mt_;
   }
@@ -213,7 +213,6 @@ void sample_branchless_neutron_reaction(Particle& p)
     // Sample a scattering reaction and determine the secondary energy of the
     // exiting neutron
     const auto& ncrystal_mat = model::materials[p.material()]->ncrystal_mat();
-    // TODO: add support for branchless collision
     if (ncrystal_mat && p.E() < NCRYSTAL_MAX_ENERGY) {
       ncrystal_mat.scatter(p);
     } else {
@@ -229,7 +228,7 @@ void sample_branchless_neutron_reaction(Particle& p)
   // branchless collision weight change
   const double wgt_branchless =
     p.wgt() * (micro.nu_fission + sigma_s) / micro.total;
-  p.wgt() *= wgt_branchless;
+  p.wgt() = wgt_branchless;
 
   // Play russian roulette
   // if survival normalization is on, use normalized weight cutoff and
@@ -245,7 +244,7 @@ void sample_branchless_neutron_reaction(Particle& p)
 
 // TODO: remove creation of bank?
 // TODO add prob of precursor particle creation
-void create_branchless_fission_sites(
+void branchless_fission(
   Particle& p, int i_nuclide, const Reaction& rx)
 {
   // Initialize the counter of delayed neutrons encountered for each delayed
@@ -257,56 +256,34 @@ void create_branchless_fission_sites(
 
   p.fission() = true;
 
-  // Counter for the number of fission sites successfully stored to the shared
-  // fission bank or the secondary particle bank
-  int n_sites_stored;
+  // Only a single particle is created in branchless collsiion
+  // Sample prompt or delayed neutron, or precursor particle if decay time is
+  // apst the current time boundary 
+  sample_branchless_fission(i_nuclide, rx, p);
 
-  for (n_sites_stored = 0; n_sites_stored < 1; n_sites_stored++) {
-    // Initialize fission site object with particle data
-    SourceSite site;
-    site.r = p.r();
-    site.particle = ParticleType::neutron;
-    site.time = p.time();
-    site.wgt = 1.0;
-    site.surf_id = 0;
-
-    // TODO: neutron survives OR it becomes a precursor particle
-    //  Sample delayed group and angle/energy for fission reaction
-    sample_fission_neutron(i_nuclide, rx, &site, p);
-
-    // Reject site if it exceeds time cutoff
-    if (site.delayed_group > 0) {
-      double t_cutoff = settings::time_cutoff[static_cast<int>(site.particle)];
-      if (site.time > t_cutoff) {
-        continue;
-      }
+  // Reject particle if it exceeds time cutoff
+  // TODO: add control flow to only do this if the particle wasn't turned into a
+  // precursor
+  if (p.delayed_group() > 0) {
+    double t_cutoff = settings::time_cutoff[static_cast<int>(site.particle)];
+    if (p.time() > t_cutoff) {
+      p.event_death();
+      return;
     }
-
-    // Set parent and progeny IDs
-    site.parent_id = p.id();
-    site.progeny_id = p.n_progeny()++;
-
-    // Increment the number of neutrons born delayed
-    if (site.delayed_group > 0) {
-      nu_d[site.delayed_group - 1]++;
-    }
-
-    // Write fission particles to nuBank
-    NuBank& nu_bank_entry = p.nu_bank().emplace_back();
-    nu_bank_entry.wgt = site.wgt;
-    nu_bank_entry.E = site.E;
-    nu_bank_entry.delayed_group = site.delayed_group;
   }
 
-  // If shared fission bank was full, and no fissions could be added,
-  // set the particle fission flag to false.
-  if (n_sites_stored == 0) {
-    p.fission() = false;
-    return;
+  // Increment the number of neutrons born delayed
+  if (p.delayed_group() > 0) {
+    nu_d[p.delayed_group() - 1]++;
   }
 
-  // Set nu to the number of fission sites successfully stored. If the fission
-  // bank was not found to be full then these values are already equivalent.
+  // Write fission particles to nuBank
+  NuBank& nu_bank_entry = p.nu_bank().emplace_back();
+  nu_bank_entry.wgt = p.wgt();
+  nu_bank_entry.E = p.E();
+  nu_bank_entry.delayed_group = p.delayed_group();
+
+  // The number of particles produced is always 1 for branchless collision
   int nu = 1.0;
   double weight = 1.0;
 
@@ -316,37 +293,6 @@ void create_branchless_fission_sites(
   for (size_t d = 0; d < MAX_DELAYED_GROUPS; d++) {
     p.n_delayed_bank(d) = nu_d[d];
   }
-}
-
-// TODO: modify this for precursor bank?
-// particle here is a precursor particle :)
-void sample_forced_decay(
-  int i_nuclide, const Reaction& rx, SourceSite* site, Particle& p)
-{
-  double E_in = p.E();
-  uint64_t* seed = p.current_seed();
-  // ====================================================================
-  // FORCED DECAY
-  double dt = settings::time_census_boundaries[p.time_bound_idx() + 1] -
-              settings::time_census_boundaries[p.time_bound_idx()];
-  site->time += prn(p.current_seed()) * dt;
-
-  int group = sample_delay_group(i_nuclide, rx, E_in, seed);
-
-  // set the delayed group for the particle born from forced decay
-  site->delayed_group = group;
-  double decay_rate = rx.products_[site->delayed_group].decay_rate_;
-
-  // Update delayed neutron and precursor particle weights
-  double exp = std::exp(-1.0 * dt * decay_rate);
-  site->wgt = p.wgt() * (1.0 - exp);
-  p.wgt() *= exp;
-
-  // sample from prompt neutron energy distribution
-  double mu = sample_fission_neutron_angle(i_nuclide, rx, site, E_in, seed);
-
-  // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
-  site->u = rotate_angle(p.u(), mu, nullptr, seed);
 }
 
 // TODO: modifications for branchless collsiion
@@ -400,6 +346,7 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
     sample_fission_neutron(i_nuclide, rx, &site, p);
 
     // Reject site if it exceeds time cutoff
+    // TODO: add setting to disable time cutoff with TD mode?
     if (site.delayed_group > 0) {
       double t_cutoff = settings::time_cutoff[static_cast<int>(site.particle)];
       if (site.time > t_cutoff) {
@@ -435,7 +382,9 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
     } else {
       p.secondary_bank().push_back(site);
     }
-
+ 
+    //TODO: Does this delayed group machinery need to be modified for biased
+    //decay?
     // Increment the number of neutrons born delayed
     if (site.delayed_group > 0) {
       nu_d[site.delayed_group - 1]++;
@@ -1248,7 +1197,6 @@ void sample_fission_neutron(
     // Sample time of emission based on decay constant of precursor
     double decay_rate = rx.products_[site->delayed_group].decay_rate_;
     site->time -= std::log(prn(p.current_seed())) / decay_rate;
-
   } else {
     // ====================================================================
     // PROMPT NEUTRON SAMPLED
@@ -1258,10 +1206,100 @@ void sample_fission_neutron(
   }
 
   // sample from prompt neutron energy distribution
-  double mu = sample_fission_neutron_angle(i_nuclide, rx, site, E_in, seed);
+  int dg = site->delayed_group;
+  double mu = sample_fission_neutron_energy(i_nuclide, rx, dg, E_in, site->E, seed);
 
   // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
   site->u = rotate_angle(p.u(), mu, nullptr, seed);
+}
+
+void sample_branchless_fission(
+  int i_nuclide, const Reaction& rx, Particle& p)
+{
+  // Get attributes of particle
+  double E_in = p.E();
+  uint64_t* seed = p.current_seed();
+
+  // Determine total nu, delayed nu, and delayed neutron fraction
+  const auto& nuc {data::nuclides[i_nuclide]};
+  double nu_t = nuc->nu(E_in, Nuclide::EmissionMode::total);
+  double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+  double beta = nu_d / nu_t;
+ 
+  double current_time_bound = settings::time_census_boundaries[p.time_bound_idx()];
+  bool convert_to_precursor = false;
+  int dg = 0; 
+  if (prn(seed) < beta) {
+    // ====================================================================
+    // DELAYED NEUTRON SAMPLED
+
+    // sampled delayed precursor group
+    int dg = sample_delay_group(i_nuclide, rx, E_in, seed);
+
+    // Sample time of emission based on decay constant of precursor
+    double decay_rate = rx.products_[dg].decay_rate_;
+
+    double decay_time = std::log(prn(p.current_seed())) / decay_rate;
+    if (settings::biased_decay) {
+      // Determine if particle should continue simulation as delayed neutron
+      // or if it shoud be converted into a precursor particle
+      if (p.time() - decay_time >= current_time_bound) {
+        convert_to_precursor = true;
+      } else {
+        p.time() -= decay_time;
+      }
+    } else {
+      p.time() -= std::log(prn(p.current_seed())) / decay_rate;
+    }
+  } 
+
+  // Assigne delayed group
+  p.delayed_group() = dg;
+
+  // sample from prompt neutron energy distribution
+  double E_out;
+  double mu = sample_fission_neutron_energy(i_nuclide, rx, dg, E_in, E_out, seed);
+
+  // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
+  p.u() = rotate_angle(p.u(), mu, nullptr, seed);
+  p.E() = p.E_out;
+
+  if (convert_to_precursor)
+    double next_time_bound = settings::time_census_boundaries[p.time_bound_idx() + 1];
+    double dt = next_time_bound - current_time_bound;
+
+    // Initialize precursor particle source site
+    SourceSite site;
+    site.r = p.r();
+    site.u = p.u();
+    site.E = p.E();
+    site.particle = ParticleType::precursor;
+    site.time = current_time_bound + prn(p.current_seed()) * dt;
+    site.time_born = p.time();
+    site.delayed_group = dg;
+    site.wgt = p.wgt(); //TODO: is this weight right?
+    site.surf_id = 0;
+
+    // Set parent and progeny IDs
+    site.parent_id = p.id();
+    site.progeny_id = p.n_progeny()++;
+
+    // Reject precursor particle if it exceeds time cutoff
+    double t_cutoff = settings::time_cutoff[static_cast<int>(site.particle)];
+    if (site.time > t_cutoff) {
+      continue;
+    }
+
+    // Force decay in next time bin
+    int64_t idx = simulation::precursor_particle_bank.thread_safe_append(site);
+    if (idx == -1) {
+      warning(
+        "The shared precursor particle bank is full. Additional precursor sites created "
+        "in this generation will not be banked. Results may be "
+        "non-deterministic.");
+      p.n_progeny()--;
+    }
+  }
 }
 
 int sample_delay_group(
@@ -1292,19 +1330,19 @@ int sample_delay_group(
   return group;
 }
 
-double sample_fission_neutron_angle(int i_nuclide, const Reaction& rx,
-  SourceSite* site, double E_in, uint64_t* seed)
+double sample_fission_neutron_energy(int i_nuclide, const Reaction& rx,
+  int delayed_group, double E_in, double& E_out, uint64_t* seed)
 {
   const auto& nuc {data::nuclides[i_nuclide]};
 
   double mu;
   int n_sample = 0;
   while (true) {
-    rx.products_[site->delayed_group].sample(E_in, site->E, mu, seed);
+    rx.products_[delayed_group].sample(E_in, E_out, mu, seed);
 
     // resample if energy is greater than maximum neutron energy
     constexpr int neutron = static_cast<int>(ParticleType::neutron);
-    if (site->E < data::energy_max[neutron])
+    if (E_out < data::energy_max[neutron])
       break;
 
     // check for large number of resamples

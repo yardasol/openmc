@@ -626,6 +626,10 @@ void finalize_generation()
     // are run in.
     sort_census_bank(simulation::time_census_bank);
 
+    //TODO: Add machinery to create precursors from existing census neutrons
+    // The precursor array should be sorted, and sites appended to the current
+    // sorted time_census_bank
+
     // Distribute time census bank across processors evenly
     synchronize_bank(simulation::time_census_bank);
   }
@@ -743,11 +747,12 @@ int overall_generation()
 
 void calculate_work()
 {
-  // Determine minimum amount of particles to simulate on each processor
-  int64_t min_work = settings::n_particles / mpi::n_procs;
+  // Determine minimum amount of particles (and precursor particles) to simulate on each processor
+  int64_t min_work = (settings::n_particles + settings::n_precursor_partices) / mpi::n_procs;
 
-  // Determine number of processors that have one extra particle
-  int64_t remainder = settings::n_particles % mpi::n_procs;
+  // Determine number of processors that have one extra particle (or precursor
+  // particle)
+  int64_t remainder = (settings::n_particles + settings::n_precursor_partices) % mpi::n_procs;
 
   int64_t i_bank = 0;
   simulation::work_index.resize(mpi::n_procs + 1);
@@ -910,6 +915,7 @@ void transport_history_based_single_particle(Particle& p)
 void transport_history_based()
 {
 #pragma omp parallel for schedule(runtime)
+  //TODO: add precursor particles to work_per_rank...
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     Particle p;
     initialize_history(p, i_work);

@@ -45,6 +45,15 @@ vector<vector<double>> ifp_fission_lifetime_bank;
 // function.
 SharedArray<SourceSite> time_census_bank;
 
+// The future bank tracks particles that have times greater than the current
+// census time boundary
+SharedArray<SourceSite> future_bank;
+
+// The precursor particle bank tracks precursor particles that serve as source
+// sites for delayed neutrons when using forced decay (Which is only done in
+// kinetic simuations)
+SharedArray<SourceSite> precursor_particle_bank;
+
 // Each entry in this vector corresponds to the number of progeny produced
 // this generation for the particle located at that index. This vector is
 // used to efficiently sort the fission bank after each iteration.

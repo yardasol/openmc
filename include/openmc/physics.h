@@ -54,11 +54,11 @@ int sample_nuclide(Particle& p);
 //! fission and creates appropriate bank sites.
 void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx);
 
-void create_branchless_fission_sites(
+void branchless_fission(
   Particle& p, int i_nuclide, const Reaction& rx);
 
-void sample_forced_decay(
-  int i_nuclide, const Reaction& rx, SourceSite* site, Particle& p);
+void sample_branchless_fission(
+  int i_nuclide, const Reaction& rx, Particle& p);
 
 int sample_element(Particle& p);
 
@@ -96,7 +96,7 @@ void sample_fission_neutron(
 int sample_delay_group(
   int i_nuclide, const Reaction& rx, double E_in, uint64_t* seed);
 
-double sample_fission_neutron_angle(int i_nuclide, const Reaction& rx,
+double sample_fission_neutron_energy(int i_nuclide, const Reaction& rx,
   SourceSite* site, double E_in, uint64_t* seed);
 
 //! handles all reactions with a single secondary neutron (other than fission),

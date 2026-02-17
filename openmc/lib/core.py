@@ -25,6 +25,7 @@ class _SourceSite(Structure):
                 ('u', c_double*3),
                 ('E', c_double),
                 ('time', c_double),
+                ('time_born', c_double),
                 ('wgt', c_double),
                 ('delayed_group', c_int),
                 ('surf_id', c_int),
