@@ -8,6 +8,7 @@
 #include "openmc/vector.h"
 
 #include <cstdint>
+#include <numeric>
 
 namespace openmc {
 
