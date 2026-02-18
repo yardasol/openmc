@@ -34,6 +34,8 @@ extern vector<vector<double>> ifp_fission_lifetime_bank;
 
 extern SharedArray<SourceSite> time_census_bank;
 
+extern SharedArray<SourceSite> precursor_particle_bank;
+
 extern vector<int64_t> progeny_per_particle;
 
 } // namespace simulation

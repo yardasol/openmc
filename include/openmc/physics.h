@@ -55,10 +55,18 @@ int sample_nuclide(Particle& p);
 void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx);
 
 void branchless_fission(
-  Particle& p, int i_nuclide, const Reaction& rx);
+  Particle& p, int i_nuclide, const Reaction& rx, double wgt_branchless);
 
+//! Sample brancheless fission event, and return true if a fission neutron
+//! is sampled. Otherwise, return false (indicating a precursor particle has
+//! been created that kills)
 void sample_branchless_fission(
   int i_nuclide, const Reaction& rx, Particle& p);
+
+void create_precursor_particle(const Reaction& rx, Particle& p);
+
+void forced_decay(
+  const Reaction& rx, SourceSite& precursor_site, SourceSite& delayed_site);
 
 int sample_element(Particle& p);
 
@@ -97,7 +105,7 @@ int sample_delay_group(
   int i_nuclide, const Reaction& rx, double E_in, uint64_t* seed);
 
 double sample_fission_neutron_energy(int i_nuclide, const Reaction& rx,
-  SourceSite* site, double E_in, uint64_t* seed);
+  int delayed_group, double E_in, double& E_out, uint64_t* seed);
 
 //! handles all reactions with a single secondary neutron (other than fission),
 //! i.e. level scattering, (n,np), (n,na), etc.

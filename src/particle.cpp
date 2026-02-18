@@ -307,8 +307,6 @@ void Particle::event_advance()
     site.parent_id = id();
     site.progeny_id = ++n_progeny(); // Should be 1
 
-    // TODO: implement simulation::fission_bank
-    // it will be the same as fission bank
     int64_t idx = simulation::time_census_bank.thread_safe_append(site);
     wgt() = 0.0;
     if (idx == -1) {
