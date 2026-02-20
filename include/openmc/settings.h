@@ -210,7 +210,6 @@ extern std::deque<double>
 extern int64_t n_precursors;
 extern bool biased_decay;
 
-
 } // namespace settings
 
 //==============================================================================

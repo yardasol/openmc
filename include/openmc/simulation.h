@@ -74,7 +74,8 @@ extern vector<int64_t> precursor_index;
 void allocate_banks();
 
 //! Determine number of particles to transport per process
-void calculate_work(int64_t n_particles, int64_t& work_per_rank,  vector<int64_t>& work_index);
+void calculate_work(
+  int64_t n_particles, int64_t& work_per_rank, vector<int64_t>& work_index);
 
 //! Initialize nuclear data before a simulation
 void initialize_data();
@@ -86,7 +87,8 @@ void initialize_batch();
 void initialize_generation();
 
 //! Full initialization of a particle history
-void initialize_history(Particle& p, int64_t index_source, bool from_precursor = false);
+void initialize_history(
+  Particle& p, int64_t index_source, bool from_precursor = false);
 
 //! Finalize a batch
 //!

@@ -1370,7 +1370,7 @@ void create_precursor_particle(const Reaction& rx, Particle& p)
   }
 }
 
-//TODO: delete
+// TODO: delete
 void forced_decay(
   const Reaction& rx, SourceSite& precursor_site, SourceSite& delayed_site)
 {

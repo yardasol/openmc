@@ -66,7 +66,6 @@ vector<int64_t> progeny_per_particle;
 // used to efficiently sort the precursor bank after each time step.
 vector<int64_t> precursors_per_particle;
 
-
 } // namespace simulation
 
 //==============================================================================
@@ -86,7 +85,8 @@ void free_memory_bank()
   simulation::ifp_fission_lifetime_bank.clear();
 }
 
-void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max, vector<int64_t>& progeny_per_particle,  int64_t& work_per_rank)
+void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max,
+  vector<int64_t>& progeny_per_particle, int64_t& work_per_rank)
 {
   census_bank.reserve(max);
   progeny_per_particle.resize(work_per_rank);
@@ -98,7 +98,8 @@ void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max, vector<
 // "Reproducibility and Monte Carlo Eigenvalue Calculations," F.B. Brown and
 // T.M. Sutton, 1992 ANS Annual Meeting, Transactions of the American Nuclear
 // Society, Volume 65, Page 235.
-void sort_census_bank(SharedArray<SourceSite>& census_bank, vector<int64_t>& progeny_per_particle, vector<int64_t>& work_index)
+void sort_census_bank(SharedArray<SourceSite>& census_bank,
+  vector<int64_t>& progeny_per_particle, vector<int64_t>& work_index)
 {
   // Ensure we don't read off the end of the array if we ran with 0 particles
   if (progeny_per_particle.size() == 0) {
@@ -107,8 +108,7 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank, vector<int64_t>& pro
 
   // Perform exclusive scan summation to determine starting indices in census
   // bank for each parent particle id
-  std::exclusive_scan(progeny_per_particle.begin(),
-    progeny_per_particle.end(),
+  std::exclusive_scan(progeny_per_particle.begin(), progeny_per_particle.end(),
     progeny_per_particle.begin(), 0);
 
   // We need a scratch vector to make permutation of the census bank into
@@ -158,8 +158,8 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank, vector<int64_t>& pro
   }
 }
 
-//TODO replace settings::n_particles with target_size, and work_index with
-//another vector...
+// TODO replace settings::n_particles with target_size, and work_index with
+// another vector...
 void synchronize_bank(SharedArray<SourceSite>& census_bank)
 {
   simulation::time_bank.start();

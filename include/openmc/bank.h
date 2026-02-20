@@ -48,11 +48,13 @@ extern vector<int64_t> precursors_per_particle;
 // Non-member functions
 //==============================================================================
 
-void sort_census_bank(SharedArray<SourceSite>& census_bank, vector<int64_t>& progeny_per_particle, vector<int64_t>& work_index);
+void sort_census_bank(SharedArray<SourceSite>& census_bank,
+  vector<int64_t>& progeny_per_particle, vector<int64_t>& work_index);
 
 void free_memory_bank();
 
-void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max, vector<int64_t>& progeny_per_particle, int64_t& work_per_rank);
+void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max,
+  vector<int64_t>& progeny_per_particle, int64_t& work_per_rank);
 
 //! Sample/redistribute source sites from accumulated fission sites
 void synchronize_bank(SharedArray<SourceSite>& census_bank);
