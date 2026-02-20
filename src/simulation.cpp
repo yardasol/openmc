@@ -688,7 +688,6 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
       p.from_source(&site);
     }
   } else {
-    // TODO: implement precursor_source_bank
     SourceSite precursor_site =
       simulation::precursor_source_bank[index_source - 1];
     p.from_source(&precursor_site);

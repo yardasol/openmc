@@ -243,8 +243,6 @@ void sample_branchless_neutron_reaction(Particle& p)
   }
 }
 
-// TODO: remove creation of bank?
-// TODO add prob of precursor particle creation
 void branchless_fission(
   Particle& p, int i_nuclide, const Reaction& rx, const double& wgt_branchless)
 {
@@ -278,14 +276,11 @@ void branchless_fission(
   // The number of particles produced is always 1 for branchless collision
   p.n_bank() = 1.0;
   p.wgt_bank() = wgt_branchless;
-  // TODO: since we are sampling precursors and not delayed neutron directly,
-  // does this need to be changed??
   for (size_t d = 0; d < MAX_DELAYED_GROUPS; d++) {
     p.n_delayed_bank(d) = nu_d[d];
   }
 }
 
-// TODO: modifications for branchless collsiion
 void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
 {
   // If uniform fission source weighting is turned on, we increase or decrease
@@ -371,9 +366,7 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
     } else {
       p.secondary_bank().push_back(site);
     }
- 
-    //TODO: Does this delayed group machinery need to be modified for biased
-    //decay?
+
     // Increment the number of neutrons born delayed
     if (site.delayed_group > 0) {
       nu_d[site.delayed_group - 1]++;
@@ -1330,20 +1323,6 @@ void create_precursor_particle(const Reaction& rx, Particle& p)
   precursor_site.wgt = p.wgt(); // TODO: is this weight right?
   precursor_site.surf_id = 0;
 
-  // Force precursor particle to decay and add the resuling partcle to the
-  // precursor bank
-  // TODO: delete
-  // SourceSite delayed_site;
-  // forced_decay(rx, precursor_site, delayed_site);
-
-  // TODO: delete
-  // Reject forced decay if partice time exceeds time cutoff. This also
-  // prevents he precursor particle from being banked.
-  // if (delayed_site.time > t_cutoff) {
-  //  return;
-  //}
-  // p.secondary_bank().emplace_back(delayed_site);
-
   // Reject precursor particle if it exceeds time cutoff for neutrons. No time
   // cutoff is defined for precursors since they just act as a buffer for
   // delayed neutrons for the next time step.
@@ -1368,25 +1347,6 @@ void create_precursor_particle(const Reaction& rx, Particle& p)
             "non-deterministic.");
     p.n_precursors()--;
   }
-}
-
-// TODO: delete
-void forced_decay(
-  const Reaction& rx, SourceSite& precursor_site, SourceSite& delayed_site)
-{
-  delayed_site = precursor_site;
-  delayed_site.particle = ParticleType::neutron;
-  delayed_site.time = precursor_site.time_born;
-
-  // Correct delayed neutron time
-  double dt = precursor_site.time - precursor_site.time_born;
-  delayed_site.time += dt;
-
-  // Forced Decay Weight adjustment
-  double decay_rate = rx.products_[delayed_site.delayed_group].decay_rate_;
-  double exp = std::exp(-1.0 * dt * decay_rate);
-  delayed_site.wgt *= 1 - exp;
-  precursor_site.wgt *= exp;
 }
 
 void inelastic_scatter(const Nuclide& nuc, const Reaction& rx, Particle& p)

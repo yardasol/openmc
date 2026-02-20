@@ -65,9 +65,6 @@ void sample_branchless_fission(
 
 void create_precursor_particle(const Reaction& rx, Particle& p);
 
-void forced_decay(
-  const Reaction& rx, SourceSite& precursor_site, SourceSite& delayed_site);
-
 int sample_element(Particle& p);
 
 Reaction& sample_fission(int i_nuclide, Particle& p);
