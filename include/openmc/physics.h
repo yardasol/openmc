@@ -55,7 +55,7 @@ int sample_nuclide(Particle& p);
 void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx);
 
 void branchless_fission(
-  Particle& p, int i_nuclide, const Reaction& rx, double wgt_branchless);
+  Particle& p, int i_nuclide, const Reaction& rx, const double& wgt_branchless);
 
 //! Sample brancheless fission event, and return true if a fission neutron
 //! is sampled. Otherwise, return false (indicating a precursor particle has

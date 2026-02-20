@@ -59,6 +59,11 @@ extern double current_time;   // !< current time in kinetic simulation
 extern bool source_correction; // !< flag to indicate if the simulation is meant
                                // to correct the source distribution (and
                                // batchwise k_effs for eigenvalue simulations)
+
+// Precursor Particle Variables
+extern int64_t precursors_per_rank; //!< number of precursors per MPI rank
+extern vector<int64_t> precursor_index;
+
 } // namespace simulation
 
 //==============================================================================
@@ -69,7 +74,7 @@ extern bool source_correction; // !< flag to indicate if the simulation is meant
 void allocate_banks();
 
 //! Determine number of particles to transport per process
-void calculate_work();
+void calculate_work(int64_t n_particles, int64_t& work_per_rank,  vector<int64_t>& work_index);
 
 //! Initialize nuclear data before a simulation
 void initialize_data();
@@ -81,7 +86,7 @@ void initialize_batch();
 void initialize_generation();
 
 //! Full initialization of a particle history
-void initialize_history(Particle& p, int64_t index_source);
+void initialize_history(Particle& p, int64_t index_source, bool from_precursor = false);
 
 //! Finalize a batch
 //!

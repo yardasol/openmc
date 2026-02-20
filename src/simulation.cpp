@@ -117,7 +117,10 @@ int openmc_simulation_init()
   }
 
   // Determine how much work each process should do
-  calculate_work();
+  calculate_work(settings::n_particles, simulation::work_per_rank,  simulation::work_index);
+
+  // TODO: create precursor work as well
+  //calculate_work(settings::n_precursors, simulation::precursors_per_rank,  simulation::precursor_index);
 
   // Allocate source, fission and surface source banks.
   allocate_banks();
@@ -372,6 +375,11 @@ int current_timestep;
 double current_time {0.0};
 bool source_correction {false};
 
+// Precursor Particle Variables
+int64_t precursors_per_rank;
+vector<int64_t> precursor_index;
+
+
 } // namespace simulation
 
 //==============================================================================
@@ -387,7 +395,9 @@ void allocate_banks()
     if (!settings::kinetic_simulation ||
         (settings::kinetic_simulation && simulation::is_initial_condition)) {
       // Allocate bank for fission census
-      init_census_bank(simulation::fission_bank, 3 * simulation::work_per_rank);
+      init_census_bank(simulation::fission_bank, 3 * simulation::work_per_rank,
+      simulation::progeny_per_particle, simulation::work_per_rank);
+
 
       // Allocate IFP bank
       if (settings::ifp_on)
@@ -395,10 +405,13 @@ void allocate_banks()
     } else if (settings::kinetic_simulation &&
                !simulation::is_initial_condition) {
       // Allocate bank for time census
-      // TODO: forced branchless method will be used, so
-      // we don't need to worry about using the fission bank
       init_census_bank(
-        simulation::time_census_bank, 3 * simulation::work_per_rank);
+        simulation::time_census_bank, 3 * simulation::work_per_rank,
+        simulation::progeny_per_particle, simulation::work_per_rank);
+
+      init_census_bank(
+        simulation::precursor_shared_bank, 3 * simulation::precursors_per_rank,
+        simulation::precursors_per_particle, simulation::precursors_per_rank);
     }
   }
 
@@ -611,7 +624,7 @@ void finalize_generation()
     // If using shared memory, stable sort the fission bank (by parent IDs)
     // so as to allow for reproducibility regardless of which order particles
     // are run in.
-    sort_census_bank(simulation::fission_bank);
+    sort_census_bank(simulation::fission_bank, simulation::progeny_per_particle, simulation::work_index);
 
     // Distribute fission bank across processors evenly
     synchronize_bank(simulation::fission_bank);
@@ -624,11 +637,10 @@ void finalize_generation()
     // If using shared memory, stable sort the time census bank (by parent IDs)
     // so as to allow for reproducibility regardless of which order particles
     // are run in.
-    sort_census_bank(simulation::time_census_bank);
+    sort_census_bank(simulation::time_census_bank, simulation::progeny_per_particle, simulation::work_index);
 
-    //TODO: Add machinery to create precursors from existing census neutrons
-    // The precursor array should be sorted, and sites appended to the current
-    // sorted time_census_bank
+    // The precursor bank should also be sorted
+    //sort_census_bank(simulation::precursor_shared_bank, simulation::precursors_per_particle, simulation::precursor_index);
 
     // Distribute time census bank across processors evenly
     synchronize_bank(simulation::time_census_bank);
@@ -655,21 +667,46 @@ void finalize_generation()
   }
 }
 
-void initialize_history(Particle& p, int64_t index_source)
+void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
 {
   // set defaults
-  if (settings::run_mode == RunMode::EIGENVALUE) {
-    // set defaults for eigenvalue simulations from primary bank
-    p.from_source(&simulation::source_bank[index_source - 1]);
-  } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
-    // initialize random number seed
-    int64_t id = (simulation::total_gen + overall_generation() - 1) *
-                   settings::n_particles +
-                 simulation::work_index[mpi::rank] + index_source;
-    uint64_t seed = init_seed(id, STREAM_SOURCE);
-    // sample from external source distribution or custom library then set
-    auto site = sample_external_source(&seed);
-    p.from_source(&site);
+  if (!from_precursor) {
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      // set defaults for eigenvalue simulations from primary bank
+      p.from_source(&simulation::source_bank[index_source - 1]);
+    } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      // initialize random number seed
+      int64_t id = (simulation::total_gen + overall_generation() - 1) *
+                     settings::n_particles +
+                   simulation::work_index[mpi::rank] + index_source;
+      uint64_t seed = init_seed(id, STREAM_SOURCE);
+      // sample from external source distribution or custom library then set
+      auto site = sample_external_source(&seed);
+      p.from_source(&site);
+    }
+  } else {
+    // TODO: implement precursor_source_bank
+    SourceSite precursor_site = simulation::precursor_source_bank[index_source - 1];
+    p.from_source(&precursor_site);
+
+    // FORCED DECAY
+
+    // Sample decay time
+    double dt = settings::time_census_boundaries[p.time_bound_idx()] - p.time();
+    p.time() += dt * prn(p.current_seed());
+
+    // Weight adjustment
+    dt = p.time() - precursor_site.time_born;
+    double exp = std::exp(-1.0 * dt * precursor_site.decay_rate);
+    p.wgt() *= 1 - exp;
+    p.wgt_last() = p.wgt();
+    precursor_site.wgt *= exp;
+
+    // Add this precursor source to the shared precursor bank
+    simulation::precursor_shared_bank.thread_safe_append(precursor_site);
+
+    // Adjust index source so no duplicate IDs are allowed
+    index_source += simulation::work_per_rank;
   }
   p.current_work() = index_source;
 
@@ -745,29 +782,29 @@ int overall_generation()
   return settings::gen_per_batch * (current_batch - 1) + current_gen;
 }
 
-void calculate_work()
+void calculate_work(int64_t n_particles, int64_t& work_per_rank,  vector<int64_t>& work_index)
 {
-  // Determine minimum amount of particles (and precursor particles) to simulate on each processor
-  int64_t min_work = (settings::n_particles + settings::n_precursor_partices) / mpi::n_procs;
+  // Determine minimum amount of particles to simulate on each processor
+  int64_t min_work = n_particles / mpi::n_procs;
 
   // Determine number of processors that have one extra particle (or precursor
   // particle)
-  int64_t remainder = (settings::n_particles + settings::n_precursor_partices) % mpi::n_procs;
+  int64_t remainder = n_particles % mpi::n_procs;
 
   int64_t i_bank = 0;
-  simulation::work_index.resize(mpi::n_procs + 1);
-  simulation::work_index[0] = 0;
+  work_index.resize(mpi::n_procs + 1);
+  work_index[0] = 0;
   for (int i = 0; i < mpi::n_procs; ++i) {
     // Number of particles for rank i
     int64_t work_i = i < remainder ? min_work + 1 : min_work;
 
     // Set number of particles
     if (mpi::rank == i)
-      simulation::work_per_rank = work_i;
+      work_per_rank = work_i;
 
     // Set index into source bank for rank i
     i_bank += work_i;
-    simulation::work_index[i + 1] = i_bank;
+    work_index[i + 1] = i_bank;
   }
 }
 
@@ -915,11 +952,17 @@ void transport_history_based_single_particle(Particle& p)
 void transport_history_based()
 {
 #pragma omp parallel for schedule(runtime)
-  //TODO: add precursor particles to work_per_rank...
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     Particle p;
     initialize_history(p, i_work);
     transport_history_based_single_particle(p);
+  }
+  if (settings::biased_decay) {
+    for (int64_t i_work = 1; i_work <= simulation::precursors_per_rank; ++i_work) {
+      Particle p;
+      initialize_history(p, i_work, true);
+      transport_history_based_single_particle(p);
+    }
   }
 }
 

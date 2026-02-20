@@ -1325,6 +1325,7 @@ void create_precursor_particle(const Reaction& rx, Particle& p)
   precursor_site.particle = ParticleType::precursor;
   precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
   precursor_site.time_born = p.time();
+  precursor_site.decay_rate = rx.products_[p.delayed_group()].decay_rate_;
   precursor_site.delayed_group = p.delayed_group();
   precursor_site.wgt = p.wgt(); // TODO: is this weight right?
   precursor_site.surf_id = 0;
@@ -1352,22 +1353,24 @@ void create_precursor_particle(const Reaction& rx, Particle& p)
     return;
   }
 
-  // Set parent and progeny IDs
+  // Set parent and precursor IDs
   precursor_site.parent_id = p.id();
-  precursor_site.progeny_id = p.n_progeny()++;
+  precursor_site.progeny_id = p.n_precursors()++;
+  precursor_site.time_bound_idx = p.time_bound_idx()++;
 
   // Add precursor particle to precursor bank
   int64_t idx =
-    simulation::precursor_particle_bank.thread_safe_append(precursor_site);
+    simulation::precursor_shared_bank.thread_safe_append(precursor_site);
   if (idx == -1) {
     warning("The shared precursor particle bank is full. Additional precursor "
             "sites created "
             "in this time bin will not be banked. Results may be "
             "non-deterministic.");
-    p.n_progeny()--;
+    p.n_precursors()--;
   }
 }
 
+//TODO: delete
 void forced_decay(
   const Reaction& rx, SourceSite& precursor_site, SourceSite& delayed_site)
 {

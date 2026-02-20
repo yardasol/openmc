@@ -26,13 +26,15 @@ class _SourceSite(Structure):
                 ('E', c_double),
                 ('time', c_double),
                 ('time_born', c_double),
+                ('decay_rate', c_double),
                 ('wgt', c_double),
                 ('delayed_group', c_int),
                 ('surf_id', c_int),
                 ('particle', c_int),
                 ('parent_nuclide', c_int),
                 ('parent_id', c_int64),
-                ('progeny_id', c_int64)]
+                ('progeny_id', c_int64),
+                ('time_bound_idx', c_int)]
 
 
 # Define input type for numpy arrays that will be passed into C++ functions

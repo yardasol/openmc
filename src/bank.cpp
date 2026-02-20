@@ -19,6 +19,8 @@ namespace simulation {
 
 vector<SourceSite> source_bank;
 
+vector<SourceSite> precursor_source_bank;
+
 SharedArray<SourceSite> surf_source_bank;
 
 SharedArray<CollisionTrackSite> collision_track_bank;
@@ -52,12 +54,18 @@ SharedArray<SourceSite> future_bank;
 // The precursor particle bank tracks precursor particles that serve as source
 // sites for delayed neutrons when using forced decay (Which is only done in
 // kinetic simuations)
-SharedArray<SourceSite> precursor_particle_bank;
+SharedArray<SourceSite> precursor_shared_bank;
 
-// Each entry in this vector corresponds to the number of progeny produced
+// Each entry in this vector corresponds to the number of neutrons produced
 // this generation for the particle located at that index. This vector is
-// used to efficiently sort the fission bank after each iteration.
+// used to efficiently sort the census bank after each iteration.
 vector<int64_t> progeny_per_particle;
+
+// Each entry in this vector corresponds to the number of precursors produced
+// this generation for the particle located at that index. This vector is
+// used to efficiently sort the precursor bank after each time step.
+vector<int64_t> precursors_per_particle;
+
 
 } // namespace simulation
 
@@ -78,10 +86,10 @@ void free_memory_bank()
   simulation::ifp_fission_lifetime_bank.clear();
 }
 
-void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max)
+void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max, vector<int64_t>& progeny_per_particle,  int64_t& work_per_rank)
 {
   census_bank.reserve(max);
-  simulation::progeny_per_particle.resize(simulation::work_per_rank);
+  progeny_per_particle.resize(work_per_rank);
 }
 
 // Performs an O(n) sort on a census bank, by leveraging
@@ -90,18 +98,18 @@ void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max)
 // "Reproducibility and Monte Carlo Eigenvalue Calculations," F.B. Brown and
 // T.M. Sutton, 1992 ANS Annual Meeting, Transactions of the American Nuclear
 // Society, Volume 65, Page 235.
-void sort_census_bank(SharedArray<SourceSite>& census_bank)
+void sort_census_bank(SharedArray<SourceSite>& census_bank, vector<int64_t>& progeny_per_particle, vector<int64_t>& work_index)
 {
   // Ensure we don't read off the end of the array if we ran with 0 particles
-  if (simulation::progeny_per_particle.size() == 0) {
+  if (progeny_per_particle.size() == 0) {
     return;
   }
 
   // Perform exclusive scan summation to determine starting indices in census
   // bank for each parent particle id
-  std::exclusive_scan(simulation::progeny_per_particle.begin(),
-    simulation::progeny_per_particle.end(),
-    simulation::progeny_per_particle.begin(), 0);
+  std::exclusive_scan(progeny_per_particle.begin(),
+    progeny_per_particle.end(),
+    progeny_per_particle.begin(), 0);
 
   // We need a scratch vector to make permutation of the census bank into
   // sorted order easy. Under normal usage conditions, the census bank is
@@ -127,8 +135,8 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank)
   // Use parent and progeny indices to sort census bank
   for (int64_t i = 0; i < census_bank.size(); i++) {
     const auto& site = census_bank[i];
-    int64_t offset = site.parent_id - 1 - simulation::work_index[mpi::rank];
-    int64_t idx = simulation::progeny_per_particle[offset] + site.progeny_id;
+    int64_t offset = site.parent_id - 1 - work_index[mpi::rank];
+    int64_t idx = progeny_per_particle[offset] + site.progeny_id;
     if (idx >= census_bank.size()) {
       fatal_error("Mismatch detected between sum of all particle progeny and "
                   "shared census bank size.");
@@ -150,6 +158,8 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank)
   }
 }
 
+//TODO replace settings::n_particles with target_size, and work_index with
+//another vector...
 void synchronize_bank(SharedArray<SourceSite>& census_bank)
 {
   simulation::time_bank.start();

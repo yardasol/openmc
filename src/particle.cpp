@@ -149,6 +149,7 @@ void Particle::from_source(const SourceSite* src)
   time_last() = src->time;
   parent_nuclide() = src->parent_nuclide;
   delayed_group() = src->delayed_group;
+  time_bound_idx() = src->time_bound_idx;
 
   // Convert signed surface ID to signed index
   if (src->surf_id != SURFACE_NONE) {
@@ -302,6 +303,7 @@ void Particle::event_advance()
     site.time = time();
     site.wgt = wgt();
     site.surf_id = 0;
+    site.time_bound_idx = time_bound_idx()++;
 
     // Set parent and progeny IDs
     site.parent_id = id();
@@ -540,9 +542,14 @@ void Particle::event_death()
 
   // Record the number of progeny created by this particle.
   // This data will be used to efficiently sort the fission bank.
-  if (settings::run_mode == RunMode::EIGENVALUE) {
+  // TODO: What about initial condition?
+  if (settings::run_mode == RunMode::EIGENVALUE || settings::kinetic_simulation) {
     int64_t offset = id() - 1 - simulation::work_index[mpi::rank];
     simulation::progeny_per_particle[offset] = n_progeny();
+    if (settings::biased_decay) {
+      int64_t offset = id() - 1 - simulation::precursor_index[mpi::rank];
+      simulation::precursors_per_particle[offset] = n_precursors();
+    }
   }
 }
 

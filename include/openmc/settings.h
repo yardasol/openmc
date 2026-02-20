@@ -207,6 +207,9 @@ extern int n_timesteps; //!< number of timesteps
 extern double dt;       //!< fixed timestep size
 extern std::deque<double>
   time_census_boundaries; //!< time grid boundaries for time censis
+extern int64_t n_precursors;
+extern bool biased_decay;
+
 
 } // namespace settings
 

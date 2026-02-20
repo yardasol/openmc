@@ -46,6 +46,7 @@ struct SourceSite {
   double E;
   double time {0.0};
   double time_born {0.0};
+  double decay_rate {0.0};
   double wgt {1.0};
   int delayed_group {0};
   int surf_id {SURFACE_NONE};
@@ -55,6 +56,7 @@ struct SourceSite {
   int parent_nuclide {-1};
   int64_t parent_id;
   int64_t progeny_id;
+  int time_bound_idx {0};
 };
 
 struct CollisionTrackSite {
@@ -509,7 +511,6 @@ private:
   double wgt_ww_born_ {-1.0};
   double mu_;
   double time_ {0.0};
-  double time_born_ {0.0};
   int time_bound_idx_ {0};
   double time_last_ {0.0};
   double wgt_last_ {1.0};
@@ -567,6 +568,7 @@ private:
   double ww_factor_ {0.0};
 
   int64_t n_progeny_ {0};
+  int64_t n_precursors_ {0};
 
 public:
   //----------------------------------------------------------------------------
@@ -747,6 +749,9 @@ public:
 
   // Number of progeny produced by this particle
   int64_t& n_progeny() { return n_progeny_; }
+
+  // Number of progeny produced by this particle
+  int64_t& n_precursors() { return n_precursors_; }
 
   //! Gets the pointer to the particle's current PRN seed
   uint64_t* current_seed() { return seeds_ + stream_; }
