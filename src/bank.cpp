@@ -83,12 +83,16 @@ void free_memory_bank()
   simulation::ifp_source_lifetime_bank.clear();
   simulation::ifp_fission_delayed_group_bank.clear();
   simulation::ifp_fission_lifetime_bank.clear();
+  simulation::time_census_bank.clear();
+  simulation::precursor_source_bank.clear();
+  simulation::precursor_shared_bank.clear();
+  simulation::precursors_per_particle.clear();
 }
 
-void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max,
+void init_census_bank(SharedArray<SourceSite>& census_bank,
   vector<int64_t>& progeny_per_particle, int64_t& work_per_rank)
 {
-  census_bank.reserve(max);
+  census_bank.reserve(3 * work_per_rank);
   progeny_per_particle.resize(work_per_rank);
 }
 
@@ -127,6 +131,7 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank,
     sorted_bank = &census_bank[census_bank.size()];
   }
 
+  // TODO: DISABLE FOR TIME CENSUS
   if (settings::ifp_on) {
     allocate_temporary_vector_ifp(
       sorted_ifp_delayed_group_bank, sorted_ifp_lifetime_bank);
@@ -160,7 +165,9 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank,
 
 // TODO replace settings::n_particles with target_size, and work_index with
 // another vector...
-void synchronize_bank(SharedArray<SourceSite>& census_bank)
+void synchronize_bank(SharedArray<SourceSite>& census_bank,
+  vector<SourceSite>& source_bank, int64_t& n_particles, int64_t& work_per_rank,
+  vector<int64_t>& work_index)
 {
   simulation::time_bank.start();
 
@@ -210,14 +217,14 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
   // sites were created, so overallocate by a factor of 3
   int64_t index_temp = 0;
 
-  vector<SourceSite> temp_sites(3 * simulation::work_per_rank);
+  vector<SourceSite> temp_sites(3 * work_per_rank);
 
   // Temporary banks for IFP
   vector<vector<int>> temp_delayed_groups;
   vector<vector<double>> temp_lifetimes;
+  // TODO: DISABLE FOR TIME CENSUS
   if (settings::ifp_on) {
-    resize_ifp_data(
-      temp_delayed_groups, temp_lifetimes, 3 * simulation::work_per_rank);
+    resize_ifp_data(temp_delayed_groups, temp_lifetimes, 3 * work_per_rank);
   }
 
   // ==========================================================================
@@ -231,7 +238,7 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
   uint64_t seed = init_seed(id, STREAM_TRACKING);
 
   // Comb specification
-  double teeth_distance = static_cast<double>(total) / settings::n_particles;
+  double teeth_distance = static_cast<double>(total) / n_particles;
   double teeth_offset = prn(&seed) * teeth_distance;
 
   // First and last hitting tooth
@@ -287,6 +294,7 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
 
   // IFP number of generation
   int ifp_n_generation;
+  // TODO: DISABLE FOR TIME CENSUS
   if (settings::ifp_on) {
     broadcast_ifp_n_generation(
       ifp_n_generation, temp_delayed_groups, temp_lifetimes);
@@ -299,22 +307,22 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
   vector<int> send_delayed_groups;
   vector<double> send_lifetimes;
 
-  if (start < settings::n_particles) {
+  if (start < n_particles) {
     // Determine the index of the processor which has the first part of the
     // source_bank for the local processor
-    int neighbor = upper_bound_index(
-      simulation::work_index.begin(), simulation::work_index.end(), start);
+    int neighbor =
+      upper_bound_index(work_index.begin(), work_index.end(), start);
 
     // Resize IFP send buffers
+    // TODO: DISABLE FOR TIME CENSUS
     if (settings::ifp_on && mpi::n_procs > 1) {
       resize_ifp_data(send_delayed_groups, send_lifetimes,
-        ifp_n_generation * 3 * simulation::work_per_rank);
+        ifp_n_generation * 3 * work_per_rank);
     }
 
     while (start < finish) {
       // Determine the number of sites to send
-      int64_t n =
-        std::min(simulation::work_index[neighbor + 1], finish) - start;
+      int64_t n = std::min(work_index[neighbor + 1], finish) - start;
 
       // Initiate an asynchronous send of source sites to the neighboring
       // process
@@ -324,6 +332,7 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
           mpi::source_site, neighbor, mpi::rank, mpi::intracomm,
           &requests.back());
 
+        // TODO: DISABLE FOR TIME CENSUS
         if (settings::ifp_on) {
           // Send IFP data
           if (is_beta_effective_or_both())
@@ -351,7 +360,7 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
   // ==========================================================================
   // RECEIVE BANK SITES FROM NEIGHBORS OR TEMPORARY BANK
 
-  start = simulation::work_index[mpi::rank];
+  start = work_index[mpi::rank];
   index_local = 0;
 
   // IFP receive buffers
@@ -371,19 +380,19 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
   }
 
   // Resize IFP receive buffers
+  // TODO: DISABLE FOR TIME CENSUS
   if (settings::ifp_on && mpi::n_procs > 1) {
-    resize_ifp_data(recv_delayed_groups, recv_lifetimes,
-      ifp_n_generation * simulation::work_per_rank);
+    resize_ifp_data(
+      recv_delayed_groups, recv_lifetimes, ifp_n_generation * work_per_rank);
   }
 
-  while (start < simulation::work_index[mpi::rank + 1]) {
+  while (start < work_index[mpi::rank + 1]) {
     // Determine how many sites need to be received
     int64_t n;
     if (neighbor == mpi::n_procs - 1) {
-      n = simulation::work_index[mpi::rank + 1] - start;
+      n = work_index[mpi::rank + 1] - start;
     } else {
-      n = std::min(bank_position[neighbor + 1],
-            simulation::work_index[mpi::rank + 1]) -
+      n = std::min(bank_position[neighbor + 1], work_index[mpi::rank + 1]) -
           start;
     }
 
@@ -392,9 +401,10 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
       // asynchronous receive for the source sites
 
       requests.emplace_back();
-      MPI_Irecv(&simulation::source_bank[index_local], static_cast<int>(n),
+      MPI_Irecv(&source_bank[index_local], static_cast<int>(n),
         mpi::source_site, neighbor, neighbor, mpi::intracomm, &requests.back());
 
+      // TODO: DISABLE FOR TIME CENSUS
       if (settings::ifp_on) {
         // Receive IFP data
         if (is_beta_effective_or_both())
@@ -411,8 +421,9 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
 
       index_temp = start - bank_position[mpi::rank];
       std::copy(&temp_sites[index_temp], &temp_sites[index_temp + n],
-        &simulation::source_bank[index_local]);
+        &source_bank[index_local]);
 
+      // TODO: DISABLE FOR TIME CENSUS
       if (settings::ifp_on) {
         copy_partial_ifp_data_to_source_banks(
           index_temp, n, index_local, temp_delayed_groups, temp_lifetimes);
@@ -432,6 +443,7 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
   int n_request = requests.size();
   MPI_Waitall(n_request, requests.data(), MPI_STATUSES_IGNORE);
 
+  // TODO: DISABLE FOR TIME CENSUS
   if (settings::ifp_on) {
     if (is_beta_effective_or_both())
       deserialize_ifp_info(ifp_n_generation, recv_delayed_groups,
@@ -442,8 +454,9 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank)
   }
 
 #else
-  std::copy(temp_sites.data(), temp_sites.data() + settings::n_particles,
-    simulation::source_bank.begin());
+  std::copy(
+    temp_sites.data(), temp_sites.data() + n_particles, source_bank.begin());
+  // TODO: DISABLE FOR TIME CENSUS
   if (settings::ifp_on) {
     copy_complete_ifp_data_to_source_banks(temp_delayed_groups, temp_lifetimes);
   }

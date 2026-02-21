@@ -258,7 +258,7 @@ void branchless_fission(
   // Only a single particle is created in branchless collsiion
   // Sample prompt or delayed neutron, or precursor particle if decay time is
   // at the current time boundary
-  sample_branchless_fission(i_nuclide, rx, p);
+  sample_branchless_fission(i_nuclide, rx, p, wgt_branchless);
 
   // Increment the number of neutrons born delayed
   if (p.delayed_group() > 0) {
@@ -1250,7 +1250,8 @@ double sample_fission_neutron_energy(int i_nuclide, const Reaction& rx,
   return mu;
 }
 
-void sample_branchless_fission(int i_nuclide, const Reaction& rx, Particle& p)
+void sample_branchless_fission(
+  int i_nuclide, const Reaction& rx, Particle& p, const double& wgt_branchless)
 {
   // Get attributes of particle
   double E_in = p.E();
@@ -1265,6 +1266,7 @@ void sample_branchless_fission(int i_nuclide, const Reaction& rx, Particle& p)
   double current_time_bound =
     settings::time_census_boundaries[p.time_bound_idx()];
   bool create_precursor = false;
+  bool bank_delayed = false;
   double decay_time = 0.;
   int dg = 0;
   if (prn(seed) < beta) {
@@ -1277,12 +1279,6 @@ void sample_branchless_fission(int i_nuclide, const Reaction& rx, Particle& p)
     // Sample time of emission based on decay constant of precursor
     double decay_rate = rx.products_[dg].decay_rate_;
     decay_time = std::log(prn(p.current_seed())) / decay_rate;
-
-    // Determine if particle should continue simulation as delayed neutron
-    // or if it shoud be converted into a precursor particle
-    if (p.time() - decay_time >= current_time_bound) {
-      create_precursor = true;
-    }
   }
 
   // Assign delayed group
@@ -1296,32 +1292,41 @@ void sample_branchless_fission(int i_nuclide, const Reaction& rx, Particle& p)
   // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
   p.u() = rotate_angle(p.u(), mu, nullptr, seed);
 
-  if (create_precursor) {
-    create_precursor_particle(rx, p);
-
+  // Determine if particle should continue simulation as delayed neutron
+  // or if it shoud be converted into a precursor particle
+  if (p.time() - decay_time >= current_time_bound) {
+    if (settings::biased_decay)
+      // Bank precursor particle if using forced decay
+      create_precursor_particle(rx, p, wgt_branchless);
+    else
+      // Otherwise, bank delayed neutron
+      bank_delayed_neutron(p, decay_time, E_out, wgt_branchless);
     // Kill neutron
     p.wgt() = 0.0;
-  } else if (p.delayed_group() > 0) {
+  } else {
     p.time() -= decay_time;
+    p.E() = E_out;
   }
-  // Assign angle only after creating precursor particle
-  p.E() = E_out;
 }
 
-void create_precursor_particle(const Reaction& rx, Particle& p)
+void create_precursor_particle(
+  const Reaction& rx, Particle& p, const double& wgt_branchless)
 {
   // Initialize precursor particle source site
   SourceSite precursor_site;
   precursor_site.r = p.r();
-  precursor_site.u = p.u();
-  precursor_site.E = p.E();
   precursor_site.particle = ParticleType::precursor;
   precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
-  precursor_site.time_born = p.time();
-  precursor_site.decay_rate = rx.products_[p.delayed_group()].decay_rate_;
-  precursor_site.delayed_group = p.delayed_group();
-  precursor_site.wgt = p.wgt(); // TODO: is this weight right?
+  precursor_site.time_born = p.time(); // Used for precursor weight control
+  precursor_site.wgt = wgt_branchless; // TODO: should be branchless_wgt
   precursor_site.surf_id = 0;
+
+  precursor_site.delayed_group = p.delayed_group();
+  precursor_site.E = p.E();
+  precursor_site.u = p.u();
+
+  // Banke decay rate
+  precursor_site.decay_rate = rx.products_[p.delayed_group()].decay_rate_;
 
   // Reject precursor particle if it exceeds time cutoff for neutrons. No time
   // cutoff is defined for precursors since they just act as a buffer for
@@ -1335,7 +1340,7 @@ void create_precursor_particle(const Reaction& rx, Particle& p)
   // Set parent and precursor IDs
   precursor_site.parent_id = p.id();
   precursor_site.progeny_id = p.n_precursors()++;
-  precursor_site.time_bound_idx = p.time_bound_idx()++;
+  precursor_site.time_bound_idx = p.time_bound_idx() + 1;
 
   // Add precursor particle to precursor bank
   int64_t idx =
@@ -1346,6 +1351,35 @@ void create_precursor_particle(const Reaction& rx, Particle& p)
             "in this time bin will not be banked. Results may be "
             "non-deterministic.");
     p.n_precursors()--;
+  }
+}
+
+void bank_delayed_neutron(
+  Particle& p, double decay_time, double E_out, const double& wgt_branchless)
+{
+  // Create delayed neutron and Put in time census bank
+  SourceSite site;
+  site.r = p.r();
+  site.particle = ParticleType::neutron;
+  site.time = p.time() - decay_time;
+  site.wgt = wgt_branchless;
+  site.surf_id = 0;
+
+  site.delayed_group = p.delayed_group();
+  site.E = E_out;
+  site.u = p.u();
+
+  site.parent_id = p.id();
+  site.progeny_id = ++p.n_progeny(); // Should be 1
+  site.time_bound_idx = p.time_bound_idx() + 1;
+
+  int64_t idx = simulation::time_census_bank.thread_safe_append(site);
+  if (idx == -1) {
+    warning("The shared time census bank is full. Additional time boundary "
+            "crossing "
+            "in this generation will not be banked. Results may be "
+            "non-deterministic.");
+    p.n_progeny()--;
   }
 }
 

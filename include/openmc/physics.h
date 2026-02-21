@@ -61,9 +61,13 @@ void branchless_fission(
 //! is sampled. Otherwise, return false (indicating a precursor particle has
 //! been created that kills)
 void sample_branchless_fission(
-  int i_nuclide, const Reaction& rx, Particle& p);
+  int i_nuclide, const Reaction& rx, Particle& p, const double& wgt_branchless);
 
-void create_precursor_particle(const Reaction& rx, Particle& p);
+void create_precursor_particle(
+  const Reaction& rx, Particle& p, const double& wgt_branchless);
+
+void bank_delayed_neutron(
+  Particle& p, double decay_time, double E_out, const double& wgt_branchless);
 
 int sample_element(Particle& p);
 

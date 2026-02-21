@@ -120,9 +120,10 @@ int openmc_simulation_init()
   calculate_work(
     settings::n_particles, simulation::work_per_rank, simulation::work_index);
 
-  // TODO: create precursor work as well
-  // calculate_work(settings::n_precursors, simulation::precursors_per_rank,
-  // simulation::precursor_index);
+  // Create precursor work as well
+  if (settings::biased_decay)
+    calculate_work(settings::n_precursors, simulation::precursors_per_rank,
+      simulation::precursor_index);
 
   // Allocate source, fission and surface source banks.
   allocate_banks();
@@ -396,7 +397,7 @@ void allocate_banks()
     if (!settings::kinetic_simulation ||
         (settings::kinetic_simulation && simulation::is_initial_condition)) {
       // Allocate bank for fission census
-      init_census_bank(simulation::fission_bank, 3 * simulation::work_per_rank,
+      init_census_bank(simulation::fission_bank,
         simulation::progeny_per_particle, simulation::work_per_rank);
 
       // Allocate IFP bank
@@ -406,12 +407,14 @@ void allocate_banks()
                !simulation::is_initial_condition) {
       // Allocate bank for time census
       init_census_bank(simulation::time_census_bank,
-        3 * simulation::work_per_rank, simulation::progeny_per_particle,
-        simulation::work_per_rank);
+        simulation::progeny_per_particle, simulation::work_per_rank);
 
-      init_census_bank(simulation::precursor_shared_bank,
-        3 * simulation::precursors_per_rank,
-        simulation::precursors_per_particle, simulation::precursors_per_rank);
+      if (settings::biased_decay) {
+        simulation::precursor_source_bank.resize(
+          simulation::precursors_per_rank);
+        init_census_bank(simulation::precursor_shared_bank,
+          simulation::precursors_per_particle, simulation::precursors_per_rank);
+      }
     }
   }
 
@@ -592,6 +595,9 @@ void initialize_generation()
   if (settings::kinetic_simulation && !simulation::is_initial_condition) {
     // Clear out the time census bank
     simulation::time_census_bank.resize(0);
+    if (settings::biased_decay) {
+      simulation::precursor_shared_bank.resize(0);
+    }
   }
 }
 
@@ -628,7 +634,8 @@ void finalize_generation()
       simulation::work_index);
 
     // Distribute fission bank across processors evenly
-    synchronize_bank(simulation::fission_bank);
+    synchronize_bank(simulation::fission_bank, simulation::source_bank,
+      settings::n_particles, simulation::work_per_rank, simulation::work_index);
   }
 
   // Time census
@@ -641,12 +648,20 @@ void finalize_generation()
     sort_census_bank(simulation::time_census_bank,
       simulation::progeny_per_particle, simulation::work_index);
 
-    // The precursor bank should also be sorted
-    // sort_census_bank(simulation::precursor_shared_bank,
-    // simulation::precursors_per_particle, simulation::precursor_index);
-
     // Distribute time census bank across processors evenly
-    synchronize_bank(simulation::time_census_bank);
+    synchronize_bank(simulation::time_census_bank, simulation::source_bank,
+      settings::n_particles, simulation::work_per_rank, simulation::work_index);
+
+    if (settings::biased_decay) {
+      // The precursor bank should also be sorted
+      sort_census_bank(simulation::precursor_shared_bank,
+        simulation::precursors_per_particle, simulation::precursor_index);
+
+      // Distribute also precursors source sites
+      synchronize_bank(simulation::precursor_shared_bank,
+        simulation::precursor_source_bank, settings::n_precursors,
+        simulation::precursors_per_rank, simulation::precursor_index);
+    }
   }
 
   // TODO: will this prevent dynamic keff?
@@ -708,7 +723,7 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
     // Add this precursor source to the shared precursor bank
     simulation::precursor_shared_bank.thread_safe_append(precursor_site);
 
-    // Adjust index source so no duplicate IDs are allowed
+    // Adjust index source to prevent duplicate particle IDs
     index_source += simulation::work_per_rank;
   }
   p.current_work() = index_source;
@@ -756,9 +771,18 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
   apply_weight_windows(p);
 
   // Set particle time index if using time censusing
-  p.time_bound_idx() = 0;
-  if (openmc::settings::kinetic_simulation && !simulation::is_initial_condition)
-    p.time_bound_idx() = openmc::simulation::current_gen - 1;
+  if (openmc::settings::kinetic_simulation &&
+      !simulation::is_initial_condition) {
+    int expected_tb_idx = openmc::simulation::current_gen - 1;
+    if (p.time_bound_idx() != expected_tb_idx) {
+      std::string err = fmt::format("Expected time bound index was {0} but "
+                                    " particle time bound was {1}",
+        expected_tb_idx, p.time_bound_idx());
+      fatal_error(err);
+    }
+  } else {
+    p.time_bound_idx() = 0;
+  }
 
   // Display message if high verbosity or trace is on
   if (settings::verbosity >= 9 || p.trace()) {

@@ -53,11 +53,13 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank,
 
 void free_memory_bank();
 
-void init_census_bank(SharedArray<SourceSite>& census_bank, int64_t max,
+void init_census_bank(SharedArray<SourceSite>& census_bank,
   vector<int64_t>& progeny_per_particle, int64_t& work_per_rank);
 
 //! Sample/redistribute source sites from accumulated fission sites
-void synchronize_bank(SharedArray<SourceSite>& census_bank);
+void synchronize_bank(SharedArray<SourceSite>& census_bank,
+  vector<SourceSite>& source_bank, int64_t& n_particles, int64_t& work_per_rank,
+  vector<int64_t>& work_index);
 
 } // namespace openmc
 

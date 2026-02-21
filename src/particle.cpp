@@ -303,11 +303,12 @@ void Particle::event_advance()
     site.time = time();
     site.wgt = wgt();
     site.surf_id = 0;
-    site.time_bound_idx = time_bound_idx()++;
+    site.delayed_group = delayed_group();
 
     // Set parent and progeny IDs
     site.parent_id = id();
     site.progeny_id = ++n_progeny(); // Should be 1
+    site.time_bound_idx = time_bound_idx() + 1;
 
     int64_t idx = simulation::time_census_bank.thread_safe_append(site);
     wgt() = 0.0;
