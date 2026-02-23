@@ -296,6 +296,36 @@ void Particle::event_advance()
   // TODO: Store the particle in the census bank if it hit the census boundary
   // This will only happen if TIME CENSUS is on
   if (distance == distance_time) {
+    if (settings::is_initial_condition && settings::biased_fission) {
+      // Create precursor particle with equilibrium weight
+      // data structures
+      int i_nuclide = sample_nuclide(p);
+      const auto& micro {p.neutron_xs(i_nuclide)};
+      const auto& nuc
+      {
+        data::nuclides[i_nuclide]
+      }
+      auto& rx = sample_fission(i_nuclide, p);
+
+      // beta
+      double nu_t = nuc->nu(E_in, Nuclide::EmissionMode::total);
+      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+      uint64_t* seed = p.current_seed();
+      double E_in = p.E();
+      double yield;
+      int dg = sample_delay_group(i_nuclide, rx, E_in, seed, yield);
+      double beta_i = yield * nu_d / nu_t;
+
+      // decay rate
+      double decay_rate = rx.products_[dg].decay_rate_;
+
+      // num groups
+      int K = nuc->n_precursor_;
+
+      const double equilibrium_wgt =
+        wgt() * K * beta_i * micro.nu_fission / decay_rate * p.speed();
+      create_precursor_particle(rx, p, equilbirum_wgt);
+    }
     // Store particle in time census bank as a source site
     SourceSite site;
     site.r = r();

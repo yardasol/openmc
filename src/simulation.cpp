@@ -72,31 +72,32 @@ int openmc_run()
 
   if (openmc::settings::kinetic_simulation) {
 
-    // TODO: setup criticaity source bank for TD batches
-    //  fission bank or source bank from last batch?
-    //  either way this will require MPI... or can we just do this independently
-    //  on each processor?? I think yes...
-
-    // TODO: sample precursor particles during the last batch (or two) of the IC
-    //  calculation. Create a bank for this?
-
     // Rename statepoint and tallies file for initial condition calculation
     openmc::rename_time_step_file(
       fmt::format("statepoint.{0}", openmc::settings::n_batches), ".h5", 0);
     if (openmc::settings::output_tallies)
       openmc::rename_time_step_file("tallies", ".out", 0);
 
+    // Reset batch
+    openmc::simulation::current_batch = 0;
+
+    // Copy the source bank to a different bank var. We will want to run
+    // some criticality generations to decorrelate the batches.
+    openmc::simulation::init_source_bank = openmc::simulation::source_bank;
+
+    // Run the kinetic simulation
     openmc::simulation::time_total.start();
     openmc_simulation_init();
-    // Loop over time census boundaries (should only work for kinetic
-    // simullation)
-    // Generations are now time steps
+    // Loop over time census boundaries, generations are now time steps
     openmc::settings::gen_per_batch =
       openmc::settings::time_census_boundaries.size();
     openmc::simulation::is_initial_condition = false;
+
+    // TODO: add loop to decorrelate batches? Maybe internally?
     while (status == 0 && err == 0) {
       err = openmc_next_batch(&status);
     }
+
     openmc_simulation_finalize();
     openmc::simulation::time_total.stop();
   }
@@ -292,6 +293,31 @@ int openmc_next_batch(int* status)
 
   initialize_batch();
 
+  // Run some criticality generations to decorrelate batches
+  if (settings::kinetic_simulation) {
+    settings::kinetic_simulation = false;
+    for (current_gen = 1; current_gen <= 3; ++current_gen) {
+
+      initialize_generation();
+
+      // Start timer for transport
+      simulation::time_transport.start();
+
+      // Transport loop
+      if (settings::event_based) {
+        transport_event_based();
+      } else {
+        transport_history_based();
+      }
+
+      // Accumulate time for transport
+      simulation::time_transport.stop();
+
+      finalize_generation();
+    }
+    settings::kinetic_simulation = true;
+  }
+
   // =======================================================================
   // LOOP OVER GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
   for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
@@ -394,17 +420,19 @@ void allocate_banks()
       settings::solver_type == SolverType::MONTE_CARLO) {
     // Allocate source bank
     simulation::source_bank.resize(simulation::work_per_rank);
-    if (!settings::kinetic_simulation ||
-        (settings::kinetic_simulation && simulation::is_initial_condition)) {
-      // Allocate bank for fission census
-      init_census_bank(simulation::fission_bank,
-        simulation::progeny_per_particle, simulation::work_per_rank);
 
-      // Allocate IFP bank
-      if (settings::ifp_on)
-        resize_simulation_ifp_banks();
-    } else if (settings::kinetic_simulation &&
-               !simulation::is_initial_condition) {
+    // Allocate bank for fission census
+    init_census_bank(simulation::fission_bank, simulation::progeny_per_particle,
+      simulation::work_per_rank);
+
+    // Allocate IFP bank
+    if (settings::ifp_on)
+      resize_simulation_ifp_banks();
+
+    if (settings::kinetic_simulation) {
+      // Allocate source bank copy
+      simulation::initial_source_bank.resize(simulation::work_per_rank);
+
       // Allocate bank for time census
       init_census_bank(simulation::time_census_bank,
         simulation::progeny_per_particle, simulation::work_per_rank);
@@ -578,9 +606,7 @@ void finalize_batch()
 
 void initialize_generation()
 {
-  if (settings::run_mode == RunMode::EIGENVALUE &&
-      (!settings::kinetic_simulation ||
-        (settings::kinetic_simulation && simulation::is_initial_condition))) {
+  if (settings::run_mode == RunMode::EIGENVALUE) {
     // Clear out the fission bank
     simulation::fission_bank.resize(0);
 
@@ -592,7 +618,7 @@ void initialize_generation()
     simulation::keff_generation = simulation::global_tallies(
       GlobalTally::K_TRACKLENGTH, TallyResult::VALUE);
   }
-  if (settings::kinetic_simulation && !simulation::is_initial_condition) {
+  if (settings::kinetic_simulation) {
     // Clear out the time census bank
     simulation::time_census_bank.resize(0);
     if (settings::biased_decay) {
@@ -624,9 +650,7 @@ void finalize_generation()
   global_tally_leakage = 0.0;
 
   if (settings::run_mode == RunMode::EIGENVALUE &&
-      settings::solver_type == SolverType::MONTE_CARLO &&
-      (!settings::kinetic_simulation ||
-        (settings::kinetic_simulation && simulation::is_initial_condition))) {
+      settings::solver_type == SolverType::MONTE_CARLO) {
     // If using shared memory, stable sort the fission bank (by parent IDs)
     // so as to allow for reproducibility regardless of which order particles
     // are run in.
@@ -640,7 +664,7 @@ void finalize_generation()
 
   // Time census
   if (settings::solver_type == SolverType::MONTE_CARLO &&
-      settings::kinetic_simulation && !simulation::is_initial_condition) {
+      settings::kinetic_simulation) {
 
     // If using shared memory, stable sort the time census bank (by parent IDs)
     // so as to allow for reproducibility regardless of which order particles
@@ -665,9 +689,7 @@ void finalize_generation()
   }
 
   // TODO: will this prevent dynamic keff?
-  if (settings::run_mode == RunMode::EIGENVALUE &&
-      (!settings::kinetic_simulation ||
-        (settings::kinetic_simulation && simulation::is_initial_condition))) {
+  if (settings::run_mode == RunMode::EIGENVALUE) {
 
     // Calculate shannon entropy
     if (settings::entropy_on &&
@@ -985,7 +1007,7 @@ void transport_history_based()
     initialize_history(p, i_work);
     transport_history_based_single_particle(p);
   }
-  if (settings::biased_decay) {
+  if (settings::kinetic_simulation && settings::biased_decay) {
     for (int64_t i_work = 1; i_work <= simulation::precursors_per_rank;
          ++i_work) {
       Particle p;

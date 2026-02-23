@@ -40,6 +40,8 @@ vector<vector<int>> ifp_fission_delayed_group_bank;
 
 vector<vector<double>> ifp_fission_lifetime_bank;
 
+vector<SourceSite> initial_source_bank;
+
 // The time census bank is allocated as a SharedArray, rather than a vector, as
 // it will be shared by all threads in the simulation. It will be allocated to a
 // fixed maximum capacity in the init_fission_bank() function. Then, Elements

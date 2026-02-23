@@ -34,6 +34,8 @@ extern vector<vector<int>> ifp_fission_delayed_group_bank;
 
 extern vector<vector<double>> ifp_fission_lifetime_bank;
 
+extern vector<SourceSite> initial_source_bank;
+
 extern SharedArray<SourceSite> time_census_bank;
 
 extern SharedArray<SourceSite> precursor_shared_bank;

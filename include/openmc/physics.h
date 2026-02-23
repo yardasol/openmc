@@ -102,8 +102,8 @@ Direction sample_cxs_target_velocity(
 void sample_fission_neutron(
   int i_nuclide, const Reaction& rx, SourceSite* site, Particle& p);
 
-int sample_delay_group(
-  int i_nuclide, const Reaction& rx, double E_in, uint64_t* seed);
+int sample_delay_group(int i_nuclide, const Reaction& rx, double E_in,
+  uint64_t* seed, double& yield);
 
 double sample_fission_neutron_energy(int i_nuclide, const Reaction& rx,
   int delayed_group, double E_in, double& E_out, uint64_t* seed);
