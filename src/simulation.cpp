@@ -295,8 +295,13 @@ int openmc_next_batch(int* status)
 
   // Run some criticality generations to decorrelate batches
   if (settings::kinetic_simulation) {
+    // Set the source bank to the steady state source bank
     settings::kinetic_simulation = false;
-    for (current_gen = 1; current_gen <= 3; ++current_gen) {
+    for (current_gen = 1; current_gen <= 7; ++current_gen) {
+
+      // Set initial source bank for the static simulation
+      if (!settings::kinetic_simulation)
+        simulation::source_bank = simulation::initial_source_bank;
 
       initialize_generation();
 
@@ -314,8 +319,18 @@ int openmc_next_batch(int* status)
       simulation::time_transport.stop();
 
       finalize_generation();
+
+      // flip-flop kinetic_simulation
+      if (!settings::kinetic_simulation) {
+        settings::kinetic_simulation = true;
+        simulation::initial_source_bank = simulation::source_bank;
+      } else {
+        settings::kinetic_simulation = false;
+      }
     }
     settings::kinetic_simulation = true;
+    // Save the staedy state source bank
+    simulation::initial_source_bank = simulation::source_bank;
   }
 
   // =======================================================================
