@@ -275,7 +275,6 @@ void Particle::event_advance()
     score_tracklength_tally(*this, distance);
   }
 
-  // TODO: turn off for kinetic sim?
   // Score track-length estimate of k-eff
   if (settings::run_mode == RunMode::EIGENVALUE &&
       type() == ParticleType::neutron) {
@@ -293,37 +292,8 @@ void Particle::event_advance()
     wgt() = 0.0;
   }
 
-  // TODO: Store the particle in the census bank if it hit the census boundary
-  // This will only happen if TIME CENSUS is on
+  // Store the particle in the census bank if it hit the census boundary
   if (distance == distance_time) {
-    if (simulation::is_initial_condition && settings::biased_decay) {
-      // Create precursor particle with equilibrium weight
-      // data structures for particles on fissile material
-      int i_nuclide = sample_nuclide(*this);
-      const auto& nuc {data::nuclides[i_nuclide]};
-      const auto& micro {this->neutron_xs(i_nuclide)};
-      if (nuc->fissionable_ && micro.fission > 0.0) {
-        auto& rx = sample_fission(i_nuclide, *this);
-
-        // beta
-        double nu_t = nuc->nu(E(), Nuclide::EmissionMode::total);
-        double nu_d = nuc->nu(E(), Nuclide::EmissionMode::delayed);
-        uint64_t* seed = current_seed();
-        double yield;
-        int dg = sample_delay_group(i_nuclide, rx, E(), current_seed(), yield);
-        double beta_i = yield * nu_d / nu_t;
-
-        // decay rate
-        double decay_rate = rx.products_[dg].decay_rate_;
-
-        // num groups
-        int K = nuc->n_precursor_;
-
-        const double equilibrium_wgt =
-          wgt() * K * beta_i * micro.nu_fission / decay_rate * this->speed();
-        create_precursor_particle(rx, *this, equilibrium_wgt);
-      }
-    }
     // Store particle in time census bank as a source site
     SourceSite site;
     site.r = r();
@@ -396,7 +366,6 @@ void Particle::event_cross_surface()
 void Particle::event_collide()
 {
   // Score collision estimate of keff
-  // TODO: turn off for kinetic sim?
   if (settings::run_mode == RunMode::EIGENVALUE &&
       type() == ParticleType::neutron) {
     keff_tally_collision() += wgt() * macro_xs().nu_fission / macro_xs().total;

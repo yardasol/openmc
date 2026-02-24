@@ -770,7 +770,6 @@ void absorption(Particle& p, int i_nuclide)
     if (p.neutron_xs(i_nuclide).absorption >
         prn(p.current_seed()) * p.neutron_xs(i_nuclide).total) {
       // Score absorption estimate of keff
-      // TODO: disable for kinetic sim
       if (settings::run_mode == RunMode::EIGENVALUE) {
         p.keff_tally_absorption() += p.wgt() *
                                      p.neutron_xs(i_nuclide).nu_fission /
@@ -1167,18 +1166,19 @@ void sample_fission_neutron(
   double nu_t = nuc->nu(E_in, Nuclide::EmissionMode::total);
   double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
   double beta = nu_d / nu_t;
-  double yield;
+  double delayed_yield;
+  double decay_rate;
 
   if (prn(seed) < beta) {
     // ====================================================================
     // DELAYED NEUTRON SAMPLED
 
     // sampled delayed precursor group
-    int group = sample_delay_group(i_nuclide, rx, E_in, seed, yield);
+    int group = sample_delay_group(i_nuclide, rx, E_in, seed, delayed_yield);
     site->delayed_group = group;
 
     // Sample time of emission based on decay constant of precursor
-    double decay_rate = rx.products_[site->delayed_group].decay_rate_;
+    decay_rate = rx.products_[site->delayed_group].decay_rate_;
     site->time -= std::log(prn(p.current_seed())) / decay_rate;
   } else {
     // ====================================================================
@@ -1194,6 +1194,24 @@ void sample_fission_neutron(
 
   // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
   site->u = rotate_angle(p.u(), mu, nullptr, seed);
+
+  if (simulation::is_initial_condition && settings::biased_decay &&
+      site->delayed_group > 0) {
+    double equilibrium_wgt;
+    // Eigenvalue equilibrium weight from "A time-dependent Monte Carlo
+    // simulation for nuclear reactor dynamics using GPUs", B. Molnar (2019)
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      const auto& micro {p.neutron_xs(i_nuclide)};
+      double beta_i = beta * delayed_yield;
+      int K = nuc->n_precursor_;
+      equilibrium_wgt =
+        p.wgt() * K * beta_i * micro.nu_fission / decay_rate * p.speed();
+    } else {
+      equilibrium_wgt = 1.0;
+    }
+    const double eq_wgt = equilibrium_wgt;
+    create_precursor_particle(rx, p, eq_wgt);
+  }
 }
 
 int sample_delay_group(
@@ -1296,11 +1314,6 @@ void sample_branchless_fission(
 
   // Determine if particle should continue simulation as delayed neutron
   // or if it shoud be converted into a precursor particle
-  if (simulation::is_initial_condition && settings::biased_decay) {
-    // Skip normal precursor particle generation
-    settings::biased_decay = false;
-    create_precursor = true;
-  }
   if (p.time() - decay_time >= current_time_bound) {
     if (settings::biased_decay)
       // Bank precursor particle if using forced decay
@@ -1308,18 +1321,6 @@ void sample_branchless_fission(
     else
       // Otherwise, bank delayed neutron
       bank_delayed_neutron(p, decay_time, E_out, wgt_branchless);
-
-    // Equilibrium precursor particle generation
-    if (simulation::is_initial_condition && !settings::biased_decay &&
-        create_precursor) {
-      const auto& micro {p.neutron_xs(i_nuclide)};
-      double beta_i = beta * delayed_yield;
-      int K = nuc->n_precursor_;
-      const double equilibrium_wgt =
-        wgt_branchless * K * beta_i * micro.nu_fission / decay_rate * p.speed();
-      create_precursor_particle(rx, p, equilibrium_wgt);
-      settings::biased_decay = true;
-    }
 
     // Kill neutron
     p.wgt() = 0.0;

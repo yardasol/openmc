@@ -122,7 +122,7 @@ void transport_event_based();
 void rename_time_step_file(
   std::string base_filename, std::string extension, int i);
 
-void initial_condition_kinetic_monte_carlo();
+void decorrelate_kinetic_monte_carlo_batch();
 
 } // namespace openmc
 
