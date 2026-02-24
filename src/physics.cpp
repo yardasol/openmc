@@ -197,7 +197,6 @@ void sample_branchless_neutron_reaction(Particle& p)
   if (prob_fission > sampled_probability) {
     auto& rx = sample_fission(i_nuclide, p);
     if (settings::run_mode == RunMode::EIGENVALUE) {
-      // TODO: implement precursor particles in this function?
       branchless_fission(p, i_nuclide, rx, wgt_branchless);
     } else if (settings::run_mode == RunMode::FIXED_SOURCE &&
                settings::create_fission_neutrons) {

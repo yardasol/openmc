@@ -93,7 +93,6 @@ int openmc_run()
       openmc::settings::time_census_boundaries.size();
     openmc::simulation::is_initial_condition = false;
 
-    // TODO: add loop to decorrelate batches? Maybe internally?
     while (status == 0 && err == 0) {
       err = openmc_next_batch(&status);
     }
@@ -1078,12 +1077,13 @@ void rename_time_step_file(
 
 void initial_condition_kinetic_monte_carlo()
 {
-  // Set the source bank to the steady state source bank
+  // Toggle kinetic simulation off
   settings::kinetic_simulation = false;
   for (simulation::current_gen = 1; simulation::current_gen <= 7;
        ++simulation::current_gen) {
 
-    // Set initial source bank for the static simulation
+    // Set source bank as the eigenvalue source bank when kinetic simulation is
+    // toggled off
     if (!settings::kinetic_simulation)
       simulation::source_bank = simulation::initial_source_bank;
 
@@ -1104,8 +1104,15 @@ void initial_condition_kinetic_monte_carlo()
 
     finalize_generation();
 
-    // flip-flop kinetic_simulation variable so each steady state simulation
-    // is followed by a kinetic simulation
+    // TODO: WE NEED TO MAINTAIN K-EFF FOR THE STATIC RUNS, SIMILAR TO
+    //  initial_source_bank
+    // TODO: ensure the precursor_source_bank isn't getting reset after each
+    // kinetic simulation
+    //  Flip-flop switch for toggling kinetic simulation on and off after each
+    //  generation.  Effectively we are running contiguous k-eigenvalue
+    //  simulations, and following each with a kinetic simulation using this
+    //  initial condition to generate an initial distribution of precursor
+    //  particles.
     if (!settings::kinetic_simulation) {
       settings::kinetic_simulation = true;
       simulation::initial_source_bank = simulation::source_bank;
