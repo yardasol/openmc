@@ -540,7 +540,6 @@ void Particle::event_death()
 
   // Record the number of progeny created by this particle.
   // This data will be used to efficiently sort the fission bank.
-  // TODO: What about initial condition?
   if (settings::run_mode == RunMode::EIGENVALUE ||
       settings::kinetic_simulation) {
     int64_t offset = id() - 1 - simulation::work_index[mpi::rank];

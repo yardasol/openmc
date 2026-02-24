@@ -293,7 +293,6 @@ int openmc_next_batch(int* status)
   initialize_batch();
 
   // Run some criticality generations to decorrelate batches
-  // TODO:: NEED TO ADD MACHINERY TO SET TIME GRID BOUNDARIES FOR THIS FUNCTION
   if (settings::kinetic_simulation)
     decorrelate_kinetic_monte_carlo_batch();
 
