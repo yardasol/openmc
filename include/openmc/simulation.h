@@ -122,6 +122,8 @@ void transport_event_based();
 void rename_time_step_file(
   std::string base_filename, std::string extension, int i);
 
+void initial_condition_kinetic_monte_carlo();
+
 } // namespace openmc
 
 #endif // OPENMC_SIMULATION_H

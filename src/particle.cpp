@@ -296,35 +296,34 @@ void Particle::event_advance()
   // TODO: Store the particle in the census bank if it hit the census boundary
   // This will only happen if TIME CENSUS is on
   if (distance == distance_time) {
-    if (settings::is_initial_condition && settings::biased_fission) {
+    if (simulation::is_initial_condition && settings::biased_decay) {
       // Create precursor particle with equilibrium weight
-      // data structures
+      // data structures for particles on fissile material
       int i_nuclide = sample_nuclide(*this);
       const auto& nuc {data::nuclides[i_nuclide]};
-      if (nuc->fissionable_ && p.neutron_xs(i_nuclide).fission > 0.0)
+      const auto& micro {this->neutron_xs(i_nuclide)};
+      if (nuc->fissionable_ && micro.fission > 0.0) {
         auto& rx = sample_fission(i_nuclide, *this);
-      const auto& micro {p.neutron_xs(i_nuclide)};
 
-      // beta
-      double nu_t = nuc->nu(E_in, Nuclide::EmissionMode::total);
-      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
-      uint64_t* seed = current_seed();
-      double E_in = E();
-      double yield;
-      int dg = sample_delay_group(i_nuclide, rx, E_in, seed, yield);
-      double beta_i = yield * nu_d / nu_t;
+        // beta
+        double nu_t = nuc->nu(E(), Nuclide::EmissionMode::total);
+        double nu_d = nuc->nu(E(), Nuclide::EmissionMode::delayed);
+        uint64_t* seed = current_seed();
+        double yield;
+        int dg = sample_delay_group(i_nuclide, rx, E(), current_seed(), yield);
+        double beta_i = yield * nu_d / nu_t;
 
-      // decay rate
-      double decay_rate = rx.products_[dg].decay_rate_;
+        // decay rate
+        double decay_rate = rx.products_[dg].decay_rate_;
 
-      // num groups
-      int K = nuc->n_precursor_;
+        // num groups
+        int K = nuc->n_precursor_;
 
-      const double equilibrium_wgt =
-        wgt() * K * beta_i * micro.nu_fission / decay_rate * speed();
-      create_precursor_particle(rx, p, equilbirum_wgt);
+        const double equilibrium_wgt =
+          wgt() * K * beta_i * micro.nu_fission / decay_rate * this->speed();
+        create_precursor_particle(rx, *this, equilibrium_wgt);
+      }
     }
-  }
     // Store particle in time census bank as a source site
     SourceSite site;
     site.r = r();

@@ -83,7 +83,7 @@ int openmc_run()
 
     // Copy the source bank to a different bank var. We will want to run
     // some criticality generations to decorrelate the batches.
-    openmc::simulation::init_source_bank = openmc::simulation::source_bank;
+    openmc::simulation::initial_source_bank = openmc::simulation::source_bank;
 
     // Run the kinetic simulation
     openmc::simulation::time_total.start();
@@ -293,45 +293,11 @@ int openmc_next_batch(int* status)
 
   initialize_batch();
 
-  // Run some criticality generations to decorrelate batches
-  if (settings::kinetic_simulation) {
-    // Set the source bank to the steady state source bank
-    settings::kinetic_simulation = false;
-    for (current_gen = 1; current_gen <= 7; ++current_gen) {
-
-      // Set initial source bank for the static simulation
-      if (!settings::kinetic_simulation)
-        simulation::source_bank = simulation::initial_source_bank;
-
-      initialize_generation();
-
-      // Start timer for transport
-      simulation::time_transport.start();
-
-      // Transport loop
-      if (settings::event_based) {
-        transport_event_based();
-      } else {
-        transport_history_based();
-      }
-
-      // Accumulate time for transport
-      simulation::time_transport.stop();
-
-      finalize_generation();
-
-      // flip-flop kinetic_simulation
-      if (!settings::kinetic_simulation) {
-        settings::kinetic_simulation = true;
-        simulation::initial_source_bank = simulation::source_bank;
-      } else {
-        settings::kinetic_simulation = false;
-      }
-    }
-    settings::kinetic_simulation = true;
-    // Save the staedy state source bank
-    simulation::initial_source_bank = simulation::source_bank;
-  }
+  // Run some criticality generations to set the initial condition and
+  // decorrelate batches
+  // TODO:: NEED TO ADD MACHINERY TO SET TIME GRID BOUNDARIES FOR THIS FUNCTION
+  if (settings::kinetic_simulation)
+    initial_condition_kinetic_monte_carlo();
 
   // =======================================================================
   // LOOP OVER GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
@@ -1022,7 +988,9 @@ void transport_history_based()
     initialize_history(p, i_work);
     transport_history_based_single_particle(p);
   }
-  if (settings::kinetic_simulation && settings::biased_decay) {
+  // Only start preecursor decay once...
+  if (settings::kinetic_simulation && settings::biased_decay &&
+      !simulation::is_initial_condition) {
     for (int64_t i_work = 1; i_work <= simulation::precursors_per_rank;
          ++i_work) {
       Particle p;
@@ -1108,4 +1076,46 @@ void rename_time_step_file(
   std::rename(old_fname, new_fname);
 }
 
+void initial_condition_kinetic_monte_carlo()
+{
+  // Set the source bank to the steady state source bank
+  settings::kinetic_simulation = false;
+  for (simulation::current_gen = 1; simulation::current_gen <= 7;
+       ++simulation::current_gen) {
+
+    // Set initial source bank for the static simulation
+    if (!settings::kinetic_simulation)
+      simulation::source_bank = simulation::initial_source_bank;
+
+    initialize_generation();
+
+    // Start timer for transport
+    simulation::time_transport.start();
+
+    // Transport loop
+    if (settings::event_based) {
+      transport_event_based();
+    } else {
+      transport_history_based();
+    }
+
+    // Accumulate time for transport
+    simulation::time_transport.stop();
+
+    finalize_generation();
+
+    // flip-flop kinetic_simulation variable so each steady state simulation
+    // is followed by a kinetic simulation
+    if (!settings::kinetic_simulation) {
+      settings::kinetic_simulation = true;
+      simulation::initial_source_bank = simulation::source_bank;
+    } else {
+      settings::kinetic_simulation = false;
+    }
+  }
+  settings::kinetic_simulation = true;
+  simulation::is_initial_condition = false;
+  // Save the staedy state source bank
+  simulation::initial_source_bank = simulation::source_bank;
+}
 } // namespace openmc

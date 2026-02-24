@@ -1277,7 +1277,7 @@ void sample_branchless_fission(
     // DELAYED NEUTRON SAMPLED
 
     // Sample delayed precursor group
-    int dg = sample_delay_group(i_nuclide, rx, E_in, seed, yield);
+    int dg = sample_delay_group(i_nuclide, rx, E_in, seed, delayed_yield);
 
     // Sample time of emission based on decay constant of precursor
     decay_rate = rx.products_[dg].decay_rate_;
@@ -1297,7 +1297,7 @@ void sample_branchless_fission(
 
   // Determine if particle should continue simulation as delayed neutron
   // or if it shoud be converted into a precursor particle
-  if (settings::is_initial_condition && settings::biased_decay) {
+  if (simulation::is_initial_condition && settings::biased_decay) {
     // Skip normal precursor particle generation
     settings::biased_decay = false;
     create_precursor = true;
@@ -1311,14 +1311,14 @@ void sample_branchless_fission(
       bank_delayed_neutron(p, decay_time, E_out, wgt_branchless);
 
     // Equilibrium precursor particle generation
-    if (settings::is_initial_condition && !settings::biased_decay &&
+    if (simulation::is_initial_condition && !settings::biased_decay &&
         create_precursor) {
       const auto& micro {p.neutron_xs(i_nuclide)};
       double beta_i = beta * delayed_yield;
       int K = nuc->n_precursor_;
       const double equilibrium_wgt =
         wgt_branchless * K * beta_i * micro.nu_fission / decay_rate * p.speed();
-      create_precursor_particle(rx, p, equilbirum_wgt);
+      create_precursor_particle(rx, p, equilibrium_wgt);
       settings::biased_decay = true;
     }
 
