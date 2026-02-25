@@ -303,7 +303,7 @@ int openmc_next_batch(int* status)
   // Run some criticality generations to decorrelate batches for eigenvalue
   // simulations
   if (settings::kinetic_simulation && !simulation::is_initial_condition &&
-      settings::run_mode == RunMode::EIGENVALUE)
+      settings::run_mode == RunMode::EIGENVALUE && settings::solver_type == SolverType::MONTE_CARLO)
     decorrelate_kinetic_eigenvalue_batch();
 
   // =======================================================================
@@ -328,7 +328,7 @@ int openmc_next_batch(int* status)
     finalize_generation();
 
     if (settings::kinetic_simulation && !simulation::is_initial_condition &&
-        settings::run_mode == RunMode::EIGENVALUE) {
+        settings::run_mode == RunMode::EIGENVALUE && settings::solver_type == SolverType::MONTE_CARLO) {
       // Maintain starting keff for kinetic simulation to bake in initial
       // condition
       simulation::keff = simulation::initial_keff;
@@ -614,7 +614,7 @@ void initialize_generation()
     simulation::keff_generation = simulation::global_tallies(
       GlobalTally::K_TRACKLENGTH, TallyResult::VALUE);
   }
-  if (settings::kinetic_simulation) {
+  if (settings::kinetic_simulation && settings::solver_type == SolverType::MONTE_CARLO) {
     // Clear out the time census bank
     simulation::time_census_bank.resize(0);
     if (settings::forced_decay) {
