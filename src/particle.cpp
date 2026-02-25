@@ -544,7 +544,7 @@ void Particle::event_death()
       settings::kinetic_simulation) {
     int64_t offset = id() - 1 - simulation::work_index[mpi::rank];
     simulation::progeny_per_particle[offset] = n_progeny();
-    if (settings::biased_decay) {
+    if (settings::forced_decay) {
       int64_t offset = id() - 1 - simulation::precursor_index[mpi::rank];
       simulation::precursors_per_particle[offset] = n_precursors();
     }

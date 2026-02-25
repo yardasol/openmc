@@ -52,13 +52,18 @@ extern vector<int64_t> work_index;
 //-----------------------------------------------------------------------------
 // Global variables for kinetic simulations
 extern bool
-  is_initial_condition;       //!< if eigenvalue/fixed source sim is an initial
-                              //!< condition for a kinetic simulation
+  is_initial_condition; //!< if eigenvalue/fixed source simulation is an initial
+                        //!< condition for a kinetic simulation. Assumes the
+                        //!< user utilizing time censusing if on for the Monte
+                        //!< Carlo solver, and solves the kinetic NTE if on for
+                        //!< the Random Ray solver
 extern int current_timestep;  // !< current time step in kinetic simulation
 extern double current_time;   // !< current time in kinetic simulation
 extern bool source_correction; // !< flag to indicate if the simulation is meant
                                // to correct the source distribution (and
                                // batchwise k_effs for eigenvalue simulations)
+extern double initial_keff;    // !< Storage for initial keff for kinetic
+                               // eigenvalue simulations.
 
 // Precursor Particle Variables
 extern int64_t precursors_per_rank; //!< number of precursors per MPI rank
@@ -122,7 +127,7 @@ void transport_event_based();
 void rename_time_step_file(
   std::string base_filename, std::string extension, int i);
 
-void decorrelate_kinetic_monte_carlo_batch();
+void decorrelate_kinetic_eigenvalue_batch();
 
 } // namespace openmc
 

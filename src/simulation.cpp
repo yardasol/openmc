@@ -55,6 +55,12 @@ int openmc_run()
   openmc::simulation::time_total.start();
   openmc_simulation_init();
 
+  // Kinetic fixed source simulations can start immediately
+  if (openmc::settings::kinetic_simulation &&
+      openmc::settings::run_mode == openmc::RunMode::FIXED_SOURCE) {
+    openmc::simulation::is_initial_condition = false;
+  }
+
   // Ensure that a batch isn't executed in the case that the maximum number of
   // batches has already been run in a restart statepoint file
   int status = 0;
@@ -70,7 +76,9 @@ int openmc_run()
   openmc_simulation_finalize();
   openmc::simulation::time_total.stop();
 
-  if (openmc::settings::kinetic_simulation) {
+  // Kinetic batches for eigenvalue simulations
+  if (openmc::settings::kinetic_simulation &&
+      openmc::settings::run_mode == openmc::RunMode::EIGENVALUE) {
 
     // Rename statepoint and tallies file for initial condition calculation
     openmc::rename_time_step_file(
@@ -121,7 +129,7 @@ int openmc_simulation_init()
     settings::n_particles, simulation::work_per_rank, simulation::work_index);
 
   // Create precursor work as well
-  if (settings::biased_decay)
+  if (settings::forced_decay)
     calculate_work(settings::n_precursors, simulation::precursors_per_rank,
       simulation::precursor_index);
 
@@ -292,9 +300,11 @@ int openmc_next_batch(int* status)
 
   initialize_batch();
 
-  // Run some criticality generations to decorrelate batches
-  if (settings::kinetic_simulation)
-    decorrelate_kinetic_monte_carlo_batch();
+  // Run some criticality generations to decorrelate batches for eigenvalue
+  // simulations
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+      settings::run_mode == RunMode::EIGENVALUE)
+    decorrelate_kinetic_eigenvalue_batch();
 
   // =======================================================================
   // LOOP OVER GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
@@ -316,6 +326,13 @@ int openmc_next_batch(int* status)
     simulation::time_transport.stop();
 
     finalize_generation();
+
+    if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+        settings::run_mode == RunMode::EIGENVALUE) {
+      // Maintain starting keff for kinetic simulation to bake in initial
+      // condition
+      simulation::keff = simulation::initial_keff;
+    }
   }
 
   finalize_batch();
@@ -381,6 +398,7 @@ bool is_initial_condition {true};
 int current_timestep;
 double current_time {0.0};
 bool source_correction {false};
+double initial_keff;
 
 // Precursor Particle Variables
 int64_t precursors_per_rank;
@@ -415,7 +433,7 @@ void allocate_banks()
       init_census_bank(simulation::time_census_bank,
         simulation::progeny_per_particle, simulation::work_per_rank);
 
-      if (settings::biased_decay) {
+      if (settings::forced_decay) {
         simulation::precursor_source_bank.resize(
           simulation::precursors_per_rank);
         init_census_bank(simulation::precursor_shared_bank,
@@ -599,7 +617,7 @@ void initialize_generation()
   if (settings::kinetic_simulation) {
     // Clear out the time census bank
     simulation::time_census_bank.resize(0);
-    if (settings::biased_decay) {
+    if (settings::forced_decay) {
       simulation::precursor_shared_bank.resize(0);
     }
   }
@@ -654,7 +672,7 @@ void finalize_generation()
     synchronize_bank(simulation::time_census_bank, simulation::source_bank,
       settings::n_particles, simulation::work_per_rank, simulation::work_index);
 
-    if (settings::biased_decay) {
+    if (settings::forced_decay) {
       // The precursor bank should also be sorted
       sort_census_bank(simulation::precursor_shared_bank,
         simulation::precursors_per_particle, simulation::precursor_index);
@@ -770,18 +788,19 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
   p.wgt_ww_born() = -1.0;
   apply_weight_windows(p);
 
-  // Set particle time index if using time censusing
+  // Check particle time index
+  int expected_tb_idx;
   if (openmc::settings::kinetic_simulation &&
       !simulation::is_initial_condition) {
-    int expected_tb_idx = openmc::simulation::current_gen - 1;
-    if (p.time_bound_idx() != expected_tb_idx) {
-      std::string err = fmt::format("Expected time bound index was {0} but "
-                                    " particle time bound was {1}",
-        expected_tb_idx, p.time_bound_idx());
-      fatal_error(err);
-    }
+    expected_tb_idx = openmc::simulation::current_gen - 1;
   } else {
-    p.time_bound_idx() = 0;
+    expected_tb_idx = 0;
+  }
+  if (p.time_bound_idx() != expected_tb_idx) {
+    std::string err = fmt::format("Expected time bound index was {0} but "
+                                  " particle time bound was {1}",
+      expected_tb_idx, p.time_bound_idx());
+    fatal_error(err);
   }
 
   // Display message if high verbosity or trace is on
@@ -985,8 +1004,8 @@ void transport_history_based()
     initialize_history(p, i_work);
     transport_history_based_single_particle(p);
   }
-  // Only start preecursor decay once we have started the kinetic simulation
-  if (settings::kinetic_simulation && settings::biased_decay &&
+  // Only use forced decay for the transient part of a kinetic simulation
+  if (settings::kinetic_simulation && settings::forced_decay &&
       !simulation::is_initial_condition) {
     for (int64_t i_work = 1; i_work <= simulation::precursors_per_rank;
          ++i_work) {
@@ -1073,7 +1092,7 @@ void rename_time_step_file(
   std::rename(old_fname, new_fname);
 }
 
-void decorrelate_kinetic_monte_carlo_batch()
+void decorrelate_kinetic_eigenvalue_batch()
 {
   bool run_ic = true;
   int n_decorrelate_generations = 3;
@@ -1114,7 +1133,9 @@ void decorrelate_kinetic_monte_carlo_batch()
   }
   // Save the steady state source bank
   simulation::initial_source_bank = simulation::source_bank;
-
-  // Clear the k_generation and
+  // TODO: maybe this should be the average keff?
+  // Store the current generation keff as initial_keff
+  simulation::initial_keff = simulation::keff;
 }
+
 } // namespace openmc

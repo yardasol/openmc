@@ -203,12 +203,15 @@ extern double weight_cutoff;       //!< Weight cutoff for Russian roulette
 extern double weight_survive;      //!< Survival weight after Russian roulette
 
 // Timestep variables for kinetic simulation
-extern int n_timesteps; //!< number of timesteps
+extern int n_timesteps; //!< Number of timesteps
 extern double dt;       //!< fixed timestep size
 extern std::deque<double>
-  time_census_boundaries; //!< time grid boundaries for time censis
-extern int64_t n_precursors;
-extern bool biased_decay;
+  time_census_boundaries; //!< Time grid boundaries. Used for time census in the
+                          //!< Monte Carlo solver, and used as time grid points
+                          //!< in the Random Ray solver
+extern bool forced_decay; //!< Toggle for forced precursor decay.
+extern int64_t
+  n_precursors; //!< Number of precursor particles to simulate in forced decay
 
 } // namespace settings
 
