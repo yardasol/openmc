@@ -696,7 +696,7 @@ void RandomRaySimulation::initialize_time_step(int i)
   domain_->k_eff_ = static_avg_k_eff_;
 
   // Increment current timestep and simuation time
-  simulation::current_timestep = i - 1 ? FlatSourceDomain::adjoint_ : i + 1;
+  simulation::current_timestep = (FlatSourceDomain::adjoint_) ? i - 1 : i + 1;
 
   // Propagate previous converted solution for kinetic simulation
   domain_->source_regions_.simulation_reset();
