@@ -61,13 +61,14 @@ void openmc_run_random_ray()
       rename_time_step_file("tallies", ".out", -1);
   }
 
+  // Time-dependent simuation
   if (settings::kinetic_simulation) {
-    // Timestepping loop, including source/k-eff correction
-    // (i = -1)
-    for (int i = -1; i < settings::n_timesteps; i++)
-      sim.kinetic_single_time_step(i);
+    // Toggle initial condition source correction
+    simulation::source_correction = true;
+    sim.simulate();
   }
 
+  // TODO: modify
   //////////////////////////////////////////////////////////
   // Run adjoint simulation (if enabled)
   //////////////////////////////////////////////////////////
@@ -143,12 +144,14 @@ void validate_random_ray_inputs()
       case FilterType::PARTICLE:
         break;
       case FilterType::DELAYED_GROUP:
+      case FilterType::TIME:
         if (settings::kinetic_simulation) {
           break;
         } else {
-          fatal_error("Invalid filter specified in tallies.xml. Kinetic "
-                      "simulations is required "
-                      "to tally with a delayed_group filter.");
+          fatal_error(
+            "Invalid filter specified in tallies.xml. Tallying with "
+            "a time filter or delayed_group filter requires a kinetic "
+            "simulation.");
         }
       default:
         fatal_error("Invalid filter specified. Only cell, cell_instance, "
@@ -568,6 +571,7 @@ void RandomRaySimulation::kinetic_single_time_step(int i)
   domain_->propagate_final_quantities();
   domain_->source_regions_.time_step_reset();
 
+  // TODO: THESE NEED TO BE MOVED TO BE INSIDE EACH BATCH
   if ((i >= 0 && !FlatSourceDomain::adjoint_) ||
       (i < settings::n_timesteps && FlatSourceDomain::adjoint_)) {
     // Compute RHS backward differences
@@ -624,6 +628,15 @@ void RandomRaySimulation::simulate()
     openmc_simulation_init();
   }
 
+  // Propagagate initial condition solution for kinetic simulation
+  if (settings::kinetic_simulation && simulation::source_correction) {
+    // TODO: rename to set_initial_condition?
+    domain_->preserve_initial_quantities();
+
+    if (settings::run_mode == RunMode::EIGENVALUE)
+      domain->k_eff_ = simulation::keff;
+  }
+
   // Begin main simulation timer
   simulation::time_total.start();
 
@@ -633,109 +646,226 @@ void RandomRaySimulation::simulate()
     initialize_batch();
     initialize_generation();
 
-    // MPI not supported in random ray solver, so all work is done by rank 0
-    // TODO: Implement domain decomposition for MPI parallelism
-    if (mpi::master) {
+    // TODO: Add machinery to skip time filter if in IC
 
-      // Reset total starting particle weight used for normalizing tallies
-      simulation::total_weight = 1.0;
+    // Set n_timesteps based on whether or not there is a time filter, and
+    // whether or not we are in the initial condition
+    if (!settings::kinetic_simulation || settings::kinetic_simulation &&
+                                           simulation::is_initial_condition &&
+                                           !simulation::source_correction) {
+      settings::n_timesteps = 0
+    } else {
+      // TODO: pull n_timesteps from timefilter grid?
+      settings::n_timesteps = ...;
+    }
 
-      // Update source term (scattering + fission (+ delayed if kinetic))
-      domain_->update_all_neutron_sources();
+    // Time stepping loop. i = -1 is initial condition.
+    // ADJOINT: for (int i = settings::n_timesteps + 1; i > 0; i--)
+    for (int i = -1; i < settings::n_timesteps; i++) {
 
-      // Reset scalar fluxes, iteration volume tallies, and region hit flags
-      // to zero
-      domain_->batch_reset();
+      // MPI not supported in random ray solver, so all work is done by rank 0
+      // TODO: Implement domain decomposition for MPI parallelism
+      if (mpi::master) {
+        if (settings::kinetic_simulation) {
+          // Increment current timestep and simuation time
+          simulation::current_timestep =
+            i - 1 ? FlatSourceDomain::adjoint_ : i + 1;
 
-      // At the beginning of the simulation, if mesh subdivision is in use, we
-      // need to swap the main source region container into the base container,
-      // as the main source region container will be used to hold the true
-      // subdivided source regions. The base container will therefore only
-      // contain the external source region information, the mesh indices,
-      // material properties, and initial guess values for the flux/source.
+          if (simulation::is_initial_condition) {
+            domain_->set_initial_quantities();
+          } else {
+            // Compute RHS backward differences
+            domain_->compute_rhs_bd_quantities();
 
-      // Start timer for transport
-      simulation::time_transport.start();
+            // Update time dependent cross section based on the density
+            // TODO: modify for batch by batch approach... Maybe a preserve like
+            // with keff and init flux?
+            domain_->update_material_density(i);
 
+            if (FlatSourceDomain::adjoint_) {
+              simulation::current_time -= settings::dt;
+            } else {
+              simulation::current_time += settings::dt;
+
+              // Update the external sorce strength if specified. This will only
+              // be done in the forward calculation, as the inverse calculation
+              // uses 1 / phi. When CADIS is implemented, this will need to be
+              // updated to account for detector cross sections.
+              if (settings::run_mode == RunMode::FIXED_SOURCE)
+                // TODO: modify for batch by batch approach... Maybe a preserve
+                // like with keff and init flux?
+                domain_->update_external_source_strength(i);
+            }
+          }
+
+          if (FlatSourceDomain::adjoint_) {
+            // Set adjoint sources for the current timestep
+            domain_->set_td_adjoint_sources(simulation::current_timestep);
+          }
+
+          // Propagate results of previous simulation
+          // TODO: figure out if these need to be here
+          // I think this can be removed
+          // domain_->source_regions_.simulation_reset();
+          // domain_->source_regions_.time_step_reset();
+        }
+
+        // Reset total starting particle weight used for normalizing tallies
+        simulation::total_weight = 1.0;
+
+        // Update source term (scattering + fission (+ delayed if kinetic))
+        domain_->update_all_neutron_sources();
+
+        // Reset scalar fluxes, iteration volume tallies, and region hit flags
+        // to zero
+        domain_->batch_reset();
+
+        // At the beginning of the simulation, if mesh subdivision is in use, we
+        // need to swap the main source region container into the base
+        // container, as the main source region container will be used to hold
+        // the true subdivided source regions. The base container will therefore
+        // only contain the external source region information, the mesh
+        // indices, material properties, and initial guess values for the
+        // flux/source.
+
+        // Start timer for transport
+        simulation::time_transport.start();
+
+        // TODO: Verify that the same paths are traced every time step
 // Transport sweep over all random rays for the iteration
 #pragma omp parallel for schedule(dynamic)                                     \
   reduction(+ : total_geometric_intersections_)
-      for (int i = 0; i < settings::n_particles; i++) {
-        RandomRay ray(i, domain_.get());
-        total_geometric_intersections_ +=
-          ray.transport_history_based_single_ray();
-      }
-
-      simulation::time_transport.stop();
-
-      // Add any newly discovered source regions to the main source region
-      // container.
-      domain_->finalize_discovered_source_regions();
-
-      // Normalize scalar flux and update volumes
-      domain_->normalize_scalar_flux_and_volumes(
-        settings::n_particles * RandomRay::distance_active_);
-
-      // Add source to scalar flux, compute number of FSR hits
-      int64_t n_hits = domain_->add_source_to_scalar_flux();
-
-      // Apply transport stabilization factors
-      domain_->apply_transport_stabilization();
-
-      if (settings::run_mode == RunMode::EIGENVALUE) {
-        // Compute random ray k-eff
-        if (!settings::kinetic_simulation ||
-            settings::kinetic_simulation && simulation::is_initial_condition) {
-          domain_->compute_k_eff();
-          if (simulation::source_correction) {
-            static_fission_rate_.push_back(domain_->fission_rate_);
-            static_k_eff_.push_back(domain_->k_eff_);
-          }
-        } else {
-          domain_->k_eff_ = static_k_eff_[simulation::current_batch - 1];
-          domain_->fission_rate_ =
-            static_fission_rate_[simulation::current_batch - 1];
+        for (int i = 0; i < settings::n_particles; i++) {
+          RandomRay ray(i, domain_.get());
+          total_geometric_intersections_ +=
+            ray.transport_history_based_single_ray();
         }
 
-        // Store random ray k-eff into OpenMC's native k-eff variable
-        global_tally_tracklength = domain_->k_eff_;
-      }
+        simulation::time_transport.stop();
 
-      // Compute precursors if delayed neutrons are turned on
-      if (settings::kinetic_simulation && settings::create_delayed_neutrons)
-        domain_->compute_all_precursors();
+        // Add any newly discovered source regions to the main source region
+        // container.
+        domain_->finalize_discovered_source_regions();
 
-      // Execute all tallying tasks, if this is an active batch
-      if (simulation::current_batch > settings::n_inactive) {
+        // Normalize scalar flux and update volumes
+        domain_->normalize_scalar_flux_and_volumes(
+          settings::n_particles * RandomRay::distance_active_);
 
-        // Add this iteration's scalar flux estimate to final accumulated
-        // estimate
-        domain_->accumulate_iteration_quantities();
+        // Add source to scalar flux, compute number of FSR hits
+        int64_t n_hits = domain_->add_source_to_scalar_flux();
 
-        // Use above mapping to contribute FSR flux data to appropriate
-        // tallies
-        domain_->random_ray_tally();
-      }
+        // Apply transport stabilization factors
+        domain_->apply_transport_stabilization();
 
-      // Set phi_old = phi_new
-      domain_->flux_swap();
-      if (settings::kinetic_simulation && settings::create_delayed_neutrons) {
-        domain_->precursors_swap();
-      }
+        if (settings::run_mode == RunMode::EIGENVALUE) {
+          // Compute random ray k-eff for initial condition.
+          // This keff will be preserved
+          if (simulation::is_initial_condition) {
+            domain_->compute_k_eff();
+            if (settings::kinetic_simulation && simulation::source_correction) {
+              domain_->preserve_initial_k_eff();
+            }
+          }
 
-      // Check for any obvious insabilities/nans/infs
-      instability_check(n_hits, domain_->k_eff_, avg_miss_rate_);
-    } // End MPI master work
+          // Store random ray k-eff into OpenMC's native k-eff variable
+          global_tally_tracklength = domain_->k_eff_;
+        }
 
-    // Store simulation metrics
-    RandomRay::avg_miss_rate_ = avg_miss_rate_ / settings::n_batches;
-    RandomRay::total_geometric_intersections_ = total_geometric_intersections_;
-    RandomRay::n_external_source_regions_ = domain_->n_external_source_regions_;
-    RandomRay::n_source_regions_ = domain_->n_source_regions();
+        // Compute precursors if delayed neutrons are turned on
+        if (settings::kinetic_simulation && settings::create_delayed_neutrons)
+          domain_->compute_all_precursors();
 
-    // Finalize the current batch
-    finalize_generation();
-    finalize_batch();
+        // Execute all tallying tasks, if this is an active batch
+        if (simulation::current_batch > settings::n_inactive) {
+
+          // TODO: add a time index to this function!!
+          // Add this iteration's scalar flux estimate to final accumulated
+          // estimate
+          domain_->accumulate_iteration_quantities();
+
+          // TODO: add a time index to this function!!
+          // Use above mapping to contribute FSR flux data to appropriate
+          // tallies
+          domain_->random_ray_tally();
+        }
+
+        // Set aside the computed flux from t=0 to be used in the next batch
+        // TODO: IMPLEMENT
+        if (settings::kinetic_simulation && settings::source_correction) {
+          domain_->preserve_initial_flux();
+          if (settings::create_delayed_neutrons) {
+            domain_->preserve_initial_precursors();
+          }
+        }
+
+        // Collect thoe time step quantities
+        if (settings::kinetic_simulation) {
+          if (simulation::is_initial_condition &&
+              simulation::source_correction) {
+            // Initialize the BD arrays if initial condition
+            domain_->store_time_step_quantities(false);
+            // Toggle off initial condition and source correction
+            simulation::is_initial_condition = false;
+            simulation::source_correction = false;
+          } else if (!simulation::is_initial_condition &&
+                     !simulation::source_correction) {
+            // Else, store final quantities for the current time step
+            domain_->store_time_step_quantities();
+          }
+
+          // Only do this for the source correction and everyhing that comes
+          // after
+          if ((simulation::is_initial_condition &&
+                simulation::source_correction) ||
+              (!simulation::is_initial_condition &&
+                !simulation::source_correction)) {
+            if (adjoint_needed_ && !FlatSourceDomain::adjoint_) {
+              // TODO: MODIFY THIS TO ACCUMULATE OVER BATCHES
+              domain_->store_quantity_time_series();
+            }
+          }
+        }
+
+        // Set phi_old = phi_new (or propoagte time solution for kinetic
+        // simulation)
+        domain_->flux_swap();
+        if (settings::kinetic_simulation && settings::create_delayed_neutrons) {
+          domain_->precursors_swap();
+        }
+
+        // TODO: chagne avg_miss_rate to be indexed by time step
+        // Check for any obvious insabilities/nans/infs
+        instability_check(n_hits, domain_->k_eff_, avg_miss_rate_);
+      } // End MPI master work
+
+      // TODO: add machinery to propagatite time solution here
+      // I beleive the flux_swap function accomplished this...
+    }
+
+    // Restore the computed flux from t=0 to be used as the starting flux in the
+    // next batch
+    // TODO IMEPLEMENT
+    if (settings::kinetic_simulation && !simulation::is_initial_condtion)
+      domain_->restore_initial_flux();
+    if (settings::create_delayed_neutrons) {
+      domain_->restore_initial_precursors();
+    }
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      domain_->restore_initial_k_eff();
+    }
+  }
+
+  // Store simulation metrics
+  // TODO: make this a vector over timesteps
+  RandomRay::avg_miss_rate_ = avg_miss_rate_ / settings::n_batches;
+  // TODO: make this a vector over timesteps
+  RandomRay::total_geometric_intersections_ = total_geometric_intersections_;
+  RandomRay::n_external_source_regions_ = domain_->n_external_source_regions_;
+  RandomRay::n_source_regions_ = domain_->n_source_regions();
+
+  // Finalize the current batch
+  finalize_generation();
+  finalize_batch();
   } // End random ray power iteration loop
 
   domain_->count_external_source_regions();
