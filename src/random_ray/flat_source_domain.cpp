@@ -503,7 +503,7 @@ void FlatSourceDomain::convert_source_regions_to_tallies(int64_t start_sr_id)
       // similar to data::mg.energy_bin_avg_[p.g()]?  time_bin_avg_[p.time()]?
       // This will require resetting the tally_task vector after each timestep.
       // Not effeicient but quick to get what we want right now
-      p.time() = ...
+      p.time() = simulation::current_time;
     }
 
     // Loop over energy groups (so as to support energy filters)
@@ -2157,37 +2157,18 @@ void FlatSourceDomain::normalize_final_quantities()
   }
 }
 
-// TODO: add to .h
-void FlatSourceDomain::preserve_initial_quantities()
-{
-#pragma omp parallel for
-  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
-    for (int g = 0; g < negroups_; g++) {
-      source_regions_.scalar_flux_static(sr, g) =
-        source_regions_.scalar_flux_final(sr, g);
-    }
-    if (settings::create_delayed_neutrons) {
-      for (int dg = 0; dg < ndgroups_; dg++) {
-        source_regions_.precursors_static(sr, dg) =
-          source_regions_.precursors_final(sr, dg);
-      }
-    }
-  }
-}
-
-// TODO: add to .h
-void FlatSourceDomain::set_initial_quantities()
+void FlatSourceDomain::propagate_final_quantities()
 {
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     for (int g = 0; g < negroups_; g++) {
       source_regions_.scalar_flux_old(sr, g) =
-        source_regions_.scalar_flux_static(sr, g);
+        source_regions_.scalar_flux_final(sr, g);
     }
     if (settings::create_delayed_neutrons) {
       for (int dg = 0; dg < ndgroups_; dg++) {
         source_regions_.precursors_old(sr, dg) =
-          source_regions_.precursors_static(sr, dg);
+          source_regions_.precursors_final(sr, dg);
       }
     }
   }
@@ -2202,7 +2183,7 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
       if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION)
         j = 1;
       add_value_to_bd_vector(source_regions_.scalar_flux_bd(sr, g),
-        source_regions_.scalar_flux_new(sr, g), increment_not_initialize,
+        source_regions_.scalar_flux_final(sr, g), increment_not_initialize,
         RandomRay::bd_order_ + j);
       if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
         // Multiply out sigma_t to store the base source
@@ -2210,7 +2191,7 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
         double density_mult = source_regions_.density_mult(sr);
         // TODO: add support for explicit void regions
         double sigma_t = sigma_t_[material * negroups_ + g] * density_mult;
-        float source = source_regions_.source_new(sr, g) * sigma_t;
+        float source = source_regions_.source_final(sr, g) * sigma_t;
         add_value_to_bd_vector(source_regions_.source_bd(sr, g), source,
           increment_not_initialize, RandomRay::bd_order_);
       }
@@ -2218,7 +2199,7 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
     if (settings::create_delayed_neutrons) {
       for (int dg = 0; dg < ndgroups_; dg++) {
         add_value_to_bd_vector(source_regions_.precursors_bd(sr, dg),
-          source_regions_.precursors_new(sr, dg), increment_not_initialize,
+          source_regions_.precursors_final(sr, dg), increment_not_initialize,
           RandomRay::bd_order_);
       }
     }
