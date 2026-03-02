@@ -690,10 +690,11 @@ void RandomRaySimulation::simulate()
 
 void RandomRaySimulation::initialize_time_step(int i)
 {
-  if (settings::run_mode == RunMode::EIGENVALUE)
+  if (settings::run_mode == RunMode::EIGENVALUE) {
     if (simulation::source_correction)
       static_avg_k_eff_ = simulation::keff;
-  domain_->k_eff_ = static_avg_k_eff_;
+    domain_->k_eff_ = static_avg_k_eff_;
+  } 
 
   // Increment current timestep and simuation time
   simulation::current_timestep = (FlatSourceDomain::adjoint_) ? i - 1 : i + 1;
