@@ -30,6 +30,7 @@
 #include "openmc/tallies/filter_energy.h"
 #include "openmc/tallies/filter_mesh.h"
 #include "openmc/tallies/filter_particle.h"
+#include "openmc/tallies/filter_time.h"
 #include "openmc/tallies/tally.h"
 #include "openmc/xml_interface.h"
 
@@ -189,6 +190,10 @@ WeightWindows::WeightWindows(pugi::xml_node node)
   if (check_for_node(node, "energy_bounds"))
     energy_bounds_ = get_node_array<double>(node, "energy_bounds");
 
+  // energy bounds
+  if (check_for_node(node, "time_bounds"))
+    time_bounds_ = get_node_array<double>(node, "time_bounds");
+
   // get the survival value - optional
   if (check_for_node(node, "survival_ratio")) {
     survival_ratio_ = std::stod(get_node_value(node, "survival_ratio"));
@@ -293,7 +298,7 @@ void WeightWindows::set_defaults()
 void WeightWindows::allocate_ww_bounds()
 {
   auto shape = bounds_size();
-  if (shape[0] * shape[1] == 0) {
+  if (shape[0] * shape[1] * shape[2] == 0) {
     auto msg = fmt::format(
       "Size of weight window bounds is zero for WeightWindows {}", id());
     warning(msg);
@@ -338,6 +343,12 @@ void WeightWindows::set_energy_bounds(span<const double> bounds)
 {
   energy_bounds_.clear();
   energy_bounds_.insert(energy_bounds_.begin(), bounds.begin(), bounds.end());
+}
+
+void WeightWindows::set_time_bounds(span<const double> bounds)
+{
+  time_bounds_.clear();
+  time_bounds_.insert(time_bounds_.begin(), bounds.begin(), bounds.end());
   // if the mesh is set, allocate space for weight window bounds
   if (mesh_idx_ != C_NONE)
     allocate_ww_bounds();
@@ -394,15 +405,24 @@ WeightWindow WeightWindows::get_weight_window(const Particle& p) const
   if (E < energy_bounds_.front() || E > energy_bounds_.back())
     return {};
 
-  // get the mesh bin in energy group
+  // get the energy bin
   int energy_bin =
     lower_bound_index(energy_bounds_.begin(), energy_bounds_.end(), E);
 
-  // mesh_bin += energy_bin * mesh->n_bins();
+  // particle time
+  double t = p.time();
+
+  // check to make sure time is in range, expects sorted time values
+  if (t < time_bounds_.front() || t > time_bounds_.back())
+    return {};
+
+  // get the time bin
+  int time_bin = lower_bound_index(time_bounds_.begin(), time_bounds_.end(), t);
+
   // Create individual weight window
   WeightWindow ww;
-  ww.lower_weight = lower_ww_(energy_bin, mesh_bin);
-  ww.upper_weight = upper_ww_(energy_bin, mesh_bin);
+  ww.lower_weight = lower_ww_(energy_bin, mesh_bin, time_bin);
+  ww.upper_weight = upper_ww_(energy_bin, mesh_bin, time_bin);
   ww.survival_weight = ww.lower_weight * survival_ratio_;
   ww.max_lb_ratio = max_lb_ratio_;
   ww.max_split = max_split_;
@@ -410,12 +430,13 @@ WeightWindow WeightWindows::get_weight_window(const Particle& p) const
   return ww;
 }
 
-std::array<int, 2> WeightWindows::bounds_size() const
+std::array<int, 3> WeightWindows::bounds_size() const
 {
   int num_spatial_bins = this->mesh()->n_bins();
   int num_energy_bins =
     energy_bounds_.size() > 0 ? energy_bounds_.size() - 1 : 1;
-  return {num_energy_bins, num_spatial_bins};
+  int num_time_bins = time_bounds_.size() > 0 ? time_bounds_.size() - 1 : 1;
+  return {num_energy_bins, num_spatial_bins, num_time_bins};
 }
 
 template<class T>
@@ -436,18 +457,18 @@ void WeightWindows::check_bounds(const T& bounds) const
 {
   // check that the number of weight window entries is correct
   auto dims = this->bounds_size();
-  if (bounds.size() != dims[0] * dims[1]) {
-    auto err_msg =
-      fmt::format("In weight window domain {} the number of spatial "
-                  "energy/spatial bins ({}) does not match the number "
-                  "of weight bins ({})",
-        id_, dims, bounds.size());
+  if (bounds.size() != dims[0] * dims[1] * dims[2]) {
+    auto err_msg = fmt::format(
+      "In weight window domain {} the number of spatial "
+      "energy/spatial/time bins ({}, {}, {}) does not match the number "
+      "of weight bins ({})",
+      id_, dims[0], dims[1], dims[2], bounds.size());
     fatal_error(err_msg);
   }
 }
 
-void WeightWindows::set_bounds(const xt::xtensor<double, 2>& lower_bounds,
-  const xt::xtensor<double, 2>& upper_bounds)
+void WeightWindows::set_bounds(const xt::xtensor<double, 3>& lower_bounds,
+  const xt::xtensor<double, 3>& upper_bounds)
 {
 
   this->check_bounds(lower_bounds, upper_bounds);
@@ -458,7 +479,7 @@ void WeightWindows::set_bounds(const xt::xtensor<double, 2>& lower_bounds,
 }
 
 void WeightWindows::set_bounds(
-  const xt::xtensor<double, 2>& lower_bounds, double ratio)
+  const xt::xtensor<double, 3>& lower_bounds, double ratio)
 {
   this->check_bounds(lower_bounds);
 
@@ -511,12 +532,17 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   int e_bins = lower_ww_.shape()[0];
   int64_t mesh_bins = lower_ww_.shape()[1];
 
+  // int t_bins = lower_ww_.shape()[2];
+  int t = simulation::current_timestep;
+
   // Initialize weight window arrays to -1.0 by default
 #pragma omp parallel for collapse(2) schedule(static)
   for (int e = 0; e < e_bins; e++) {
     for (int64_t m = 0; m < mesh_bins; m++) {
-      lower_ww_(e, m) = -1.0;
-      upper_ww_(e, m) = -1.0;
+      // for (int t = 0; t < t_bins; t++) {
+      lower_ww_(e, m, m) = -1.0;
+      upper_ww_(e, m, m) = -1.0;
+      //}
     }
   }
 
@@ -541,16 +567,16 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   // Extract tally data
   //
   // At the end of this section, the mean and rel_err array
-  // is a 2D view of tally data (n_e_groups, n_mesh_bins)
+  // is a 3D view of tally data (n_e_groups, n_mesh_bins, n_t_steps)
   //
   ///////////////////////////
 
   // build a shape for a view of the tally results, this will always be
-  // dimension 5 (3 filter dimensions, 1 score dimension, 1 results dimension)
+  // dimension 5 (4 filter dimensions, 1 score dimension, 1 results dimension)
   // Look for the size of the last dimension of the results array
   const auto& results_arr = tally->results();
   const int results_dim = static_cast<int>(results_arr.shape()[2]);
-  std::array<int, 5> shape = {1, 1, 1, tally->n_scores(), results_dim};
+  std::array<int, 6> shape = {1, 1, 1, 1, tally->n_scores(), results_dim};
 
   // set the shape for the filters applied on the tally
   for (int i = 0; i < tally->filters().size(); i++) {
@@ -559,7 +585,7 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   }
 
   // build the transpose information to re-order data according to filter type
-  std::array<int, 5> transpose = {0, 1, 2, 3, 4};
+  std::array<int, 6> transpose = {0, 1, 2, 3, 4, 5};
 
   // track our filter types and where we've added new ones
   std::vector<FilterType> filter_types = tally->filter_types();
@@ -570,6 +596,9 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
 
   if (!tally->has_filter(FilterType::ENERGY))
     filter_types.push_back(FilterType::ENERGY);
+
+  if (!tally->has_filter(FilterType::TIME))
+    filter_types.push_back(FilterType::TIME);
 
   // particle axis mapping
   transpose[0] =
@@ -586,11 +615,16 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
     std::find(filter_types.begin(), filter_types.end(), FilterType::MESH) -
     filter_types.begin();
 
+  // time axis mapping
+  transpose[3] =
+    std::find(filter_types.begin(), filter_types.end(), FilterType::TIME) -
+    filter_types.begin();
+
   // get a fully reshaped view of the tally according to tally ordering of
   // filters
   auto tally_values = xt::reshape_view(results_arr, shape);
 
-  // get a that is (particle, energy, mesh, scores, values)
+  // get a that is (particle, energy, mesh, time, scores, values)
   auto transposed_view = xt::transpose(tally_values, transpose);
 
   // determine the dimension and index of the particle data
@@ -619,11 +653,11 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
 
   // down-select data based on particle and score
   auto sum = xt::dynamic_view(
-    transposed_view, {particle_idx, xt::all(), xt::all(), score_index,
-                       static_cast<int>(TallyResult::SUM)});
+    transposed_view, {particle_idx, xt::all(), xt::all(), xt::all(),
+                       score_index, static_cast<int>(TallyResult::SUM)});
   auto sum_sq = xt::dynamic_view(
-    transposed_view, {particle_idx, xt::all(), xt::all(), score_index,
-                       static_cast<int>(TallyResult::SUM_SQ)});
+    transposed_view, {particle_idx, xt::all(), xt::all(), xt::all(),
+                       score_index, static_cast<int>(TallyResult::SUM_SQ)});
   int n = tally->n_realizations_;
 
   //////////////////////////////////////////////
@@ -645,30 +679,36 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   auto mesh_vols = this->mesh()->volumes();
 
   // Calculate mean (new_bounds) and relative error
+// #pragma omp parallel for collapse(3) schedule(static)
 #pragma omp parallel for collapse(2) schedule(static)
   for (int e = 0; e < e_bins; e++) {
     for (int64_t m = 0; m < mesh_bins; m++) {
-      // Calculate mean
-      new_bounds(e, m) = sum(e, m) / n;
+      // for (int64_t t = 0; t < t_bins; t++) {
+      //  Calculate mean
+      new_bounds(e, m, m) = sum(e, m, m) / n;
       // Calculate relative error
-      if (sum(e, m) > 0.0) {
-        double mean_val = new_bounds(e, m);
-        double variance = (sum_sq(e, m) / n - mean_val * mean_val) / (n - 1);
-        rel_err(e, m) = std::sqrt(variance) / mean_val;
+      if (sum(e, m, m) > 0.0) {
+        double mean_val = new_bounds(e, m, m);
+        double variance = (sum_sq(e, m, m) / n - mean_val * mean_val) / (n - 1);
+        rel_err(e, m, m) = std::sqrt(variance) / mean_val;
       } else {
-        rel_err(e, m) = INFTY;
+        rel_err(e, m, m) = INFTY;
       }
       if (value == "rel_err") {
-        new_bounds(e, m) = 1.0 / rel_err(e, m);
+        new_bounds(e, m, m) = 1.0 / rel_err(e, m, m);
       }
+      //}
     }
   }
 
   // Divide by volume of mesh elements
+// #pragma omp parallel for collapse(3) schedule(static)
 #pragma omp parallel for collapse(2) schedule(static)
   for (int e = 0; e < e_bins; e++) {
     for (int64_t m = 0; m < mesh_bins; m++) {
-      new_bounds(e, m) /= mesh_vols[m];
+      // for (int64_t t = 0; t < t_bins; t++) {
+      new_bounds(e, m, m) /= mesh_vols[m];
+      //}
     }
   }
 
@@ -680,11 +720,12 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
     for (int e = 0; e < e_bins; e++) {
       double group_max = 0.0;
 
+      // TODO: should WWS be normalized per time bin?
       // Find maximum value across all elements in this energy group
 #pragma omp parallel for schedule(static) reduction(max : group_max)
       for (int64_t m = 0; m < mesh_bins; m++) {
-        if (new_bounds(e, m) > group_max) {
-          group_max = new_bounds(e, m);
+        if (new_bounds(e, m, 0) > group_max) {
+          group_max = new_bounds(e, m, 0);
         }
       }
 
@@ -693,32 +734,38 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
         double norm_factor = 1.0 / (2.0 * group_max);
 #pragma omp parallel for schedule(static)
         for (int64_t m = 0; m < mesh_bins; m++) {
-          new_bounds(e, m) *= norm_factor;
+          // for (int t = 0; t < t_bins; t++) {
+          new_bounds(e, m, m) *= norm_factor;
+          //}
         }
       }
     }
   } else {
     // For FW-CADIS, weight windows are inversely proportional to the adjoint
     // fluxes. We normalize the weight windows across all energy groups.
+// #pragma omp parallel for collapse(3) schedule(static)
 #pragma omp parallel for collapse(2) schedule(static)
     for (int e = 0; e < e_bins; e++) {
       for (int64_t m = 0; m < mesh_bins; m++) {
-        // Take the inverse, but are careful not to divide by zero
-        if (new_bounds(e, m) != 0.0) {
-          new_bounds(e, m) = 1.0 / new_bounds(e, m);
+        // for (int t = 0; t < t_bins; t++) {
+        //  Take the inverse, but are careful not to divide by zero
+        if (new_bounds(e, m, m) != 0.0) {
+          new_bounds(e, m, m) = 1.0 / new_bounds(e, m, m);
         } else {
-          new_bounds(e, m) = 0.0;
+          new_bounds(e, m, m) = 0.0;
         }
+        //}
       }
     }
 
+    // TODO: should WWS be normalized per time bin?
     // Find the maximum value across all elements
     double max_val = 0.0;
 #pragma omp parallel for collapse(2) schedule(static) reduction(max : max_val)
     for (int e = 0; e < e_bins; e++) {
       for (int64_t m = 0; m < mesh_bins; m++) {
-        if (new_bounds(e, m) > max_val) {
-          max_val = new_bounds(e, m);
+        if (new_bounds(e, m, 0) > max_val) {
+          max_val = new_bounds(e, m, 0);
         }
       }
     }
@@ -726,30 +773,36 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
     // Parallel normalization
     if (max_val > 0.0) {
       double norm_factor = 1.0 / (2.0 * max_val);
+// #pragma omp parallel for collapse(3) schedule(static)
 #pragma omp parallel for collapse(2) schedule(static)
       for (int e = 0; e < e_bins; e++) {
         for (int64_t m = 0; m < mesh_bins; m++) {
-          new_bounds(e, m) *= norm_factor;
+          // for (int t = 0; t < t_bins; t++) {
+          new_bounds(e, m, m) *= norm_factor;
+          //}
         }
       }
     }
   }
 
   // Final processing
+// #pragma omp parallel for collapse(3) schedule(static)
 #pragma omp parallel for collapse(2) schedule(static)
   for (int e = 0; e < e_bins; e++) {
     for (int64_t m = 0; m < mesh_bins; m++) {
-      // Values where the mean is zero should be ignored
-      if (sum(e, m) <= 0.0) {
-        new_bounds(e, m) = -1.0;
+      // for (int t = 0; t < t_bins; t++) {
+      //  Values where the mean is zero should be ignored
+      if (sum(e, m, m) <= 0.0) {
+        new_bounds(e, m, m) = -1.0;
       }
       // Values where the relative error is higher than the threshold should be
       // ignored
-      else if (rel_err(e, m) > threshold) {
-        new_bounds(e, m) = -1.0;
+      else if (rel_err(e, m, m) > threshold) {
+        new_bounds(e, m, m) = -1.0;
       }
       // Set the upper bounds
-      upper_ww_(e, m) = ratio * lower_ww_(e, m);
+      upper_ww_(e, m, m) = ratio * lower_ww_(e, m, m);
+      //}
     }
   }
 }
@@ -757,8 +810,11 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
 void WeightWindows::check_tally_update_compatibility(const Tally* tally)
 {
   // define the set of allowed filters for the tally
-  const std::set<FilterType> allowed_filters = {
-    FilterType::MESH, FilterType::ENERGY, FilterType::PARTICLE};
+  // const std::set<FilterType> allowed_filters = {
+  //  FilterType::MESH, FilterType::ENERGY, FilterType::TIME,
+  //  FilterType::PARTICLE};
+  const std::set<FilterType> allowed_filters = {FilterType::MESH,
+    FilterType::ENERGY, FilterType::PARTICLE, FilterType::TIME};
 
   // retrieve a mapping of filter type to filter index for the tally
   auto filter_indices = tally->filter_indices();
@@ -811,6 +867,28 @@ void WeightWindows::check_tally_update_compatibility(const Tally* tally)
       }
     }
   }
+
+  // if a time filter exists, make sure the time grid matches that of this
+  // weight window object
+  if (auto time_filter = tally->get_filter<TimeFilter>()) {
+    std::vector<double> filter_bins = time_filter->bins();
+    std::set<double> filter_t_bounds(
+      time_filter->bins().begin(), time_filter->bins().end());
+    if (filter_t_bounds.size() != time_bounds().size()) {
+      fatal_error(fmt::format(
+        "Time filter {} does not have the same number of time "
+        "bounds ({}) as weight window object {} ({})",
+        time_filter->id(), filter_t_bounds.size(), id_, time_bounds().size()));
+    }
+
+    for (auto t : time_bounds()) {
+      if (filter_t_bounds.count(t) == 0) {
+        fatal_error(fmt::format(
+          "Time bounds of filter {} and weight windows {} do not match",
+          time_filter->id(), id_));
+      }
+    }
+  }
 }
 
 void WeightWindows::to_hdf5(hid_t group) const
@@ -821,6 +899,7 @@ void WeightWindows::to_hdf5(hid_t group) const
   write_dataset(
     ww_group, "particle_type", openmc::particle_type_to_str(particle_type_));
   write_dataset(ww_group, "energy_bounds", energy_bounds_);
+  write_dataset(ww_group, "time_bounds", time_bounds_);
   write_dataset(ww_group, "lower_ww_bounds", lower_ww_);
   write_dataset(ww_group, "upper_ww_bounds", upper_ww_);
   write_dataset(ww_group, "survival_ratio", survival_ratio_);
@@ -859,6 +938,14 @@ WeightWindowsGenerator::WeightWindowsGenerator(pugi::xml_node node)
     int p_type = static_cast<int>(particle_type);
     e_bounds.push_back(data::energy_min[p_type]);
     e_bounds.push_back(data::energy_max[p_type]);
+  }
+
+  std::vector<double> t_bounds;
+  if (check_for_node(node, "time_bounds")) {
+    t_bounds = get_node_array<double>(node, "time_bounds");
+  } else {
+    t_bounds.push_back(0.0);
+    t_bounds.push_back(INFTY);
   }
 
   // set method
@@ -917,6 +1004,8 @@ WeightWindowsGenerator::WeightWindowsGenerator(pugi::xml_node node)
   wws->set_mesh(mesh_idx);
   if (e_bounds.size() > 0)
     wws->set_energy_bounds(e_bounds);
+  if (t_bounds.size() > 0)
+    wws->set_time_bounds(t_bounds);
   wws->set_particle_type(particle_type);
   wws->set_defaults();
 }
@@ -958,6 +1047,14 @@ void WeightWindowsGenerator::create_tally()
     openmc_energy_filter_set_bins(
       energy_filter->index(), e_bounds.size(), e_bounds.data());
     ww_tally->add_filter(energy_filter);
+  }
+
+  const auto& t_bounds = wws->time_bounds();
+  if (t_bounds.size() > 0) {
+    auto time_filter = Filter::create("time");
+    openmc_time_filter_set_bins(
+      time_filter->index(), t_bounds.size(), t_bounds.data());
+    ww_tally->add_filter(time_filter);
   }
 
   // add a particle filter
@@ -1114,6 +1211,27 @@ extern "C" int openmc_weight_windows_get_energy_bounds(
   return 0;
 }
 
+extern "C" int openmc_weight_windows_set_time_bounds(
+  int32_t ww_idx, double* t_bounds, size_t t_bounds_size)
+{
+  if (int err = verify_ww_index(ww_idx))
+    return err;
+  const auto& wws = variance_reduction::weight_windows.at(ww_idx);
+  wws->set_time_bounds({t_bounds, t_bounds_size});
+  return 0;
+}
+
+extern "C" int openmc_weight_windows_get_time_bounds(
+  int32_t ww_idx, const double** t_bounds, size_t* t_bounds_size)
+{
+  if (int err = verify_ww_index(ww_idx))
+    return err;
+  const auto& wws = variance_reduction::weight_windows[ww_idx].get();
+  *t_bounds = wws->time_bounds().data();
+  *t_bounds_size = wws->time_bounds().size();
+  return 0;
+}
+
 extern "C" int openmc_weight_windows_set_particle(int32_t index, int particle)
 {
   if (int err = verify_ww_index(index))
@@ -1261,12 +1379,7 @@ extern "C" int openmc_weight_windows_export(const char* filename)
   if (!mpi::master)
     return 0;
 
-  std::string base_name = "weight_windows";
-  if (settings::kinetic_simulation)
-    base_name =
-      fmt::format("{0}_{1}.h5", base_name, simulation::current_timestep);
-  else
-    base_name = fmt::format("{0}.h5", base_name);
+  std::string base_name = "weight_windows.h5";
 
   std::string name = filename ? filename : base_name;
 

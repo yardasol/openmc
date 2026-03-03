@@ -4,7 +4,7 @@ RegularMesh
 	Dimensions     =	3
 	Voxels         =	[15 15 15]
 	Lower left     =	[0. 0. 0.]
-	Upper Right    =	[np.float64(30.0), np.float64(30.0), np.float64(30.0)]
+	Upper Right    =	[30.0, 30.0, 30.0]
 	Width          =	[2. 2. 2.]
 Lower Bounds
 1.71e-01

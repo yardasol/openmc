@@ -51,6 +51,12 @@ class WeightWindows(IDManagerMixin):
         A list of values for which each successive pair constitutes a range of
         energies in [eV] for a single bin. If no energy bins are provided, the
         maximum and minimum energy for the data available at runtime.
+    time_bounds : Iterable of Real
+        A list of values for which each successive pair constitutes a range of
+        times in [s] for a single bin. If no time bins are provided, the
+        t=0 and t=infty are used.
+
+        ..versionadded:: 0.16.0
     particle_type : {'neutron', 'photon'}
         Particle type the weight windows apply to
     survival_ratio : float
@@ -80,16 +86,21 @@ class WeightWindows(IDManagerMixin):
     energy_bounds : Iterable of Real
         A list of values for which each successive pair constitutes a range of
         energies in [eV] for a single bin
+    time_bounds : Iterable of Real
+        A list of values for which each successive pair constitutes a range of
+        times in [s] for a single bin
     num_energy_bins : int
         Number of energy bins
+    num_time_bins : int
+        Number of time bins
     lower_ww_bounds : numpy.ndarray of float
         An array of values for which each value is the lower bound of a weight
-        window. Shape: (ni, nj, nk, num_energy_bins) for StructuredMesh;
-        (num_elements, num_energy_bins) for UnstructuredMesh
+        window. Shape: (ni, nj, nk, num_energy_bins, num_time_bins) for StructuredMesh;
+        (num_elements, num_energy_bins, num_time_bins) for UnstructuredMesh
     upper_ww_bounds : numpy.ndarray of float
         An array of values for which each value is the upper bound of a weight
-        window. Shape: (ni, nj, nk, num_energy_bins) for StructuredMesh;
-        (num_elements, num_energy_bins) for UnstructuredMesh
+        window. Shape: (ni, nj, nk, num_energy_bins, num_time_bins) for StructuredMesh;
+        (num_elements, num_energy_bins, num_time_bins) for UnstructuredMesh
     survival_ratio : float
         Ratio of the survival weight to the lower weight window bound for
         rouletting
@@ -116,6 +127,7 @@ class WeightWindows(IDManagerMixin):
         upper_ww_bounds: Iterable[float] | None = None,
         upper_bound_ratio: float | None = None,
         energy_bounds: Iterable[Real] | None = None,
+        time_bounds: Iterable[Real] | None = None,
         particle_type: str = 'neutron',
         survival_ratio: float = 3.0,
         max_lower_bound_ratio: float | None = None,
@@ -129,6 +141,9 @@ class WeightWindows(IDManagerMixin):
         self._energy_bounds = None
         if energy_bounds is not None:
             self.energy_bounds = energy_bounds
+        self._time_bounds = None
+        if time_bounds is not None:
+            self.time_bounds = time_bounds
         self.lower_ww_bounds = lower_ww_bounds
 
         if upper_ww_bounds is not None and upper_bound_ratio:
@@ -166,6 +181,7 @@ class WeightWindows(IDManagerMixin):
         string += '{: <16}=\t{}\n'.format('\tMesh', self.mesh)
         string += '{: <16}=\t{}\n'.format('\tParticle Type', self._particle_type)
         string += '{: <16}=\t{}\n'.format('\tEnergy Bounds', self._energy_bounds)
+        string += '{: <16}=\t{}\n'.format('\tTime Bounds', self._time_bounds)
         string += '{: <16}=\t{}\n'.format('\tMax lower bound ratio', self.max_lower_bound_ratio)
         string += '{: <16}=\t{}\n'.format('\tLower WW Bounds', self._lower_ww_bounds)
         string += '{: <16}=\t{}\n'.format('\tUpper WW Bounds', self._upper_ww_bounds)
@@ -193,6 +209,9 @@ class WeightWindows(IDManagerMixin):
 
         # save most expensive checks for last
         if not np.array_equal(self.energy_bounds, other.energy_bounds):
+            return False
+
+        if not np.array_equal(self.time_bounds, other.time_bounds):
             return False
 
         if not np.array_equal(self.lower_ww_bounds, other.lower_ww_bounds):
@@ -237,6 +256,21 @@ class WeightWindows(IDManagerMixin):
         return self.energy_bounds.size - 1
 
     @property
+    def time_bounds(self) -> Iterable[Real]:
+        return self._time_bounds
+
+    @time_bounds.setter
+    def time_bounds(self, bounds: Iterable[float]):
+        cv.check_type('time bounds', bounds, Iterable, Real)
+        self._time_bounds = np.asarray(bounds)
+
+    @property
+    def num_time_bins(self) -> int:
+        if self.time_bounds is None:
+            return 1
+        return self.time_bounds.size - 1
+
+    @property
     def lower_ww_bounds(self) -> np.ndarray:
         return self._lower_ww_bounds
 
@@ -246,13 +280,15 @@ class WeightWindows(IDManagerMixin):
                                bounds,
                                Real,
                                min_depth=1,
-                               max_depth=4)
+                               max_depth=5)
         # reshape data according to mesh and energy bins
         bounds = np.asarray(bounds)
         if isinstance(self.mesh, UnstructuredMesh):
-            bounds = bounds.reshape(-1, self.num_energy_bins)
+            bounds = bounds.reshape(-1, self.num_energy_bins,
+                                    self.num_time_bins)
         else:
-            bounds = bounds.reshape(*self.mesh.dimension, self.num_energy_bins)
+            bounds = bounds.reshape(*self.mesh.dimension, self.num_energy_bins,
+                                    self.num_time_bins)
         self._lower_ww_bounds = bounds
 
     @property
@@ -265,13 +301,15 @@ class WeightWindows(IDManagerMixin):
                                bounds,
                                Real,
                                min_depth=1,
-                               max_depth=4)
+                               max_depth=5)
         # reshape data according to mesh and energy bins
         bounds = np.asarray(bounds)
         if isinstance(self.mesh, UnstructuredMesh):
-            bounds = bounds.reshape(-1, self.num_energy_bins)
+            bounds = bounds.reshape(-1, self.num_energy_bins,
+                                    self.num_time_bins)
         else:
-            bounds = bounds.reshape(*self.mesh.dimension, self.num_energy_bins)
+            bounds = bounds.reshape(*self.mesh.dimension, self.num_energy_bins,
+                                    self.num_time_bins)
         self._upper_ww_bounds = bounds
 
     @property
@@ -335,6 +373,10 @@ class WeightWindows(IDManagerMixin):
             subelement = ET.SubElement(element, 'energy_bounds')
             subelement.text = ' '.join(str(e) for e in self.energy_bounds)
 
+        if self.time_bounds is not None:
+            subelement = ET.SubElement(element, 'time_bounds')
+            subelement.text = ' '.join(str(e) for e in self.time_bounds)
+
         subelement = ET.SubElement(element, 'lower_ww_bounds')
         subelement.text = ' '.join(str(b) for b in self.lower_ww_bounds.ravel('F'))
 
@@ -382,10 +424,11 @@ class WeightWindows(IDManagerMixin):
         lower_ww_bounds = get_elem_list(elem, "lower_ww_bounds", float)
         upper_ww_bounds = get_elem_list(elem, "upper_ww_bounds", float)
         e_bounds = get_elem_list(elem, "energy_bounds", float)
+        t_bounds = get_elem_list(elem, "time_bounds", float)
         particle_type = get_text(elem, 'particle_type')
         survival_ratio = float(get_text(elem, 'survival_ratio'))
 
-        ww_shape = (len(e_bounds) - 1,) + mesh.dimension[::-1]
+        ww_shape = (len(e_bounds) - 1,) + mesh.dimension[::-1] + (len(t_bounds) - 1,)
         lower_ww_bounds = np.array(lower_ww_bounds).reshape(ww_shape).T
         upper_ww_bounds = np.array(upper_ww_bounds).reshape(ww_shape).T
 
@@ -402,6 +445,7 @@ class WeightWindows(IDManagerMixin):
             lower_ww_bounds=lower_ww_bounds,
             upper_ww_bounds=upper_ww_bounds,
             energy_bounds=e_bounds,
+            time_bounds=t_bounds,
             particle_type=particle_type,
             survival_ratio=survival_ratio,
             max_lower_bound_ratio=max_lower_bound_ratio,
@@ -433,9 +477,10 @@ class WeightWindows(IDManagerMixin):
 
         ptype = group['particle_type'][()].decode()
         e_bounds = group['energy_bounds'][()]
-        # weight window bounds are stored with the shape (e, k, j, i)
+        t_bounds = group['time_bounds'][()]
+        # weight window bounds are stored with the shape (e, k, j, i, t)
         # in C++ and HDF5 -- the opposite of how they are stored here
-        shape = (e_bounds.size - 1,  *mesh.dimension[::-1])
+        shape = (e_bounds.size - 1,  *mesh.dimension[::-1], t_bounds.size- 1)
         lower_ww_bounds = group['lower_ww_bounds'][()].reshape(shape).T
         upper_ww_bounds = group['upper_ww_bounds'][()].reshape(shape).T
         survival_ratio = group['survival_ratio'][()]
@@ -452,6 +497,7 @@ class WeightWindows(IDManagerMixin):
             lower_ww_bounds=lower_ww_bounds,
             upper_ww_bounds=upper_ww_bounds,
             energy_bounds=e_bounds,
+            time_bounds=t_bounds,
             particle_type=ptype,
             survival_ratio=survival_ratio,
             max_lower_bound_ratio=max_lower_bound_ratio,
@@ -730,7 +776,7 @@ class WeightWindowGenerator:
 
         mesh_id = int(get_text(elem, 'mesh'))
         mesh = meshes[mesh_id]
-        
+
         energy_bounds = get_elem_list(elem, "energy_bounds, float")
         particle_type = get_text(elem, 'particle_type')
 

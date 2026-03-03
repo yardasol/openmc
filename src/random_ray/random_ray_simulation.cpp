@@ -152,6 +152,8 @@ void validate_random_ray_inputs()
       case FilterType::MESH:
       case FilterType::UNIVERSE:
       case FilterType::PARTICLE:
+      case FilterType::TIME: // TODO: add control flow somehwere to prevent time
+                             //
         break;
       case FilterType::DELAYED_GROUP:
         if (settings::kinetic_simulation) {

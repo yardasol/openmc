@@ -107,6 +107,8 @@ public:
 
   void set_energy_bounds(span<const double> bounds);
 
+  void set_time_bounds(span<const double> bounds);
+
   void set_mesh(const std::unique_ptr<Mesh>& mesh);
 
   void set_mesh(const Mesh* mesh);
@@ -139,14 +141,17 @@ public:
   //! \param[in] p  Particle to get weight window for
   WeightWindow get_weight_window(const Particle& p) const;
 
-  std::array<int, 2> bounds_size() const;
+  std::array<int, 3> bounds_size() const;
+  // std::array<int, 2> bounds_size() const;
 
   const vector<double>& energy_bounds() const { return energy_bounds_; }
 
-  void set_bounds(const xt::xtensor<double, 2>& lower_ww_bounds,
-    const xt::xtensor<double, 2>& upper_bounds);
+  const vector<double>& time_bounds() const { return time_bounds_; }
 
-  void set_bounds(const xt::xtensor<double, 2>& lower_bounds, double ratio);
+  void set_bounds(const xt::xtensor<double, 3>& lower_ww_bounds,
+    const xt::xtensor<double, 3>& upper_bounds);
+
+  void set_bounds(const xt::xtensor<double, 3>& lower_bounds, double ratio);
 
   void set_bounds(
     span<const double> lower_bounds, span<const double> upper_bounds);
@@ -182,11 +187,11 @@ public:
 
   const std::unique_ptr<Mesh>& mesh() const { return model::meshes[mesh_idx_]; }
 
-  const xt::xtensor<double, 2>& lower_ww_bounds() const { return lower_ww_; }
-  xt::xtensor<double, 2>& lower_ww_bounds() { return lower_ww_; }
+  const xt::xtensor<double, 3>& lower_ww_bounds() const { return lower_ww_; }
+  xt::xtensor<double, 3>& lower_ww_bounds() { return lower_ww_; }
 
-  const xt::xtensor<double, 2>& upper_ww_bounds() const { return upper_ww_; }
-  xt::xtensor<double, 2>& upper_ww_bounds() { return upper_ww_; }
+  const xt::xtensor<double, 3>& upper_ww_bounds() const { return upper_ww_; }
+  xt::xtensor<double, 3>& upper_ww_bounds() { return upper_ww_; }
 
   ParticleType particle_type() const { return particle_type_; }
 
@@ -198,10 +203,12 @@ private:
   ParticleType particle_type_ {
     ParticleType::neutron};      //!< Particle type to apply weight windows to
   vector<double> energy_bounds_; //!< Energy boundaries [eV]
-  xt::xtensor<double, 2> lower_ww_; //!< Lower weight window bounds (shape:
-                                    //!< energy_bins, mesh_bins (k, j, i))
-  xt::xtensor<double, 2>
-    upper_ww_; //!< Upper weight window bounds (shape: energy_bins, mesh_bins)
+  vector<double> time_bounds_;   //!< Time boundaries [s]
+  xt::xtensor<double, 3>
+    lower_ww_; //!< Lower weight window bounds (shape:
+               //!< energy_bins, mesh_bins, time_bins (k, j, i))
+  xt::xtensor<double, 3> upper_ww_; //!< Upper weight window bounds (shape:
+                                    //!< energy_bins, mesh_bins, time_bins)
   double survival_ratio_ {3.0}; //!< Survival weight ratio
   double max_lb_ratio_ {1.0}; //!< Maximum lower bound to particle weight ratio
   double weight_cutoff_ {DEFAULT_WEIGHT_CUTOFF}; //!< Weight cutoff
