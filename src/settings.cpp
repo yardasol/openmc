@@ -154,7 +154,7 @@ double weight_survive {1.0};
 
 // Timestep variables for kinetic simulation
 int n_timesteps {1};
-double dt;
+double dt {0};
 std::deque<double> time_census_boundaries {INFTY};
 int64_t n_precursors {0};
 bool forced_decay {false};

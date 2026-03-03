@@ -720,12 +720,12 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
     for (int e = 0; e < e_bins; e++) {
       double group_max = 0.0;
 
-      // TODO: should WWS be normalized per time bin?
+      // TODO: should WWS be normalized by the first time bin?
       // Find maximum value across all elements in this energy group
 #pragma omp parallel for schedule(static) reduction(max : group_max)
       for (int64_t m = 0; m < mesh_bins; m++) {
-        if (new_bounds(e, m, 0) > group_max) {
-          group_max = new_bounds(e, m, 0);
+        if (new_bounds(e, m, t) > group_max) {
+          group_max = new_bounds(e, m, t);
         }
       }
 
@@ -758,14 +758,14 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
       }
     }
 
-    // TODO: should WWS be normalized per time bin?
+    // TODO: should WWS be normalized by the first time bin?
     // Find the maximum value across all elements
     double max_val = 0.0;
 #pragma omp parallel for collapse(2) schedule(static) reduction(max : max_val)
     for (int e = 0; e < e_bins; e++) {
       for (int64_t m = 0; m < mesh_bins; m++) {
-        if (new_bounds(e, m, 0) > max_val) {
-          max_val = new_bounds(e, m, 0);
+        if (new_bounds(e, m, t) > max_val) {
+          max_val = new_bounds(e, m, t);
         }
       }
     }
@@ -1430,11 +1430,8 @@ extern "C" int openmc_weight_windows_export(const char* filename)
 extern "C" int openmc_weight_windows_import(const char* filename)
 {
   std::string base_name = "weight_windows";
-  if (settings::kinetic_simulation)
-    base_name =
-      fmt::format("{0}_{1}.h5", base_name, simulation::current_timestep);
-  else
-    base_name = fmt::format("{0}.h5", base_name);
+
+  base_name = fmt::format("{0}.h5", base_name);
 
   std::string name = filename ? filename : base_name;
 

@@ -503,7 +503,11 @@ void FlatSourceDomain::convert_source_regions_to_tallies(int64_t start_sr_id)
       // similar to data::mg.energy_bin_avg_[p.g()]?  time_bin_avg_[p.time()]?
       // This will require resetting the tally_task vector after each timestep.
       // Not effeicient but quick to get what we want right now
-      p.time() = simulation::current_time;
+      if (FlatSourceDomain::adjoint_) {
+        p.time() = simulation::current_time - (settings::dt / 2);
+      } else {
+        p.time() = simulation::current_time + (settings::dt / 2);
+      }
     }
 
     // Loop over energy groups (so as to support energy filters)
