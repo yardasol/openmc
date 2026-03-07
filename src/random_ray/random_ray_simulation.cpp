@@ -692,6 +692,20 @@ void RandomRaySimulation::simulate()
 
 void RandomRaySimulation::initialize_time_step(int i)
 {
+  // Reset tally and volume tasks
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < domain_->source_regions_.n_source_regions(); sr++) {
+    domain_->source_regions_.volume_task(sr).clear();
+    for (int g = 0; g < domain_->source_regions_.negroups(); g++) {
+      domain_->source_regions_.tally_task(sr, g).clear();
+    }
+    for (int dg = 0; dg < domain_->source_regions_.ndgroups(); dg++) {
+      domain_->source_regions_.tally_delay_task(sr, dg).clear();
+    }
+  }
+  // Recreate tally tasks for the new time bin.
+  domain_->convert_source_regions_to_tallies(0);
+
   if (settings::run_mode == RunMode::EIGENVALUE) {
     if (simulation::source_correction)
       static_avg_k_eff_ = simulation::keff;

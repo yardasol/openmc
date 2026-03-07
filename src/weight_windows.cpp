@@ -535,13 +535,14 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   // int t_bins = lower_ww_.shape()[2];
   int t = simulation::current_timestep;
 
+  int i = t;
   // Initialize weight window arrays to -1.0 by default
 #pragma omp parallel for collapse(2) schedule(static)
   for (int e = 0; e < e_bins; e++) {
     for (int64_t m = 0; m < mesh_bins; m++) {
       // for (int t = 0; t < t_bins; t++) {
-      lower_ww_(e, m, m) = -1.0;
-      upper_ww_(e, m, m) = -1.0;
+      lower_ww_(e, m, t) = -1.0;
+      upper_ww_(e, m, t) = -1.0;
       //}
     }
   }
@@ -685,17 +686,17 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
     for (int64_t m = 0; m < mesh_bins; m++) {
       // for (int64_t t = 0; t < t_bins; t++) {
       //  Calculate mean
-      new_bounds(e, m, m) = sum(e, m, m) / n;
+      new_bounds(e, m, t) = sum(e, m, t) / n;
       // Calculate relative error
-      if (sum(e, m, m) > 0.0) {
-        double mean_val = new_bounds(e, m, m);
-        double variance = (sum_sq(e, m, m) / n - mean_val * mean_val) / (n - 1);
-        rel_err(e, m, m) = std::sqrt(variance) / mean_val;
+      if (sum(e, m, t) > 0.0) {
+        double mean_val = new_bounds(e, m, t);
+        double variance = (sum_sq(e, m, t) / n - mean_val * mean_val) / (n - 1);
+        rel_err(e, m, t) = std::sqrt(variance) / mean_val;
       } else {
-        rel_err(e, m, m) = INFTY;
+        rel_err(e, m, t) = INFTY;
       }
       if (value == "rel_err") {
-        new_bounds(e, m, m) = 1.0 / rel_err(e, m, m);
+        new_bounds(e, m, t) = 1.0 / rel_err(e, m, t);
       }
       //}
     }
@@ -707,7 +708,7 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   for (int e = 0; e < e_bins; e++) {
     for (int64_t m = 0; m < mesh_bins; m++) {
       // for (int64_t t = 0; t < t_bins; t++) {
-      new_bounds(e, m, m) /= mesh_vols[m];
+      new_bounds(e, m, t) /= mesh_vols[m];
       //}
     }
   }
@@ -735,7 +736,7 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
 #pragma omp parallel for schedule(static)
         for (int64_t m = 0; m < mesh_bins; m++) {
           // for (int t = 0; t < t_bins; t++) {
-          new_bounds(e, m, m) *= norm_factor;
+          new_bounds(e, m, t) *= norm_factor;
           //}
         }
       }
@@ -749,10 +750,10 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
       for (int64_t m = 0; m < mesh_bins; m++) {
         // for (int t = 0; t < t_bins; t++) {
         //  Take the inverse, but are careful not to divide by zero
-        if (new_bounds(e, m, m) != 0.0) {
-          new_bounds(e, m, m) = 1.0 / new_bounds(e, m, m);
+        if (new_bounds(e, m, t) != 0.0) {
+          new_bounds(e, m, t) = 1.0 / new_bounds(e, m, t);
         } else {
-          new_bounds(e, m, m) = 0.0;
+          new_bounds(e, m, t) = 0.0;
         }
         //}
       }
@@ -778,7 +779,7 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
       for (int e = 0; e < e_bins; e++) {
         for (int64_t m = 0; m < mesh_bins; m++) {
           // for (int t = 0; t < t_bins; t++) {
-          new_bounds(e, m, m) *= norm_factor;
+          new_bounds(e, m, t) *= norm_factor;
           //}
         }
       }
@@ -792,16 +793,16 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
     for (int64_t m = 0; m < mesh_bins; m++) {
       // for (int t = 0; t < t_bins; t++) {
       //  Values where the mean is zero should be ignored
-      if (sum(e, m, m) <= 0.0) {
-        new_bounds(e, m, m) = -1.0;
+      if (sum(e, m, t) <= 0.0) {
+        new_bounds(e, m, t) = -1.0;
       }
       // Values where the relative error is higher than the threshold should be
       // ignored
-      else if (rel_err(e, m, m) > threshold) {
-        new_bounds(e, m, m) = -1.0;
+      else if (rel_err(e, m, t) > threshold) {
+        new_bounds(e, m, t) = -1.0;
       }
       // Set the upper bounds
-      upper_ww_(e, m, m) = ratio * lower_ww_(e, m, m);
+      upper_ww_(e, m, t) = ratio * lower_ww_(e, m, t);
       //}
     }
   }
