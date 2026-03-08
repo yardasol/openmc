@@ -660,9 +660,9 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   const int stride2 = shape[3];
 
   tensor::Tensor<double> sum({static_cast<size_t>(e_bins),
-    static_cast<size_t>(mesh_bins), static_cast<size_t>(1)});
+    static_cast<size_t>(mesh_bins), static_cast<size_t>(t_bins)});
   tensor::Tensor<double> sum_sq({static_cast<size_t>(e_bins),
-    static_cast<size_t>(mesh_bins), static_cast<size_t>(1)});
+    static_cast<size_t>(mesh_bins), static_cast<size_t>(t_bins)});
 
   const int i_sum = static_cast<int>(TallyResult::SUM);
   const int i_sum_sq = static_cast<int>(TallyResult::SUM_SQ);
