@@ -497,16 +497,15 @@ void FlatSourceDomain::convert_source_regions_to_tallies(int64_t start_sr_id)
     p.u() = {1.0, 0.0, 0.0};
     bool found = exhaustive_find_cell(p);
 
-    if ((simulation::source_correction && simulation::is_initial_condition) ||
-        (!simulation::source_correction && !simulation::is_initial_condition)) {
+    if (!simulation::source_correction && !simulation::is_initial_condition) {
       // TODO: Set time bin based on the time filter used. Maybe something
       // similar to data::mg.energy_bin_avg_[p.g()]?  time_bin_avg_[p.time()]?
       // This will require resetting the tally_task vector after each timestep.
       // Not effeicient but quick to get what we want right now
       if (FlatSourceDomain::adjoint_) {
-        p.time() = simulation::current_time - (settings::dt / 2);
+        p.time() = simulation::current_time - settings::dt;
       } else {
-        p.time() = simulation::current_time + (settings::dt / 2);
+        p.time() = simulation::current_time + settings::dt;
       }
     }
 
