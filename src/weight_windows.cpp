@@ -659,10 +659,10 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   const int stride1 = shape[2] * shape[3];
   const int stride2 = shape[3];
 
-  tensor::Tensor<double> sum({static_cast<size_t>(e_bins),
-    static_cast<size_t>(mesh_bins), static_cast<size_t>(t_bins)});
-  tensor::Tensor<double> sum_sq({static_cast<size_t>(e_bins),
-    static_cast<size_t>(mesh_bins), static_cast<size_t>(t_bins)});
+  tensor::Tensor<double> sum(
+    {static_cast<size_t>(e_bins), static_cast<size_t>(mesh_bins)});
+  tensor::Tensor<double> sum_sq(
+    {static_cast<size_t>(e_bins), static_cast<size_t>(mesh_bins)});
 
   const int i_sum = static_cast<int>(TallyResult::SUM);
   const int i_sum_sq = static_cast<int>(TallyResult::SUM_SQ);
@@ -681,8 +681,8 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
       int flat =
         idx[0] * stride0 + idx[1] * stride1 + idx[2] * stride2 + idx[3];
 
-      sum(e, m, t) = results(flat, score_index, i_sum);
-      sum_sq(e, m, t) = results(flat, score_index, i_sum_sq);
+      sum(e, m) = results(flat, score_index, i_sum);
+      sum_sq(e, m) = results(flat, score_index, i_sum_sq);
     }
   }
   int n = tally->n_realizations_;
@@ -710,11 +710,11 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   for (int e = 0; e < e_bins; e++) {
     for (int64_t m = 0; m < mesh_bins; m++) {
       //  Calculate mean
-      new_bounds(e, m, t) = sum(e, m, t) / n;
+      new_bounds(e, m, t) = sum(e, m) / n;
       // Calculate relative error
-      if (sum(e, m, t) > 0.0) {
+      if (sum(e, m) > 0.0) {
         double mean_val = new_bounds(e, m, t);
-        double variance = (sum_sq(e, m, t) / n - mean_val * mean_val) / (n - 1);
+        double variance = (sum_sq(e, m) / n - mean_val * mean_val) / (n - 1);
         rel_err(e, m, t) = std::sqrt(variance) / mean_val;
       } else {
         rel_err(e, m, t) = INFTY;
@@ -803,7 +803,7 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   for (int e = 0; e < e_bins; e++) {
     for (int64_t m = 0; m < mesh_bins; m++) {
       //  Values where the mean is zero should be ignored
-      if (sum(e, m, t) <= 0.0) {
+      if (sum(e, m) <= 0.0) {
         new_bounds(e, m, t) = -1.0;
       }
       // Values where the relative error is higher than the threshold should be
@@ -815,6 +815,7 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
       upper_ww_(e, m, t) = ratio * lower_ww_(e, m, t);
     }
   }
+  auto& old_bounds = this->lower_ww_;
 }
 
 void WeightWindows::check_tally_update_compatibility(const Tally* tally)
