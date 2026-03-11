@@ -64,10 +64,16 @@ void openmc_run_random_ray()
   // Time-dependent simuation
   if (settings::kinetic_simulation) {
     // Toggle initial condition source correction
-    simulation::source_correction = true;
-    // Timestepping loop, including source/k-eff correction
-    // (i = -1)
-    for (int i = -1; i < settings::n_timesteps; i++) {
+    int i_start;
+    if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      i_start = 0;
+    } else {
+      simulation::source_correction = true;
+      // source/k-eff correction (i = -1)
+      i_start = -1;
+    }
+    // Timestepping loop,
+    for (int i = i_start; i < settings::n_timesteps; i++) {
       sim.initialize_time_step(i);
       sim.simulate();
       sim.finalize_time_step();
@@ -87,11 +93,16 @@ void openmc_run_random_ray()
     sim.simulate();
 
     if (settings::kinetic_simulation) {
-      // Toggle initial condition source correction
-      simulation::source_correction = true;
-      // Timestepping loop, including source/k-eff correction
-      // (i = n_timesteps + 1)
-      for (int i = settings::n_timesteps + 1; i > 0; i--) {
+      int i_start;
+      if (settings::run_mode == RunMode::FIXED_SOURCE) {
+        i_start = settings::n_timesteps;
+      } else {
+        simulation::source_correction = true;
+        // source/k-eff correction (i = settings::n_timesteps + 1)
+        i_start = settings::n_timesteps + 1;
+      }
+      // Timestepping loop,
+      for (int i = i_start; i > 0; i--) {
         sim.initialize_time_step(i);
         sim.simulate();
         sim.finalize_time_step();
@@ -749,26 +760,19 @@ void RandomRaySimulation::initialize_time_step(int i)
 
 void RandomRaySimulation::finalize_time_step()
 {
-  if (simulation::is_initial_condition && simulation::source_correction) {
+  if (simulation::is_initial_condition) {
     // Initialize the BD arrays if initial condition
     domain_->store_time_step_quantities(false);
     // Toggle off initial condition and source correction
     simulation::is_initial_condition = false;
     simulation::source_correction = false;
-  } else if (!simulation::is_initial_condition &&
-             !simulation::source_correction) {
+  } else {
     // Else, store final quantities for the current time step
     domain_->store_time_step_quantities();
-  } else {
-    fatal_error("Error in control flow in finalize_time_step");
   }
-  // Only do this for the source correction and everyhing that comes
-  // after
-  if ((simulation::is_initial_condition && simulation::source_correction) ||
-      (!simulation::is_initial_condition && !simulation::source_correction)) {
-    if (adjoint_needed_ && !FlatSourceDomain::adjoint_) {
-      domain_->store_quantity_time_series();
-    }
+
+  if (adjoint_needed_ && !FlatSourceDomain::adjoint_) {
+    domain_->store_quantity_time_series();
   }
   // Rename statepoint and tallies file for the current time step
   rename_time_step_file(fmt::format("statepoint.{0}", settings::n_batches),
