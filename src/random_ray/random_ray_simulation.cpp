@@ -64,14 +64,8 @@ void openmc_run_random_ray()
   // Time-dependent simuation
   if (settings::kinetic_simulation) {
     // Toggle initial condition source correction
-    int i_start;
-    if (settings::run_mode == RunMode::FIXED_SOURCE) {
-      i_start = 0;
-    } else {
-      simulation::source_correction = true;
-      // source/k-eff correction (i = -1)
-      i_start = -1;
-    }
+    simulation::source_correction = true;
+    int i_start = -1;
     // Timestepping loop,
     for (int i = i_start; i < settings::n_timesteps; i++) {
       sim.initialize_time_step(i);
@@ -93,14 +87,9 @@ void openmc_run_random_ray()
     sim.simulate();
 
     if (settings::kinetic_simulation) {
-      int i_start;
-      if (settings::run_mode == RunMode::FIXED_SOURCE) {
-        i_start = settings::n_timesteps;
-      } else {
-        simulation::source_correction = true;
-        // source/k-eff correction (i = settings::n_timesteps + 1)
-        i_start = settings::n_timesteps + 1;
-      }
+      simulation::source_correction = true;
+      // source/k-eff correction (i = settings::n_timesteps + 1)
+      int i_start = settings::n_timesteps + 1;
       // Timestepping loop,
       for (int i = i_start; i > 0; i--) {
         sim.initialize_time_step(i);
