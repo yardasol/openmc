@@ -951,9 +951,18 @@ WeightWindowsGenerator::WeightWindowsGenerator(pugi::xml_node node)
   std::vector<double> t_bounds;
   if (check_for_node(node, "time_bounds")) {
     t_bounds = get_node_array<double>(node, "time_bounds");
+    if (!settings::kinetic_simulation) {
+      fatal_error("Time-dependent weight windows can only be generated with "
+                  "kinetic simulations")
+    }
   } else {
     t_bounds.push_back(0.0);
     t_bounds.push_back(INFTY);
+  }
+
+  if (t_bounds.size() != settings::n_timesteps + 1) {
+    fatal_error("Number of time bounds must be one greater than the number
+                " of simulated time step.");
   }
 
   // set method
@@ -964,6 +973,13 @@ WeightWindowsGenerator::WeightWindowsGenerator(pugi::xml_node node)
         FlatSourceDomain::adjoint_) {
       fatal_error("Random ray weight window generation with MAGIC cannot be "
                   "done in adjoint mode.");
+    }
+    if (settings::sovler_type == SolverType::MONTE_CARLO &&
+        check_for_node(node, "time_bounds")) {
+      fatal_error(
+        "Time-dependent weight window generation with MAGIC cannot be "
+        "done with the Monte Carlo solver. This type of weight window "
+        "can only be generated in random ray mode.");
     }
   } else if (method_string == "fw_cadis") {
     method_ = WeightWindowUpdateMethod::FW_CADIS;
