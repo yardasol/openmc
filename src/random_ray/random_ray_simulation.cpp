@@ -478,9 +478,15 @@ RandomRaySimulation::RandomRaySimulation()
   // stepping
   if (settings::kinetic_simulation) {
     // Initialize vars used for time-consistent seed approach
-    static_avg_k_eff_;
-    static_k_eff_;
-    static_fission_rate_;
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      static_avg_k_eff_;
+      static_k_eff_;
+      static_fission_rate_;
+    } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      static_source_normalization_factor_;
+      domain_->static_source_normalization_factor_ =
+        &static_source_normalization_factor_;
+    }
   }
 }
 

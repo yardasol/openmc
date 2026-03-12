@@ -709,16 +709,17 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
   // The correction factor is the ratio of the user-specified external source
   // strength to the simulation external source strength.
   double source_normalization_factor;
-  if (user_external_source_strength == simulation_external_source_strength)
-    source_normalization_factor = 1.0;
-  else
+  if (simulation::is_initial_condition) {
     source_normalization_factor =
       user_external_source_strength / simulation_external_source_strength;
-
-  // source normalization factor may be 0 / 0 for certain settings, in which
-  // case it should be set to zero
-  if (!std::isfinite(source_normalization_factor))
-    source_normalization_factor = 0.0;
+    if (settings::kinetic_simulation && simulation::source_correction) {
+      static_source_normalization_factor_->push_back(
+        source_normalization_factor);
+    }
+  } else {
+    source_normalization_factor =
+      (*static_source_normalization_factor_)[simulation::current_batch - 1];
+  }
 
   return source_normalization_factor;
 }
