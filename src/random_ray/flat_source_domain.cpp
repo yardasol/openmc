@@ -718,7 +718,8 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
     }
   } else {
     source_normalization_factor =
-      (*static_source_normalization_factor_)[simulation::current_batch - 1];
+      (*static_source_normalization_factor_)[simulation::current_batch -
+                                             settings::n_inactive - 1];
   }
 
   return source_normalization_factor;
