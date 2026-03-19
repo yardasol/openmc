@@ -625,6 +625,7 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
 
   // get a that is (particle, energy, mesh, time, scores, values)
   // determine the index of the particle within its filter
+  
   int particle_idx = 0;
   if (tally->has_filter(FilterType::PARTICLE)) {
     auto pf = tally->get_filter<ParticleFilter>();
