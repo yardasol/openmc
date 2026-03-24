@@ -61,7 +61,7 @@ void openmc_run_random_ray()
       rename_time_step_file("tallies", ".out", -1);
   }
 
-  // Time-dependent simuation
+  // Time-dependent kinetics simulation
   if (settings::kinetic_simulation) {
     // Toggle initial condition source correction
     simulation::source_correction = true;
@@ -716,7 +716,7 @@ void RandomRaySimulation::initialize_time_step(int i)
     if (simulation::source_correction)
       static_avg_k_eff_ = simulation::keff;
     domain_->k_eff_ = static_avg_k_eff_;
-  } 
+  }
 
   // Increment current timestep and simuation time
   simulation::current_timestep = (FlatSourceDomain::adjoint_) ? i - 1 : i + 1;

@@ -2316,22 +2316,22 @@ class Model:
             else:
                 raise ValueError("Invalide domain_type: '{domain_type}'.")
 
-            # Get domain objects from model
+            # Select user-specified domains from all model domains
             if domains is not None:
-                converted_domains = {}
+                user_domains = {}
                 check_type('domain', domains, Iterable, int)
                 for domain in domains:
                     try:
                         assert domain in all_domains.keys()
-                        converted_domains[domain] = all_domains[domain]
+                        user_domains[domain] = all_domains[domain]
                     except AssertionError:
                         print(f'{iter_type} object with ID={domain} does '
                               'not exist in the model.')
             else:
-                converted_domains = all_domains
+                user_domains = all_domains
 
             # Double check we have the correct object type
-            domains = converted_domains.values()
+            domains = user_domains.values()
             check_type('domain', domains, Iterable, iter_type)
 
             # Make sure all domains have a name, and that the name is a valid HDF5
@@ -2346,16 +2346,22 @@ class Model:
                 if domain_type == 'material' and material_method != 'material_wise':
                     if material_method == "infinite_medium":
                         self._generate_infinite_medium_mgxs(
-                            energy_groups, domains, nparticles, mgxs_path, correction, tmpdir, source_energy, kinetic, num_delayed_groups)
+                            energy_groups, domains, nparticles, mgxs_path,
+                            correction, tmpdir, source_energy, kinetic,
+                            num_delayed_groups)
                     elif material_method == "stochastic_slab":
                         self._generate_stochastic_slab_mgxs(
-                            energy_groups, domains, nparticles, mgxs_path, correction, tmpdir, source_energy, kinetic, num_delayed_groups)
+                            energy_groups, domains, nparticles, mgxs_path,
+                            correction, tmpdir, source_energy, kinetic,
+                            num_delayed_groups)
                     else:
                         raise ValueError(
                             f'MGXS material generation method "{method}" not recognized')
                 else:
                     self._generate_domain_wise_mgxs(
-                        energy_groups, domain_type, domains, nparticles, mgxs_path, correction, tmpdir, kinetic, num_delayed_groups)
+                        energy_groups, domain_type, domains, nparticles,
+                        mgxs_path, correction, tmpdir, kinetic,
+                        num_delayed_groups)
 
             else:
                 print(f'Existing MGXS library file "{mgxs_path}" will be used')
@@ -2378,11 +2384,22 @@ class Model:
                 # TODO: support cell domain type
                 # This currently only works for universes
                 if domain_type != 'material':
-                    cells_to_delete = []
                     for cell in self.geometry.get_all_cells().values():
+                        material_added = False
+                        cells_to_remove = []
                         if cell.fill.id == domain.id and isinstance(cell.fill,
                                                                     iter_type):
                             cell.fill = material
+                            material_added = True
+                        if len(cells_to_remove) != 0:
+                            [domain.remove_cell(cell) for cell in
+                             cells_to_remove]
+                        else:
+                          # Singleton universe cell or universe cell that is
+                          # used only in a lattice
+                          # TODO: Ensure that these are only 1
+                          for cell in domain.cells.values():
+                              cell.fill = material
 
             self.settings.energy_mode = 'multi-group'
 
