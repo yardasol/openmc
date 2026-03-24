@@ -207,6 +207,8 @@ public:
   vector<double> chi_p_;
   vector<double> inverse_vbar_;
 
+  vector<double>* static_source_normalization_factor_;
+
 protected:
   //----------------------------------------------------------------------------
   // Methods

@@ -61,11 +61,17 @@ void openmc_run_random_ray()
       rename_time_step_file("tallies", ".out", -1);
   }
 
+  // Time-dependent kinetics simulation
   if (settings::kinetic_simulation) {
-    // Timestepping loop, including source/k-eff correction
-    // (i = -1)
-    for (int i = -1; i < settings::n_timesteps; i++)
-      sim.kinetic_single_time_step(i);
+    // Toggle initial condition source correction
+    simulation::source_correction = true;
+    int i_start = -1;
+    // Timestepping loop,
+    for (int i = i_start; i < settings::n_timesteps; i++) {
+      sim.initialize_time_step(i);
+      sim.simulate();
+      sim.finalize_time_step();
+    }
   }
 
   //////////////////////////////////////////////////////////
@@ -81,10 +87,15 @@ void openmc_run_random_ray()
     sim.simulate();
 
     if (settings::kinetic_simulation) {
-      // Timestepping loop, including source/k-eff correction
-      // (i = n_timesteps + 1)
-      for (int i = settings::n_timesteps + 1; i > 0; i--)
-        sim.kinetic_single_time_step(i);
+      simulation::source_correction = true;
+      // source/k-eff correction (i = settings::n_timesteps + 1)
+      int i_start = settings::n_timesteps + 1;
+      // Timestepping loop,
+      for (int i = i_start; i > 0; i--) {
+        sim.initialize_time_step(i);
+        sim.simulate();
+        sim.finalize_time_step();
+      }
     }
   }
 }
@@ -489,9 +500,15 @@ RandomRaySimulation::RandomRaySimulation()
   // stepping
   if (settings::kinetic_simulation) {
     // Initialize vars used for time-consistent seed approach
-    static_avg_k_eff_;
-    static_k_eff_;
-    static_fission_rate_;
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      static_avg_k_eff_;
+      static_k_eff_;
+      static_fission_rate_;
+    } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      static_source_normalization_factor_;
+      domain_->static_source_normalization_factor_ =
+        &static_source_normalization_factor_;
+    }
   }
 }
 
@@ -551,87 +568,6 @@ void RandomRaySimulation::prepare_adjoint_simulation()
     // Set adjoint initial condition
     simulation::is_initial_condition = true;
   }
-}
-
-// TODO: Add support for time-dependent restart
-void RandomRaySimulation::kinetic_single_time_step(int i)
-{
-  if (FlatSourceDomain::adjoint_) {
-    simulation::current_timestep = i - 1;
-    // Final condition has an index of settings::n_timesteps + 1
-    if (!simulation::is_initial_condition) {
-      // Decrement the current time
-      simulation::current_time -= settings::dt;
-    }
-    // Set adjoint sources for the current timestep
-    domain_->set_td_adjoint_sources(simulation::current_timestep);
-  } else {
-    simulation::current_timestep = i + 1;
-    if (i >= 0)
-      // Increment the current time
-      simulation::current_time += settings::dt;
-  }
-
-  if ((i == -1 && !FlatSourceDomain::adjoint_) ||
-      (i == settings::n_timesteps + 1 && FlatSourceDomain::adjoint_))
-    // Set flag for source correction if initial condition
-    simulation::source_correction = true;
-
-  // Set eigenvalue if needed
-  if (settings::run_mode == RunMode::EIGENVALUE) {
-    if ((i == -1 && !FlatSourceDomain::adjoint_) ||
-        (i == settings::n_timesteps && FlatSourceDomain::adjoint_)) {
-      // Store average keff from initial simulation
-      static_avg_k_eff_ = simulation::keff;
-    }
-    domain_->k_eff_ = static_avg_k_eff_;
-  }
-
-  // Propagate results of previous simulation
-  domain_->source_regions_.simulation_reset();
-  domain_->propagate_final_quantities();
-  domain_->source_regions_.time_step_reset();
-
-  if ((i >= 0 && !FlatSourceDomain::adjoint_) ||
-      (i < settings::n_timesteps && FlatSourceDomain::adjoint_)) {
-    // Compute RHS backward differences
-    domain_->compute_rhs_bd_quantities();
-
-    // Update time dependent cross section based on the density
-    domain_->update_material_density(i);
-  }
-
-  // Update the external sorce strength if specified. This will only
-  // be done in the forward calculation, as the inverse calculation
-  // uses 1 / phi. When CADIS is implemented, this will need to be updated
-  // to account for detector cross sections.
-  if (i >= 0 && !FlatSourceDomain::adjoint_ &&
-      settings::run_mode == RunMode::FIXED_SOURCE)
-    domain_->update_external_source_strength(i);
-
-  // Run the initial condition
-  simulate();
-
-  if ((i == -1 && !FlatSourceDomain::adjoint_) ||
-      (i == settings::n_timesteps && FlatSourceDomain::adjoint_)) {
-    // Initialize the BD arrays if initial condition
-    domain_->store_time_step_quantities(false);
-    // Reset flags for kinetic simulation if initial condition
-    simulation::is_initial_condition = false;
-    simulation::source_correction = false;
-  } else {
-    // Else, store final quantities for the current time step
-    domain_->store_time_step_quantities();
-  }
-  if (adjoint_needed_ && !FlatSourceDomain::adjoint_) {
-    domain_->store_quantity_time_series();
-  }
-
-  // Rename statepoint and tallies file for the current time step
-  rename_time_step_file(fmt::format("statepoint.{0}", settings::n_batches),
-    ".h5", simulation::current_timestep);
-  if (settings::output_tallies)
-    rename_time_step_file("tallies", ".out", simulation::current_timestep);
 }
 
 void RandomRaySimulation::simulate()
@@ -707,11 +643,11 @@ void RandomRaySimulation::simulate()
       domain_->apply_transport_stabilization();
 
       if (settings::run_mode == RunMode::EIGENVALUE) {
-        // Compute random ray k-eff
-        if (!settings::kinetic_simulation ||
-            settings::kinetic_simulation && simulation::is_initial_condition) {
+        // Compute random ray k-eff for initial condition.
+        // This keff will be preserved
+        if (simulation::is_initial_condition) {
           domain_->compute_k_eff();
-          if (simulation::source_correction) {
+          if (settings::kinetic_simulation && simulation::source_correction) {
             static_fission_rate_.push_back(domain_->fission_rate_);
             static_k_eff_.push_back(domain_->k_eff_);
           }
@@ -780,6 +716,86 @@ void RandomRaySimulation::simulate()
   // simulation
   if (is_first_simulation_)
     is_first_simulation_ = false;
+}
+
+void RandomRaySimulation::initialize_time_step(int i)
+{
+  // Reset tally and volume tasks
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < domain_->source_regions_.n_source_regions(); sr++) {
+    domain_->source_regions_.volume_task(sr).clear();
+    for (int g = 0; g < domain_->source_regions_.negroups(); g++) {
+      domain_->source_regions_.tally_task(sr, g).clear();
+    }
+    for (int dg = 0; dg < domain_->source_regions_.ndgroups(); dg++) {
+      domain_->source_regions_.tally_delay_task(sr, dg).clear();
+    }
+  }
+  // Recreate tally tasks for the new time bin.
+  domain_->convert_source_regions_to_tallies(0);
+
+  if (settings::run_mode == RunMode::EIGENVALUE) {
+    if (simulation::source_correction)
+      static_avg_k_eff_ = simulation::keff;
+    domain_->k_eff_ = static_avg_k_eff_;
+  }
+
+  // Increment current timestep and simuation time
+  simulation::current_timestep = (FlatSourceDomain::adjoint_) ? i - 1 : i + 1;
+
+  // Propagate previous converted solution for kinetic simulation
+  domain_->source_regions_.simulation_reset();
+  domain_->propagate_final_quantities();
+  domain_->source_regions_.time_step_reset();
+
+  if (!simulation::is_initial_condition) {
+    // Compute RHS backward differences
+    domain_->compute_rhs_bd_quantities();
+
+    // Update time dependent cross section based on the density
+    domain_->update_material_density(i);
+
+    if (FlatSourceDomain::adjoint_) {
+      simulation::current_time -= settings::dt;
+    } else {
+      simulation::current_time += settings::dt;
+
+      // Update the external sorce strength if specified. This will only
+      // be done in the forward calculation, as the inverse calculation
+      // uses 1 / phi. When CADIS is implemented, this will need to be
+      // updated to account for detector cross sections.
+      if (settings::run_mode == RunMode::FIXED_SOURCE)
+        domain_->update_external_source_strength(i);
+    }
+  }
+
+  if (FlatSourceDomain::adjoint_) {
+    // Set adjoint sources for the current timestep
+    domain_->set_td_adjoint_sources(simulation::current_timestep);
+  }
+}
+
+void RandomRaySimulation::finalize_time_step()
+{
+  if (simulation::is_initial_condition) {
+    // Initialize the BD arrays if initial condition
+    domain_->store_time_step_quantities(false);
+    // Toggle off initial condition and source correction
+    simulation::is_initial_condition = false;
+    simulation::source_correction = false;
+  } else {
+    // Else, store final quantities for the current time step
+    domain_->store_time_step_quantities();
+  }
+
+  if (adjoint_needed_ && !FlatSourceDomain::adjoint_) {
+    domain_->store_quantity_time_series();
+  }
+  // Rename statepoint and tallies file for the current time step
+  rename_time_step_file(fmt::format("statepoint.{0}", settings::n_batches),
+    ".h5", simulation::current_timestep);
+  if (settings::output_tallies)
+    rename_time_step_file("tallies", ".out", simulation::current_timestep);
 }
 
 void RandomRaySimulation::output_simulation_results() const

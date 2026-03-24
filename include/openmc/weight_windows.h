@@ -143,9 +143,6 @@ public:
 
   const vector<double>& energy_bounds() const { return energy_bounds_; }
 
-  void set_bounds(const xt::xtensor<double, 2>& lower_ww_bounds,
-    const xt::xtensor<double, 2>& upper_bounds);
-
   void set_bounds(const tensor::Tensor<double>& lower_ww_bounds,
     const tensor::Tensor<double>& upper_bounds);
 

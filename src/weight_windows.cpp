@@ -553,8 +553,8 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   // build a shape for a view of the tally results, this will always be
   // dimension 5 (3 filter dimensions, 1 score dimension, 1 results dimension)
   // Look for the size of the last dimension of the results array
-  const auto& results_arr = tally->results();
-  const int results_dim = static_cast<int>(results_arr.shape()[2]);
+  const auto& results = tally->results();
+  const int results_dim = static_cast<int>(results.shape()[2]);
   std::array<int, 5> shape = {1, 1, 1, tally->n_scores(), results_dim};
 
   // set the shape for the filters applied on the tally
