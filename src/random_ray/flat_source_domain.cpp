@@ -308,7 +308,9 @@ int64_t FlatSourceDomain::add_source_to_scalar_flux()
       volume = volume_simulation_avg;
       break;
     case RandomRayVolumeEstimator::HYBRID:
-      if (source_regions_.external_source_present(sr) ||
+      if (source_regions_.external_source_present(
+            sr) || // Is it possible that external_source_present causes an
+                   // issue?
           source_regions_.is_small(sr)) {
         volume = volume_iteration;
       } else {
@@ -2306,12 +2308,12 @@ void FlatSourceDomain::compute_rhs_bd_quantities()
 // Update material density and cross sections
 void FlatSourceDomain::update_material_density(int i)
 {
+  // Update stored cross sections based on material density change
 #pragma omp parallel for
   for (int j = 0; j < model::materials.size(); j++) {
     auto& mat {model::materials[j]};
     if (mat->density_timeseries_.size() != 0) {
       double density_factor = mat->density_timeseries_[i] / mat->density_;
-      mat->density_ = mat->density_timeseries_[i];
       for (int g_out = 0; g_out < negroups_; g_out++) {
         if (adjoint_) {
           for (int dg = 0; dg < ndgroups_; dg++) {
@@ -2335,6 +2337,30 @@ void FlatSourceDomain::update_material_density(int i)
             density_factor;
         }
       }
+    }
+  }
+
+  // Update stored fixed source based on material density change
+  if (settings::run_mode == RunMode::FIXED_SOURCE) {
+#pragma omp parallel for
+    for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+      int material = source_regions_.material(sr);
+      auto& mat {model::materials[material]};
+      if (mat->density_timeseries_.size() != 0) {
+        double density_factor = mat->density_timeseries_[i] / mat->density_;
+        for (int g = 0; g < negroups_; g++) {
+          source_regions_.external_source(sr, g) /= density_factor;
+        }
+      }
+    }
+  }
+
+  // Update material density
+#pragma omp parallel for
+  for (int j = 0; j < model::materials.size(); j++) {
+    auto& mat {model::materials[j]};
+    if (mat->density_timeseries_.size() != 0) {
+      mat->density_ = mat->density_timeseries_[i];
     }
   }
 }
