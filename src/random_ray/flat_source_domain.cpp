@@ -170,7 +170,7 @@ void FlatSourceDomain::update_single_neutron_source(SourceRegionHandle& srh)
         for (int dg = 0; dg < ndgroups_; dg++) {
           double chi_d_lambda =
             chi_d_lambda_[delay_offset + dg * negroups_ + g_out];
-          if (adjoint)
+          if (adjoint_)
             chi_d_lambda *= density_mult;
           double precursors = srh.precursors_old(dg);
           delayed_source += chi_d_lambda * precursors;

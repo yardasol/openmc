@@ -27,7 +27,7 @@ def test_random_ray_auto_convert_kappa_fission(method):
 
         # Convert to a multi-group model
         model.convert_to_multigroup(
-            material_method=method, energy_groups='CASMO-2', nparticles=100,
+            method=method, energy_groups='CASMO-2', nparticles=100,
             overwrite_mgxs_library=False, mgxs_path="mgxs.h5"
         )
 
