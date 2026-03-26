@@ -1961,8 +1961,7 @@ class Model:
 
         # Generate MGXS
         mgxs_lib = Model._auto_generate_mgxs_lib(
-                model, energy_groups, correction,
-                directory, kinetic, num_delayed_groups)
+                model, energy_groups, correction, directory, kinetic, num_delayed_groups)
 
         if temperature != None:
             return mgxs_lib.get_xsdata(domain=material, xsdata_name=name,
@@ -2066,8 +2065,7 @@ class Model:
 
             # Write the file to disk.
             mgxs_file = openmc.MGXSLibrary(
-                energy_groups=energy_groups,
-                num_delayed_groups=num_delayed_groups)
+                energy_groups=energy_groups, num_delayed_groups=num_delayed_groups)
             for mgxs_set in mgxs_sets:
                 mgxs_file.add_xsdata(mgxs_set)
             mgxs_file.export_to_hdf5(mgxs_path)
@@ -2106,6 +2104,9 @@ class Model:
                 energy_groups=energy_groups,
                 num_delayed_groups=num_delayed_groups,
             )
+            for mgxs_set in mgxs_sets:
+                mgxs_file.add_xsdata(mgxs_set)
+            mgxs_file.export_to_hdf5(mgxs_path)
 
     @staticmethod
     def _create_stochastic_slab_geometry(
@@ -2255,8 +2256,7 @@ class Model:
 
         # Generate MGXS
         mgxs_lib = Model._auto_generate_mgxs_lib(
-                model, energy_groups, correction,
-                directory, kinetic, num_delayed_groups)
+                model, energy_groups, correction, directory, kinetic, num_delayed_groups)
 
         # Fetch all of the isothermal results.
         if temperature != None:
@@ -2274,7 +2274,6 @@ class Model:
     def _generate_stochastic_slab_mgxs(
         self,
         energy_groups: openmc.mgxs.EnergyGroups,
-        materials : Iterable[openmc.Material],
         nparticles: int,
         mgxs_path: PathLike,
         correction: str | None,
@@ -2461,15 +2460,14 @@ class Model:
         Returns
         -------
         data : dict[str, openmc.XSdata]
-            A dictionary where the key is the name of the material and the value
-            is the isothermal MGXS.
+            A dictionary where the key is the name of the material and the value is the isothermal MGXS.
         """
         model = copy.deepcopy(input_model)
         model.tallies = openmc.Tallies()
 
         if temperature != None:
             for material in model.geometry.get_all_materials().values():
-                  material.temperature = temperature
+                material.temperature = temperature
 
         # Settings
         model.settings.batches = 200
@@ -2480,8 +2478,7 @@ class Model:
 
         # Generate MGXS
         mgxs_lib = Model._auto_generate_mgxs_lib(
-                model, energy_groups, correction, directory,
-                kinetic, num_delayed_groups)
+                model, energy_groups, correction, directory, kinetic, num_delayed_groups)
 
         # Fetch all of the isothermal results.
         if temperature != None:
@@ -2550,16 +2547,8 @@ class Model:
         else:
             temp_settings = temperature_settings
 
-        # Get all the domain objects present in the model
-        if domain_type == 'material':
-            domains = model.geometry.get_all_materials().values()
-        elif domain_type == 'cell':
-            all_domains = model.geometry.get_all_cells().values()
-            domain_ids = [domain.id for domain in domains]
-            domains = [domain for domain in all_domains if domain.id in domain_ids]
-
         if temperatures == None:
-            mgxs_sets = Model._isothermal_domainwise_mgxs(
+            mgxs_sets = Model._isothermal_materialwise_mgxs(
                 self,
                 energy_groups,
                 nparticles,
@@ -2580,7 +2569,7 @@ class Model:
             # Build a series of XSData objects, one for each isothermal temperature value.
             raw_mgxs_sets = {}
             for temperature in temperatures:
-                raw_mgxs_sets[temperature] = Model._isothermal_domainwise_mgxs(
+                raw_mgxs_sets[temperature] = Model._isothermal_materialwise_mgxs(
                     self,
                     energy_groups,
                     nparticles,
@@ -2595,8 +2584,9 @@ class Model:
             # Unpack the isothermal XSData objects and build a single XSData object per material.
             mgxs_sets = []
             for mat in self.materials:
-                mgxs_sets.append(openmc.XSdata(mat.name,
-                                               energy_groups, temperatures=temperatures, num_delayed_groups=num_delayed_groups))
+                mgxs_sets.append(openmc.XSdata(mat.name, energy_groups,
+                                               temperatures=temperatures,
+                                               num_delayed_groups=num_delayed_groups))
                 mgxs_sets[-1].order = 0
                 for temperature in temperatures:
                     mgxs_sets[-1].add_temperature_data(raw_mgxs_sets[temperature][mat.name])
@@ -2702,11 +2692,11 @@ class Model:
                     self.settings.run_mode = original_run_mode
                     break
 
-            # Make sure all materials have a name, and that the name is a valid
-            # HDF5 dataset name
+            # Make sure all materials have a name, and that the name is a valid HDF5
+            # dataset name
             for material in self.materials:
                 if not material.name or not material.name.strip():
-                    material.name = f"domain {domain.id}"
+                    material.name = f"material {material.id}"
                 material.name = re.sub(r'[^a-zA-Z0-9]', '_', material.name)
 
             # If needed, generate the needed MGXS data library file
@@ -2729,13 +2719,13 @@ class Model:
             else:
                 print(f'Existing MGXS library file "{mgxs_path}" will be used')
 
-            # Create multigroup materials
+            # Convert all continuous energy materials to multigroup
             self.materials.cross_sections = mgxs_path
             for material in self.materials:
                 material.set_density('macro', 1.0)
                 material._nuclides = []
                 material._sab = []
-                material.add_macroscopic(domain.name)
+                material.add_macroscopic(material.name)
 
             self.settings.energy_mode = 'multi-group'
 
