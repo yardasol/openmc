@@ -2388,15 +2388,6 @@ void FlatSourceDomain::update_material_density(int i)
       }
     }
   }
-
-  // Update material density
-#pragma omp parallel for
-  for (int j = 0; j < model::materials.size(); j++) {
-    auto& mat {model::materials[j]};
-    if (mat->density_timeseries_.size() != 0) {
-      mat->density_ = mat->density_timeseries_[i];
-    }
-  }
 }
 
 // Update external source strength
