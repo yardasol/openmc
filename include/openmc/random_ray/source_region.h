@@ -223,6 +223,10 @@ public:
   // Delay group-wise 1D RHS BD arrays
   double* precursors_rhs_bd_;
 
+  // Energy group-wise 2D fixed source normalization arrays (g x active batch)
+  vector<float>* source_previous_;
+  vector<float>* source_time_integrated_;
+
   // Energy group-wise 2D time series array (g x time step)
   std::deque<double>* scalar_flux_time_series_;
 
@@ -414,6 +418,21 @@ public:
     return precursors_rhs_bd_[dg];
   }
 
+  vector<float>& source_previous(int g) { return source_previous_[g]; }
+  const vector<float> source_previous(int g) const
+  {
+    return source_previous_[g];
+  }
+
+  vector<float>& source_time_integrated(int g)
+  {
+    return source_time_integrated_[g];
+  }
+  const vector<float> source_time_integrated(int g) const
+  {
+    return source_time_integrated_[g];
+  }
+
   std::deque<double>& scalar_flux_time_series(int g)
   {
     return scalar_flux_time_series_[g];
@@ -584,6 +603,18 @@ public:
                         //!< timesteps. Used to compute the total precursor time
                         //!< derivative for solving the precursor equation using
                         //!< backwards differences.
+
+  // Energy group-wise 2D external source normalization arrays (g x active
+  // batch)
+  vector<vector<float>>
+    source_previous_; //!< The total source from all
+                      //!< active iterations of the previous time step
+
+  vector<vector<float>>
+    source_time_integrated_; //!< The total source from all
+                             //!< active iterations integrated over all
+                             //!< previous time steps iterations (used for
+                             //!< normalization of kinetic fixed source tallies)
 
   // Energy group-wise 2D time series arrays (g x time step)
   vector<std::deque<double>>
@@ -1005,6 +1036,37 @@ public:
     return scalar_flux_rhs_bd_2_[se];
   }
 
+  vector<float>& source_previous(int64_t sr, int g)
+  {
+    return source_previous_[index(sr, g)];
+  }
+  const vector<float> source_previous(int64_t sr, int g) const
+  {
+    return source_previous_[index(sr, g)];
+  }
+  vector<float>& source_previous(int64_t se) { return source_previous_[se]; }
+  const vector<float> source_previous(int64_t se) const
+  {
+    return source_previous_[se];
+  }
+
+  vector<float>& source_time_integrated(int64_t sr, int g)
+  {
+    return source_time_integrated_[index(sr, g)];
+  }
+  const vector<float> source_time_integrated(int64_t sr, int g) const
+  {
+    return source_time_integrated_[index(sr, g)];
+  }
+  vector<float>& source_time_integrated(int64_t se)
+  {
+    return source_time_integrated_[se];
+  }
+  const vector<float> source_time_integrated(int64_t se) const
+  {
+    return source_time_integrated_[se];
+  }
+
   std::deque<double>& scalar_flux_time_series(int64_t sr, int g)
   {
     return scalar_flux_time_series_[index(sr, g)];
@@ -1164,6 +1226,11 @@ private:
 
   // SoA delay group-wise 2D RHS BD arrays flattened to 1D
   vector<double> precursors_rhs_bd_;
+
+  // SoA energy group-wise fixed source normalization arrays (sr x g x active
+  // batch) flattened to 2D
+  vector<vector<float>> source_previous_;
+  vector<vector<float>> source_time_integrated_;
 
   // SoA energy group-wise 3D time series arrays (sr x g X timestep) flattened
   // to 2D

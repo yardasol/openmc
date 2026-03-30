@@ -688,6 +688,7 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
   // Step 1 is to sum over all source regions and energy groups to get the
   // total external source strength in the simulation.
   double simulation_external_source_strength = 0.0;
+
 #pragma omp parallel for reduction(+ : simulation_external_source_strength)
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     int material = source_regions_.material(sr);
@@ -702,11 +703,19 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
         sigma_t = sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
                   source_regions_.density_mult(sr);
       }
-      simulation_external_source_strength +=
-        source_regions_.external_source(sr, g) * sigma_t * volume;
+      if (simulation::is_initial_condition) {
+        simulation_external_source_strength +=
+          source_regions_.external_source(sr, g) * sigma_t * volume;
+      } else {
+        // Use time-integrated source
+        int batch_index = simulation::current_batch - settings::n_inactive - 1;
+        simulation_external_source_strength +=
+          source_regions_.source_time_integrated(sr, g)[batch_index] * volume;
+      }
     }
   }
 
+  // TODO: time-integrated source strength?
   // Step 2 is to determine the total user-specified external source strength
   double user_external_source_strength = 0.0;
   for (auto& ext_source : model::external_sources) {
@@ -716,18 +725,18 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
   // The correction factor is the ratio of the user-specified external source
   // strength to the simulation external source strength.
   double source_normalization_factor;
-  if (simulation::is_initial_condition) {
-    source_normalization_factor =
-      user_external_source_strength / simulation_external_source_strength;
-    if (settings::kinetic_simulation && simulation::source_correction) {
-      static_source_normalization_factor_->push_back(
-        source_normalization_factor);
-    }
-  } else {
-    source_normalization_factor =
-      (*static_source_normalization_factor_)[simulation::current_batch -
-                                             settings::n_inactive - 1];
-  }
+  //  if (simulation::is_initial_condition) {
+  source_normalization_factor =
+    user_external_source_strength / simulation_external_source_strength;
+  //   if (settings::kinetic_simulation && simulation::source_correction) {
+  //      static_source_normalization_factor_->push_back(
+  //        source_normalization_factor);
+  //    }
+  //  } else {
+  //    source_normalization_factor =
+  //      (*static_source_normalization_factor_)[simulation::current_batch -
+  //                                             settings::n_inactive - 1];
+  //  }
 
   return source_normalization_factor;
 }
@@ -2288,6 +2297,61 @@ void FlatSourceDomain::store_quantity_time_series()
         source_regions_.precursors_time_series(sr, dg).push_back(
           source_regions_.precursors_final(sr, dg) *
           source_normalization_factor);
+      }
+    }
+  }
+}
+
+void FlatSourceDomain::store_current_source(bool initialize)
+{
+  int b = simulation::current_batch - settings::n_inactive - 1;
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    int material = source_regions_.material(sr);
+    int temp = source_regions_.temperature_idx(sr);
+    double volume = source_regions_.volume(sr) * simulation_volume_;
+    for (int g = 0; g < negroups_; g++) {
+      // For non-void regions, we store the external source pre-divided by
+      // sigma_t. We need to multiply non-void regions back up by sigma_t
+      // to get the total source strength in the expected units.
+      double sigma_t = 1.0;
+      if (material != MATERIAL_VOID) {
+        sigma_t = sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
+                  source_regions_.density_mult(sr);
+      }
+      float source = source_regions_.external_source(sr, g) * sigma_t;
+      if (initialize)
+        source_regions_.source_previous(sr, g).push_back(source);
+      else
+        source_regions_.source_previous(sr, g)[b] = source;
+    }
+  }
+}
+
+void FlatSourceDomain::compute_time_integrated_source(bool initialize)
+{
+  int b = simulation::current_batch - settings::n_inactive - 1;
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    int material = source_regions_.material(sr);
+    int temp = source_regions_.temperature_idx(sr);
+    for (int g = 0; g < negroups_; g++) {
+      double sigma_t = 1.0;
+      if (material != MATERIAL_VOID) {
+        sigma_t = sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
+                  source_regions_.density_mult(sr);
+      }
+      if (initialize) {
+        source_regions_.source_time_integrated(sr, g).push_back(0.0);
+      } else {
+        // Trapezoidal rule
+        float time_integrated_source =
+          settings::dt *
+          (source_regions_.source_previous(sr, g)[b] +
+            source_regions_.external_source(sr, g) * sigma_t) /
+          2;
+        source_regions_.source_time_integrated(sr, g)[b] +=
+          time_integrated_source;
       }
     }
   }

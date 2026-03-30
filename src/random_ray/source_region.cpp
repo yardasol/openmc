@@ -25,7 +25,7 @@ SourceRegionHandle::SourceRegionHandle(SourceRegion& sr)
     volume_task_(&sr.volume_task_), mesh_(&sr.mesh_),
     parent_sr_(&sr.parent_sr_), scalar_flux_old_(sr.scalar_flux_old_.data()),
     scalar_flux_new_(sr.scalar_flux_new_.data()), source_(sr.source_.data()),
-    source_final_(sr.source_.data()),
+    source_final_(sr.source_final_.data()),
     external_source_(sr.external_source_.data()),
     scalar_flux_final_(sr.scalar_flux_final_.data()),
     source_gradients_(sr.source_gradients_.data()),
@@ -44,6 +44,8 @@ SourceRegionHandle::SourceRegionHandle(SourceRegion& sr)
     source_rhs_bd_(sr.source_rhs_bd_.data()),
     scalar_flux_rhs_bd_2_(sr.scalar_flux_rhs_bd_2_.data()),
     precursors_rhs_bd_(sr.precursors_rhs_bd_.data()),
+    source_previous_(sr.source_previous_.data()),
+    source_time_integrated_(sr.source_time_integrated_.data()),
     scalar_flux_time_series_(sr.scalar_flux_time_series_.data()),
     precursors_time_series_(sr.precursors_time_series_.data()),
     tally_delay_task_(sr.tally_delay_task_.data())
@@ -82,6 +84,11 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
     scalar_flux_rhs_bd_.resize(negroups);
 
     scalar_flux_time_series_.resize(negroups);
+
+    if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      source_previous_.resize(negroups);
+      source_time_integrated_.resize(negroups);
+    }
 
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       // Time Isotropic arrays
@@ -178,6 +185,11 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
 
       scalar_flux_time_series_.push_back(sr.scalar_flux_time_series_[g]);
 
+      if (settings::run_mode == RunMode::FIXED_SOURCE) {
+        source_previous_.push_back(sr.source_previous_[g]);
+        source_time_integrated_.push_back(sr.source_time_integrated_[g]);
+      }
+
       if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
         // Time Isotropic arrays
         phi_prime_.push_back(sr.phi_prime_[g]);
@@ -264,6 +276,11 @@ void SourceRegionContainer::assign(
     scalar_flux_rhs_bd_.clear();
 
     scalar_flux_time_series_.clear();
+
+    if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      source_previous_.clear();
+      source_time_integrated_.clear();
+    }
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       phi_prime_.clear();
     } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
@@ -355,6 +372,10 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
 
     handle.scalar_flux_time_series_ = &scalar_flux_time_series(sr, 0);
 
+    if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      handle.source_previous_ = &source_previous(sr, 0);
+      handle.source_time_integrated_ = &source_time_integrated(sr, 0);
+    }
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       handle.phi_prime_ = &phi_prime(sr, 0);
     } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
