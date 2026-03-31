@@ -93,8 +93,6 @@ public:
   void propagate_final_quantities();
   void store_time_step_quantities(bool increment_not_initialize = true);
   void store_quantity_time_series();
-  void store_current_source(bool initialize = false);
-  void compute_time_integrated_source(bool initialize = false);
   void reset_bd_vectors();
   void set_td_adjoint_sources(int i);
   void compute_rhs_bd_quantities();

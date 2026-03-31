@@ -591,19 +591,6 @@ void RandomRaySimulation::simulate()
         // estimate
         domain_->accumulate_iteration_quantities();
 
-        if (settings::kinetic_simulation &&
-            settings::run_mode == RunMode::FIXED_SOURCE) {
-          if (simulation::is_initial_condition &&
-              simulation::source_correction) {
-            domain_->compute_time_integrated_source(true);
-            domain_->store_current_source(true);
-          } else if (!simulation::is_initial_condition &&
-                     !simulation::source_correction) {
-            domain_->compute_time_integrated_source();
-            domain_->store_current_source();
-          }
-        }
-
         // Use above mapping to contribute FSR flux data to appropriate
         // tallies
         domain_->random_ray_tally();
