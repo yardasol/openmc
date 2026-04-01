@@ -417,7 +417,7 @@ void SourceRegionContainer::simulation_reset()
   std::fill(flux_moments_t_.begin(), flux_moments_t_.end(),
     MomentArray {0.0, 0.0, 0.0});
   // Reset arrays for kinetic adjoint simulations
-  if (settings::kinetic_simulation && !simulation::is_initial_condition) {
+  if (settings::kinetic_simulation) {
     if (settings::create_delayed_neutrons) {
       std::fill(
         delayed_fission_source_.begin(), delayed_fission_source_.end(), 0.0);

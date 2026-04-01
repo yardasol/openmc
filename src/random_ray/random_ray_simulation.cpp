@@ -514,7 +514,16 @@ void RandomRaySimulation::simulate()
 
     // MPI not supported in random ray solver, so all work is done by rank 0
     // TODO: Implement domain decomposition for MPI parallelism
-    if (mpi::master) {
+    if (mpi::master &&
+        (settings::run_mode == RunMode::FIXED_SOURCE &&
+          settings::kinetic_simulation && simulation::source_correction)) {
+      // Source correction for time-dependent fixed source simulations
+      // fills all our flux solutions with zero values to start from
+      // the correct IC of zero flux. The first simulate() call must allow
+      // transport to allocate space for necesary data structures in
+      // domain_->source_regions_.
+      continue;
+    } else if (mpi::master) {
 
       // Reset total starting particle weight used for normalizing tallies
       simulation::total_weight = 1.0;
@@ -527,11 +536,12 @@ void RandomRaySimulation::simulate()
       domain_->batch_reset();
 
       // At the beginning of the simulation, if mesh subdivision is in use, we
-      // need to swap the main source region container into the base container,
-      // as the main source region container will be used to hold the true
-      // subdivided source regions. The base container will therefore only
-      // contain the external source region information, the mesh indices,
-      // material properties, and initial guess values for the flux/source.
+      // need to swap the main source region container into the base
+      // container, as the main source region container will be used to hold
+      // the true subdivided source regions. The base container will therefore
+      // only contain the external source region information, the mesh
+      // indices, material properties, and initial guess values for the
+      // flux/source.
 
       // Start timer for transport
       simulation::time_transport.start();
@@ -664,7 +674,11 @@ void RandomRaySimulation::initialize_time_step(int i)
 
   // Propagate previous converted solution for kinetic simulation
   domain_->source_regions_.simulation_reset();
-  domain_->propagate_final_quantities();
+  // If a kinetic fixed source simulation, only propagate
+  // the final quantity during the time steps (assume IC = 0)
+  if (settings::run_mode == RunMode::FIXED_SOURCE &&
+      !simulation::is_initial_condition)
+    domain_->propagate_final_quantities();
   domain_->source_regions_.time_step_reset();
 
   if (!simulation::is_initial_condition) {
@@ -721,10 +735,13 @@ void RandomRaySimulation::finalize_time_step()
 void RandomRaySimulation::output_simulation_results() const
 {
   // Print random ray results
-  if (mpi::master) {
-    print_results_random_ray();
-    if (model::plots.size() > 0) {
-      domain_->output_to_vtk();
+  if (!(settings::run_mode == RunMode::FIXED_SOURCE &&
+        simulation::is_initial_condition && simulation::source_correction)) {
+    if (mpi::master) {
+      print_results_random_ray();
+      if (model::plots.size() > 0) {
+        domain_->output_to_vtk();
+      }
     }
   }
 }

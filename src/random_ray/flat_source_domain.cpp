@@ -719,7 +719,7 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
   if (simulation::is_initial_condition) {
     source_normalization_factor =
       user_external_source_strength / simulation_external_source_strength;
-    if (settings::kinetic_simulation && simulation::source_correction) {
+    if (settings::kinetic_simulation) {
       static_source_normalization_factor_->push_back(
         source_normalization_factor);
     }
