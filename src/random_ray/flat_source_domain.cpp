@@ -683,6 +683,16 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
     return 1.0;
   }
 
+  // If we are running a transient fixed source problem, the
+  // fixed source is normalized during source correction, which
+  // allows all subsequent normalization steps to be applied retroactively
+  if (settings::kinetic_simulation &&
+      settings::run_mode == RunMode::FIXED_SOURCE &&
+      !simulation::is_initial_condition) {
+    return (*static_source_normalization_factor_)[simulation::current_batch -
+                                                  settings::n_inactive - 1];
+  }
+
   // Fixed source mode normalization
 
   // Step 1 is to sum over all source regions and energy groups to get the
@@ -715,18 +725,10 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
 
   // The correction factor is the ratio of the user-specified external source
   // strength to the simulation external source strength.
-  double source_normalization_factor;
-  if (simulation::is_initial_condition) {
-    source_normalization_factor =
-      user_external_source_strength / simulation_external_source_strength;
-    if (settings::kinetic_simulation) {
-      static_source_normalization_factor_->push_back(
-        source_normalization_factor);
-    }
-  } else {
-    source_normalization_factor =
-      (*static_source_normalization_factor_)[simulation::current_batch -
-                                             settings::n_inactive - 1];
+  double source_normalization_factor =
+    user_external_source_strength / simulation_external_source_strength;
+  if (settings::kinetic_simulation && simulation::is_initial_condition) {
+    static_source_normalization_factor_->push_back(source_normalization_factor);
   }
 
   return source_normalization_factor;
@@ -2194,9 +2196,7 @@ void FlatSourceDomain::normalize_final_quantities()
   double normalization_factor =
     1.0 / (settings::n_batches - settings::n_inactive);
   double source_normalization_factor;
-  if (!settings::kinetic_simulation ||
-      settings::kinetic_simulation &&
-        simulation::current_timestep == settings::n_timesteps || adjoint_)
+  if (!settings::kinetic_simulation || adjoint_)
     source_normalization_factor =
       compute_fixed_source_normalization_factor() * normalization_factor;
   else
@@ -2274,9 +2274,8 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
 
 void FlatSourceDomain::store_quantity_time_series()
 {
-  double source_normalization_factor = 1.0;
-  if (simulation::current_timestep < settings::n_timesteps)
-    source_normalization_factor = compute_fixed_source_normalization_factor();
+  double source_normalization_factor =
+    compute_fixed_source_normalization_factor();
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     for (int g = 0; g < negroups_; g++) {

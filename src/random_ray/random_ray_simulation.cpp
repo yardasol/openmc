@@ -672,12 +672,27 @@ void RandomRaySimulation::initialize_time_step(int i)
   // Increment current timestep and simuation time
   simulation::current_timestep = (FlatSourceDomain::adjoint_) ? i - 1 : i + 1;
 
+  // Normalize the initial fixed source directly if present
+  if (settings::run_mode == RunMode::FIXED_SOURCE &&
+      simulation::source_correction) {
+    double source_normalization_factor =
+      domain_->compute_fixed_source_normalization_factor();
+#pragma omp parallel for
+    for (int64_t sr = 0; sr < domain_->source_regions_.n_source_regions();
+         sr++) {
+      for (int g = 0; g < domain_->source_regions_.negroups(); g++) {
+        domain_->source_regions_.external_source(sr, g) *=
+          source_normalization_factor;
+      }
+    }
+  }
+
   // Propagate previous converted solution for kinetic simulation
   domain_->source_regions_.simulation_reset();
-  // If a kinetic fixed source simulation, only propagate
+  // For a kinetic fixed source simulation, only propagate
   // the final quantity during the time steps (assume IC = 0)
-  if (settings::run_mode == RunMode::FIXED_SOURCE &&
-      !simulation::is_initial_condition)
+  if (!(settings::run_mode == RunMode::FIXED_SOURCE &&
+        simulation::is_initial_condition))
     domain_->propagate_final_quantities();
   domain_->source_regions_.time_step_reset();
 
