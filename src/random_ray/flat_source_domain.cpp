@@ -753,6 +753,9 @@ void FlatSourceDomain::random_ray_tally()
 
   double source_normalization_factor =
     compute_fixed_source_normalization_factor();
+  if (settings::kinetic_simulation && !simulation::is_initial_condition) {
+    source_normalization_factor *= settings::dt;
+  }
 
 // We loop over all source regions and energy groups. For each
 // element, we check if there are any scores needed and apply
