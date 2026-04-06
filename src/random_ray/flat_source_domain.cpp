@@ -266,10 +266,11 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
     double A0 =
       (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] / settings::dt;
 
-    // TODO: Add support for expicit void regions
-    double sigma_t =
-      sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-      source_regions_.density_mult(sr);
+    double sigma_t = 1.0;
+    if (material != MATERIAL_VOID) {
+      sigma_t = sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
+                source_regions_.density_mult(sr);
+    }
     source_regions_.scalar_flux_new(sr, g) -=
       scalar_flux_rhs_bd * inverse_vbar / sigma_t;
     source_regions_.scalar_flux_new(sr, g) /= 1 + A0 * inverse_vbar / sigma_t;
@@ -1810,11 +1811,6 @@ SourceRegionHandle FlatSourceDomain::get_subdivided_source_region_handle(
     }
   }
 
-  if (settings::kinetic_simulation && material == MATERIAL_VOID) {
-    fatal_error("Explicit void treatment for kinetic simulations "
-                " is not currently supported.");
-  }
-
   handle.material() = material;
   handle.temperature_idx() = temp;
 
@@ -2029,19 +2025,20 @@ int64_t FlatSourceDomain::lookup_mesh_bin(int64_t sr, Position r) const
 // kinetic simulations) sources in each source region based on the flux
 // estimate from the previous iteration.
 
-// TODO: support void regions
 void FlatSourceDomain::compute_single_phi_prime(SourceRegionHandle& srh)
 {
   double A0 =
     (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] / settings::dt;
   int material = srh.material();
   int temp = srh.temperature_idx();
-  double density_mult = srh.density_mult();
   const int material_offset = (material * ntemperature_ + temp) * negroups_;
   for (int g = 0; g < negroups_; g++) {
     double inverse_vbar = inverse_vbar_[material_offset + g];
-    // TODO: add support for explicit void
-    double sigma_t = sigma_t_[material_offset + g] * density_mult;
+    double sigma_t = 1.0;
+    if (material != MATERIAL_VOID) {
+      sigma_t = sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
+                srh.density_mult();
+    }
 
     double scalar_flux_time_derivative =
       A0 * srh.scalar_flux_old(g) + srh.scalar_flux_rhs_bd(g);
@@ -2051,7 +2048,6 @@ void FlatSourceDomain::compute_single_phi_prime(SourceRegionHandle& srh)
 }
 
 // T1 calculation
-// TODO: support void regions
 void FlatSourceDomain::compute_single_T1(SourceRegionHandle& srh)
 {
   double A0 =
@@ -2060,12 +2056,14 @@ void FlatSourceDomain::compute_single_T1(SourceRegionHandle& srh)
               (settings::dt * settings::dt);
   int material = srh.material();
   int temp = srh.temperature_idx();
-  double density_mult = srh.density_mult();
   const int material_offset = (material * ntemperature_ + temp) * negroups_;
   for (int g = 0; g < negroups_; g++) {
     double inverse_vbar = inverse_vbar_[material_offset + g];
-    // TODO: add support for explicit void
-    double sigma_t = sigma_t_[material_offset + g] * density_mult;
+    double sigma_t = 1.0;
+    if (material != MATERIAL_VOID) {
+      sigma_t = sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
+                srh.density_mult();
+    }
 
     // Multiply out sigma_t to correctly compute the derivative term
     float source_time_derivative =
@@ -2256,10 +2254,12 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
         int material = source_regions_.material(sr);
         int temp = source_regions_.temperature_idx(sr);
         double density_mult = source_regions_.density_mult(sr);
-        // TODO: add support for explicit void regions
-        double sigma_t =
-          sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-          density_mult;
+        double sigma_t = 1.0;
+        if (material != MATERIAL_VOID) {
+          sigma_t =
+            sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
+            source_regions_.density_mult(sr);
+        }
         float source = source_regions_.source_final(sr, g) * sigma_t;
         add_value_to_bd_vector(source_regions_.source_bd(sr, g), source,
           increment_not_initialize, RandomRay::bd_order_);
@@ -2368,11 +2368,13 @@ void FlatSourceDomain::update_material_density(int i)
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     int material = source_regions_.material(sr);
-    auto& mat {model::materials[material]};
-    if (mat->density_timeseries_.size() != 0) {
-      double density_factor = mat->density_timeseries_[i] / mat->density_;
+    if (material != MATERIAL_VOID) {
+      auto& mat {model::materials[material]};
+      if (mat->density_timeseries_.size() != 0) {
+        double density_factor = mat->density_timeseries_[i] / mat->density_;
 
-      source_regions_.density_mult(sr) = density_factor;
+        source_regions_.density_mult(sr) = density_factor;
+      }
     }
   }
 
@@ -2381,11 +2383,13 @@ void FlatSourceDomain::update_material_density(int i)
 #pragma omp parallel for
     for (int64_t sr = 0; sr < n_source_regions(); sr++) {
       int material = source_regions_.material(sr);
-      auto& mat {model::materials[material]};
-      if (mat->density_timeseries_.size() != 0) {
-        double density_factor = mat->density_timeseries_[i] / mat->density_;
-        for (int g = 0; g < negroups_; g++) {
-          source_regions_.external_source(sr, g) /= density_factor;
+      if (material != MATERIAL_VOID) {
+        auto& mat {model::materials[material]};
+        if (mat->density_timeseries_.size() != 0) {
+          double density_factor = mat->density_timeseries_[i] / mat->density_;
+          for (int g = 0; g < negroups_; g++) {
+            source_regions_.external_source(sr, g) /= density_factor;
+          }
         }
       }
     }
