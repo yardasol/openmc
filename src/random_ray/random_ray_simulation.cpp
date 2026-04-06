@@ -612,6 +612,16 @@ void RandomRaySimulation::simulate()
         domain_->precursors_swap();
       }
 
+      //      // For kinetic fixed source sims, we actually don't want to
+      //      converge the global solution. We only advance the solution time
+      //      step by time step if (settings::run_mode == RunMode::FIXED_SOURCE
+      //      && settings::kinetic_simulation &&
+      //      !simulation::is_initial_condition){
+      //        domain_->flux_swap();
+      //        if (settings::create_delayed_neutrons)
+      //          domain_->precursors_swap();
+      //      }
+
       // Check for any obvious insabilities/nans/infs
       instability_check(n_hits, domain_->k_eff_, avg_miss_rate_);
     } // End MPI master work
