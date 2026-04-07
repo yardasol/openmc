@@ -245,6 +245,7 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
 {
   int material = source_regions_.material(sr);
   int temp = source_regions_.temperature_idx(sr);
+  const int material_offset = (material * ntemperature_ + temp) * negroups_;
   if (material == MATERIAL_VOID) {
     source_regions_.scalar_flux_new(sr, g) /= volume;
     if (settings::run_mode == RunMode::FIXED_SOURCE) {
@@ -254,22 +255,20 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
     }
   } else {
     double sigma_t =
-      sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-      source_regions_.density_mult(sr);
+      sigma_t_[material_offset + g] * source_regions_.density_mult(sr);
     source_regions_.scalar_flux_new(sr, g) /= (sigma_t * volume);
     source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g);
   }
   if (settings::kinetic_simulation && !simulation::is_initial_condition) {
-    double inverse_vbar =
-      inverse_vbar_[(material * ntemperature_ + temp) * negroups_ + g];
+    double inverse_vbar = inverse_vbar_[material_offset + g];
     double scalar_flux_rhs_bd = source_regions_.scalar_flux_rhs_bd(sr, g);
     double A0 =
       (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] / settings::dt;
 
     double sigma_t = 1.0;
     if (material != MATERIAL_VOID) {
-      sigma_t = sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-                source_regions_.density_mult(sr);
+      sigma_t =
+        sigma_t_[material_offset + g] * source_regions_.density_mult(sr);
     }
     source_regions_.scalar_flux_new(sr, g) -=
       scalar_flux_rhs_bd * inverse_vbar / sigma_t;
@@ -2036,8 +2035,7 @@ void FlatSourceDomain::compute_single_phi_prime(SourceRegionHandle& srh)
     double inverse_vbar = inverse_vbar_[material_offset + g];
     double sigma_t = 1.0;
     if (material != MATERIAL_VOID) {
-      sigma_t = sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-                srh.density_mult();
+      sigma_t = sigma_t_[material_offset + g] * srh.density_mult();
     }
 
     double scalar_flux_time_derivative =
@@ -2061,8 +2059,7 @@ void FlatSourceDomain::compute_single_T1(SourceRegionHandle& srh)
     double inverse_vbar = inverse_vbar_[material_offset + g];
     double sigma_t = 1.0;
     if (material != MATERIAL_VOID) {
-      sigma_t = sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-                srh.density_mult();
+      sigma_t = sigma_t_[material_offset + g] * srh.density_mult();
     }
 
     // Multiply out sigma_t to correctly compute the derivative term
@@ -2256,9 +2253,10 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
         double density_mult = source_regions_.density_mult(sr);
         double sigma_t = 1.0;
         if (material != MATERIAL_VOID) {
+          const int material_offset =
+            (material * ntemperature_ + temp) * negroups_;
           sigma_t =
-            sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-            source_regions_.density_mult(sr);
+            sigma_t_[material_offset + g] * source_regions_.density_mult(sr);
         }
         float source = source_regions_.source_final(sr, g) * sigma_t;
         add_value_to_bd_vector(source_regions_.source_bd(sr, g), source,
