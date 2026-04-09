@@ -177,14 +177,14 @@ void FlatSourceDomain::update_single_neutron_source(SourceRegionHandle& srh)
         }
         total_source += delayed_source;
       }
-      srh.source(g_out) = total_source / sigma_t;
+      srh.source(g_out) = total_source / (sigma_t * 4 * PI);
     }
   }
 
   // Add external source if in fixed source mode
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
     for (int g = 0; g < negroups_; g++) {
-      srh.source(g) += srh.external_source(g);
+      srh.source(g) += srh.external_source(g) / (4 * PI);
     }
   }
 }
@@ -259,6 +259,7 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
     source_regions_.scalar_flux_new(sr, g) /= (sigma_t * volume);
     source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g);
   }
+  source_regions_.scalar_flux_new(sr, g) *= 4 * PI;
   if (settings::kinetic_simulation && !simulation::is_initial_condition) {
     double inverse_vbar = inverse_vbar_[material_offset + g];
     double scalar_flux_rhs_bd = source_regions_.scalar_flux_rhs_bd(sr, g);
