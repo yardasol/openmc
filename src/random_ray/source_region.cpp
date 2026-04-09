@@ -83,10 +83,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 
     scalar_flux_time_series_.resize(negroups);
 
-    if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
-      // Time Isotropic arrays
-      phi_prime_.assign(negroups, 0.0);
-    } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
+    phi_prime_.assign(negroups, 0.0);
+    if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
       // Source Derivative Propogation arrays
       source_final_.assign(negroups, 0.0);
 
@@ -178,10 +176,8 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
 
       scalar_flux_time_series_.push_back(sr.scalar_flux_time_series_[g]);
 
-      if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
-        // Time Isotropic arrays
-        phi_prime_.push_back(sr.phi_prime_[g]);
-      } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
+      phi_prime_.push_back(sr.phi_prime_[g]);
+      if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
         // Source Derivative Propogation arrays
         source_final_.push_back(sr.source_final_[g]);
 
@@ -264,9 +260,8 @@ void SourceRegionContainer::assign(
     scalar_flux_rhs_bd_.clear();
 
     scalar_flux_time_series_.clear();
-    if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
-      phi_prime_.clear();
-    } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
+    phi_prime_.clear();
+    if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
       source_final_.clear();
 
       T1_.clear();
@@ -355,9 +350,8 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
 
     handle.scalar_flux_time_series_ = &scalar_flux_time_series(sr, 0);
 
-    if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
-      handle.phi_prime_ = &phi_prime(sr, 0);
-    } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
+    handle.phi_prime_ = &phi_prime(sr, 0);
+    if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
       handle.source_final_ = &source_final(sr, 0);
 
       handle.T1_ = &T1(sr, 0);
@@ -429,9 +423,8 @@ void SourceRegionContainer::simulation_reset()
     // BD Vectors
     std::fill(scalar_flux_rhs_bd_.begin(), scalar_flux_rhs_bd_.end(), 0.0);
 
-    if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
-      std::fill(phi_prime_.begin(), phi_prime_.end(), 0.0);
-    } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
+    std::fill(phi_prime_.begin(), phi_prime_.end(), 0.0);
+    if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
       std::fill(T1_.begin(), T1_.end(), 0.0);
 
       std::fill(source_rhs_bd_.begin(), source_rhs_bd_.end(), 0.0);
