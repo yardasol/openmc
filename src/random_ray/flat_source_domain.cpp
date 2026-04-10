@@ -2256,10 +2256,14 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
         if (material != MATERIAL_VOID) {
           const int material_offset =
             (material * ntemperature_ + temp) * negroups_;
-          sigma_t =
-            sigma_t_[material_offset + g] * source_regions_.density_mult(sr);
+          sigma_t = sigma_t_[material_offset + g] * density_mult;
         }
-        double source = source_regions_.source_final(sr, g) * sigma_t;
+        double source;
+        if (settings::run_mode == RunMode::FIXED_SOURCE &&
+            simulation::is_initial_condition)
+          source = source_regions_.external_source(sr, g) * sigma_t;
+        else
+          source = source_regions_.source_final(sr, g) * sigma_t;
         add_value_to_bd_vector(source_regions_.source_bd(sr, g), source,
           increment_not_initialize, RandomRay::bd_order_);
       }
