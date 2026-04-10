@@ -2039,8 +2039,7 @@ void FlatSourceDomain::compute_single_phi_prime(SourceRegionHandle& srh)
     double scalar_flux_time_derivative =
       A0 * srh.scalar_flux_old(g) + srh.scalar_flux_rhs_bd(g);
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
-      srh.phi_prime(g) =
-        scalar_flux_time_derivative * inverse_vbar / (4 * PI * sigma_t);
+      srh.phi_prime(g) = scalar_flux_time_derivative * inverse_vbar / sigma_t;
     } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
       srh.phi_prime(g) = scalar_flux_time_derivative;
     }
@@ -2070,7 +2069,7 @@ void FlatSourceDomain::compute_single_T1(SourceRegionHandle& srh)
 
     double scalar_flux_time_derivative_2 =
       B0 * srh.scalar_flux_old(g) + srh.scalar_flux_rhs_bd_2(g);
-    scalar_flux_time_derivative_2 *= inverse_vbar / (4 * PI);
+    scalar_flux_time_derivative_2 *= inverse_vbar;
 
     // Divide by sigma_t to save time during transport
     srh.T1(g) =

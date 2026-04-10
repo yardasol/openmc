@@ -869,7 +869,7 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
       if (srh.scalar_flux_old(g) == 0.0)
         angular_flux_[g] = srh.source(g);
       else
-        angular_flux_[g] = srh.scalar_flux_old(g) / (4 * PI);
+        angular_flux_[g] = srh.scalar_flux_old(g);
     }
     if (settings::kinetic_simulation && !simulation::is_initial_condition &&
         RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
@@ -877,7 +877,7 @@ void RandomRay::initialize_ray(uint64_t ray_id, FlatSourceDomain* domain)
         if (srh.phi_prime(g) == 0.0)
           angular_flux_prime_[g] = srh.T1(g);
         else
-          angular_flux_prime_[g] = srh.phi_prime(g) / (4 * PI);
+          angular_flux_prime_[g] = srh.phi_prime(g);
       }
     }
   }
