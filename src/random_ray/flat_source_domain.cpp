@@ -249,7 +249,7 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
     source_regions_.scalar_flux_new(sr, g) /= volume;
     if (settings::run_mode == RunMode::FIXED_SOURCE) {
       source_regions_.scalar_flux_new(sr, g) +=
-        0.5 * source_regions_.external_source(sr, g) *
+        0.5f * source_regions_.external_source(sr, g) *
         source_regions_.volume_sq(sr);
     }
   } else {
@@ -2064,7 +2064,7 @@ void FlatSourceDomain::compute_single_T1(SourceRegionHandle& srh)
     }
 
     // Multiply out sigma_t to correctly compute the derivative term
-    double source_time_derivative =
+    float source_time_derivative =
       A0 * srh.source(g) * sigma_t + srh.source_rhs_bd(g);
 
     double scalar_flux_time_derivative_2 =
@@ -2259,12 +2259,7 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
           sigma_t =
             sigma_t_[energy_offset + g] * source_regions_.density_mult(sr);
         }
-        double source;
-        if (settings::run_mode == RunMode::FIXED_SOURCE &&
-            simulation::is_initial_condition)
-          source = source_regions_.external_source(sr, g) * sigma_t;
-        else
-          source = source_regions_.source_final(sr, g) * sigma_t;
+        float source = source_regions_.source_final(sr, g) * sigma_t;
         add_value_to_bd_vector(source_regions_.source_bd(sr, g), source,
           increment_not_initialize, RandomRay::bd_order_);
       }

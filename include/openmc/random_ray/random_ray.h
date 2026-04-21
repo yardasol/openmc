@@ -70,17 +70,17 @@ public:
 
   //----------------------------------------------------------------------------
   // Public data members
-  vector<double> angular_flux_;
+  vector<float> angular_flux_;
   bool ray_trace_only_ {false}; // If true, only perform geometry operations
 
   //---------------------------------------------------------------------------
   // Public data members for kinetic simulations
-  vector<double> angular_flux_prime_;
+  vector<float> angular_flux_prime_;
 
 private:
   //----------------------------------------------------------------------------
   // Private data members
-  vector<double> delta_psi_;
+  vector<float> delta_psi_;
   vector<MomentArray> delta_moments_;
   vector<int> mesh_bins_;
   vector<double> mesh_fractional_lengths_;
