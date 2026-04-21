@@ -271,10 +271,6 @@ void get_run_parameters(pugi::xml_node node_base)
   // Kinetic variables
   if (check_for_node(node_base, "kinetic_simulation")) {
     kinetic_simulation = get_node_value_bool(node_base, "kinetic_simulation");
-    if (solver_type != SolverType::RANDOM_RAY) {
-      fatal_error("Unsupported solver selected for kinetic simulation. Kinetic "
-                  "simulations currently only support the random ray solver.");
-    }
     if (run_mode != RunMode::EIGENVALUE && run_mode != RunMode::FIXED_SOURCE) {
       fatal_error(
         "Unsupported run mode selected for kinetic simulation. Kinetic "
