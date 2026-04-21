@@ -21,6 +21,7 @@
 #include "openmc/mgxs_interface.h"
 #include "openmc/nuclide.h"
 #include "openmc/output.h"
+#include "openmc/particle_type.h"
 #include "openmc/random_ray/random_ray_simulation.h"
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
@@ -625,8 +626,16 @@ void write_source_point(std::string filename, span<SourceSite> source_bank,
   const vector<int64_t>& bank_index, bool use_mcpl)
 {
   std::string ext = use_mcpl ? "mcpl" : "h5";
+
+  int total_surf_particles = source_bank.size();
+#ifdef OPENMC_MPI
+  int num_particles = source_bank.size();
+  MPI_Allreduce(
+    &num_particles, &total_surf_particles, 1, MPI_INT, MPI_SUM, mpi::intracomm);
+#endif
+
   write_message("Creating source file {}.{} with {} particles ...", filename,
-    ext, source_bank.size(), 5);
+    ext, total_surf_particles, 5);
 
   // Dispatch to appropriate function based on file type
   if (use_mcpl) {
@@ -665,6 +674,7 @@ void write_h5_source_point(const char* filename, span<SourceSite> source_bank,
   if (mpi::master || parallel) {
     file_id = file_open(filename_.c_str(), 'w', true);
     write_attribute(file_id, "filetype", "source");
+    write_attribute(file_id, "version", VERSION_STATEPOINT);
   }
 
   // Get pointer to source bank and write to file
@@ -710,6 +720,16 @@ std::string dtype_member_names(hid_t dtype_id)
 void read_source_bank(
   hid_t group_id, vector<SourceSite>& sites, bool distribute)
 {
+  bool legacy_particle_codes = true;
+  if (attribute_exists(group_id, "version")) {
+    array<int, 2> version;
+    read_attribute(group_id, "version", version);
+    if (version[0] > VERSION_STATEPOINT[0] ||
+        (version[0] == VERSION_STATEPOINT[0] && version[1] >= 2)) {
+      legacy_particle_codes = false;
+    }
+  }
+
   hid_t banktype = h5banktype(true);
 
   // Open the dataset
@@ -771,6 +791,12 @@ void read_source_bank(
     H5Sclose(memspace);
   H5Dclose(dset);
   H5Tclose(banktype);
+
+  if (legacy_particle_codes) {
+    for (auto& site : sites) {
+      site.particle = legacy_particle_index_to_type(site.particle.pdg_number());
+    }
+  }
 }
 
 void write_unstructured_mesh_results()

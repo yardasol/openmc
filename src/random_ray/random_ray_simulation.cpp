@@ -1,5 +1,6 @@
 #include "openmc/random_ray/random_ray_simulation.h"
 
+#include "openmc/capi.h"
 #include "openmc/eigenvalue.h"
 #include "openmc/geometry.h"
 #include "openmc/message_passing.h"
@@ -21,84 +22,6 @@ namespace openmc {
 //==============================================================================
 // Non-member functions
 //==============================================================================
-
-void openmc_run_random_ray()
-{
-  //////////////////////////////////////////////////////////
-  // Run forward simulation
-  //////////////////////////////////////////////////////////
-
-  if (mpi::master) {
-    if (FlatSourceDomain::adjoint_) {
-      FlatSourceDomain::adjoint_ = false;
-      openmc::print_adjoint_header();
-      FlatSourceDomain::adjoint_ = true;
-    }
-  }
-
-  // Initialize OpenMC general data structures
-  openmc_simulation_init();
-
-  // Validate that inputs meet requirements for random ray mode
-  if (mpi::master)
-    validate_random_ray_inputs();
-
-  // Initialize Random Ray Simulation Object
-  RandomRaySimulation sim;
-
-  // Initialize fixed sources, if present
-  sim.apply_fixed_sources_and_mesh_domains();
-
-  // Simulate single random ray simulation (static case)
-  // OR get an initial estimate for scattering and fission
-  // distributions (if fissile material exist),
-  // and k-eff (if kinetic eigenvalue simulation)
-  sim.simulate();
-  if (!settings::kinetic_simulation && sim.adjoint_needed_) {
-    rename_time_step_file(
-      fmt::format("statepoint.{0}", settings::n_batches), ".h5", -1);
-    if (settings::output_tallies)
-      rename_time_step_file("tallies", ".out", -1);
-  }
-
-  // Time-dependent kinetics simulation
-  if (settings::kinetic_simulation) {
-    // Toggle initial condition source correction
-    simulation::source_correction = true;
-    int i_start = -1;
-    // Timestepping loop,
-    for (int i = i_start; i < settings::n_timesteps; i++) {
-      sim.initialize_time_step(i);
-      sim.simulate();
-      sim.finalize_time_step();
-    }
-  }
-
-  //////////////////////////////////////////////////////////
-  // Run adjoint simulation (if enabled)
-  //////////////////////////////////////////////////////////
-
-  if (sim.adjoint_needed_) {
-    // Setup for adjoint simulation
-    sim.prepare_adjoint_simulation();
-
-    // Run adjoint simulation (serves as adjoint final condition for kinetic
-    // simulation)
-    sim.simulate();
-
-    if (settings::kinetic_simulation) {
-      simulation::source_correction = true;
-      // source/k-eff correction (i = settings::n_timesteps + 1)
-      int i_start = settings::n_timesteps + 1;
-      // Timestepping loop,
-      for (int i = i_start; i > 0; i--) {
-        sim.initialize_time_step(i);
-        sim.simulate();
-        sim.finalize_time_step();
-      }
-    }
-  }
-}
 
 // Enforces restrictions on inputs in random ray mode.  While there are
 // many features that don't make sense in random ray mode, and are therefore
@@ -179,10 +102,6 @@ void validate_random_ray_inputs()
     if (!material.is_isotropic) {
       fatal_error("Anisotropic MGXS detected. Only isotropic XS data sets "
                   "supported in random ray mode.");
-    }
-    if (material.get_xsdata().size() > 1) {
-      warning("Non-isothermal MGXS detected. Only isothermal XS data sets "
-              "supported in random ray mode. Using lowest temperature.");
     }
     for (int g = 0; g < data::mg.num_energy_groups_; g++) {
       if (material.exists_in_model) {
@@ -573,7 +492,16 @@ void RandomRaySimulation::simulate()
 
     // MPI not supported in random ray solver, so all work is done by rank 0
     // TODO: Implement domain decomposition for MPI parallelism
-    if (mpi::master) {
+    if (mpi::master &&
+        (settings::run_mode == RunMode::FIXED_SOURCE &&
+          settings::kinetic_simulation && simulation::source_correction)) {
+      // Source correction for time-dependent fixed source simulations
+      // fills all our flux solutions with zero values to start from
+      // the correct IC of zero flux. The first simulate() call must allow
+      // transport to allocate space for necesary data structures in
+      // domain_->source_regions_.
+      continue;
+    } else if (mpi::master) {
 
       // Reset total starting particle weight used for normalizing tallies
       simulation::total_weight = 1.0;
@@ -586,11 +514,12 @@ void RandomRaySimulation::simulate()
       domain_->batch_reset();
 
       // At the beginning of the simulation, if mesh subdivision is in use, we
-      // need to swap the main source region container into the base container,
-      // as the main source region container will be used to hold the true
-      // subdivided source regions. The base container will therefore only
-      // contain the external source region information, the mesh indices,
-      // material properties, and initial guess values for the flux/source.
+      // need to swap the main source region container into the base
+      // container, as the main source region container will be used to hold
+      // the true subdivided source regions. The base container will therefore
+      // only contain the external source region information, the mesh
+      // indices, material properties, and initial guess values for the
+      // flux/source.
 
       // Start timer for transport
       simulation::time_transport.start();
@@ -723,7 +652,11 @@ void RandomRaySimulation::initialize_time_step(int i)
 
   // Propagate previous converted solution for kinetic simulation
   domain_->source_regions_.simulation_reset();
-  domain_->propagate_final_quantities();
+  // For a kinetic fixed source simulation, only propagate
+  // the final quantity during the time steps (assume IC = 0)
+  if (!(settings::run_mode == RunMode::FIXED_SOURCE &&
+        simulation::is_initial_condition))
+    domain_->propagate_final_quantities();
   domain_->source_regions_.time_step_reset();
 
   if (!simulation::is_initial_condition) {
@@ -769,6 +702,7 @@ void RandomRaySimulation::finalize_time_step()
   if (adjoint_needed_ && !FlatSourceDomain::adjoint_) {
     domain_->store_quantity_time_series();
   }
+
   // Rename statepoint and tallies file for the current time step
   rename_time_step_file(fmt::format("statepoint.{0}", settings::n_batches),
     ".h5", simulation::current_timestep);
@@ -779,10 +713,13 @@ void RandomRaySimulation::finalize_time_step()
 void RandomRaySimulation::output_simulation_results() const
 {
   // Print random ray results
-  if (mpi::master) {
-    print_results_random_ray();
-    if (model::plots.size() > 0) {
-      domain_->output_to_vtk();
+  if (!(settings::run_mode == RunMode::FIXED_SOURCE &&
+        simulation::is_initial_condition && simulation::source_correction)) {
+    if (mpi::master) {
+      print_results_random_ray();
+      if (model::plots.size() > 0) {
+        domain_->output_to_vtk();
+      }
     }
   }
 }
@@ -900,9 +837,18 @@ void RandomRaySimulation::print_results_random_ray() const
       fatal_error("Invalid random ray source shape");
     }
     fmt::print(" Source Shape                      = {}\n", shape);
-    std::string sample_method =
-      (RandomRay::sample_method_ == RandomRaySampleMethod::PRNG) ? "PRNG"
-                                                                 : "Halton";
+    std::string sample_method;
+    switch (RandomRay::sample_method_) {
+    case RandomRaySampleMethod::PRNG:
+      sample_method = "PRNG";
+      break;
+    case RandomRaySampleMethod::HALTON:
+      sample_method = "Halton";
+      break;
+    case RandomRaySampleMethod::S2:
+      sample_method = "PRNG S2";
+      break;
+    }
     fmt::print(" Sample Method                     = {}\n", sample_method);
 
     if (domain_->is_transport_stabilization_needed_) {
@@ -951,4 +897,88 @@ void RandomRaySimulation::print_results_random_ray() const
   }
 }
 
+void openmc_finalize_random_ray()
+{
+  FlatSourceDomain::volume_estimator_ = RandomRayVolumeEstimator::HYBRID;
+  FlatSourceDomain::volume_normalized_flux_tallies_ = false;
+  FlatSourceDomain::adjoint_ = false;
+  FlatSourceDomain::mesh_domain_map_.clear();
+  RandomRay::ray_source_.reset();
+  RandomRay::source_shape_ = RandomRaySourceShape::FLAT;
+  RandomRay::sample_method_ = RandomRaySampleMethod::PRNG;
+}
+
 } // namespace openmc
+
+//==============================================================================
+// C API functions
+//==============================================================================
+
+void openmc_run_random_ray()
+{
+  //////////////////////////////////////////////////////////
+  // Run forward simulation
+  //////////////////////////////////////////////////////////
+  if (openmc::mpi::master) {
+    if (openmc::FlatSourceDomain::adjoint_) {
+      openmc::FlatSourceDomain::adjoint_ = false;
+      openmc::print_adjoint_header();
+      openmc::FlatSourceDomain::adjoint_ = true;
+    }
+  }
+
+  // Initialize OpenMC general data structures
+  openmc_simulation_init();
+
+  // Validate that inputs meet requirements for random ray mode
+  if (openmc::mpi::master)
+    openmc::validate_random_ray_inputs();
+
+  // Initialize Random Ray Simulation Object
+  openmc::RandomRaySimulation sim;
+
+  // Initialize fixed sources, if present
+  sim.apply_fixed_sources_and_mesh_domains();
+
+  // Simulate single random ray simulation (static case)
+  // OR get an initial estimate for scattering and fission
+  // distributions (if fissile material exist),
+  // and k-eff (if kinetic eigenvalue simulation)
+  sim.simulate();
+
+  if (openmc::settings::kinetic_simulation) {
+    // Toggle initial condition source correction
+    openmc::simulation::source_correction = true;
+    int i_start = -1;
+    // Timestepping loop,
+    for (int i = i_start; i < openmc::settings::n_timesteps; i++) {
+      sim.initialize_time_step(i);
+      sim.simulate();
+      sim.finalize_time_step();
+    }
+  }
+
+  //////////////////////////////////////////////////////////
+  // Run adjoint simulation (if enabled)
+  //////////////////////////////////////////////////////////
+
+  if (sim.adjoint_needed_) {
+    // Setup for adjoint simulation
+    sim.prepare_adjoint_simulation();
+
+    // Run adjoint simulation
+    sim.simulate();
+
+    if (openmc::settings::kinetic_simulation) {
+      openmc::simulation::source_correction = true;
+      // source/k-eff correction (i = settings::n_timesteps + 1)
+      int i_start = openmc::settings::n_timesteps + 1;
+      // Timestepping loop,
+      for (int i = i_start; i > 0; i--) {
+        sim.initialize_time_step(i);
+        sim.simulate();
+        sim.finalize_time_step();
+      }
+    }
+  }
+}

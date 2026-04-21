@@ -12,11 +12,11 @@ namespace openmc {
 //==============================================================================
 SourceRegionHandle::SourceRegionHandle(SourceRegion& sr)
   : negroups_(sr.scalar_flux_old_.size()), material_(&sr.material_),
-    density_mult_(&sr.density_mult_), is_small_(&sr.is_small_),
-    n_hits_(&sr.n_hits_), is_linear_(sr.source_gradients_.size() > 0),
-    lock_(&sr.lock_), volume_(&sr.volume_), volume_t_(&sr.volume_t_),
-    volume_sq_(&sr.volume_sq_), volume_sq_t_(&sr.volume_sq_t_),
-    volume_naive_(&sr.volume_naive_),
+    temperature_idx_(&sr.temperature_idx_), density_mult_(&sr.density_mult_),
+    is_small_(&sr.is_small_), n_hits_(&sr.n_hits_),
+    is_linear_(sr.source_gradients_.size() > 0), lock_(&sr.lock_),
+    volume_(&sr.volume_), volume_t_(&sr.volume_t_), volume_sq_(&sr.volume_sq_),
+    volume_sq_t_(&sr.volume_sq_t_), volume_naive_(&sr.volume_naive_),
     position_recorded_(&sr.position_recorded_),
     external_source_present_(&sr.external_source_present_),
     position_(&sr.position_), centroid_(&sr.centroid_),
@@ -123,6 +123,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
 
   // Scalar fields
   material_.push_back(sr.material_);
+  temperature_idx_.push_back(sr.temperature_idx_);
   density_mult_.push_back(sr.density_mult_);
   is_small_.push_back(sr.is_small_);
   n_hits_.push_back(sr.n_hits_);
@@ -179,6 +180,7 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
 
       if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
         // Time Isotropic arrays
+
         phi_prime_.push_back(sr.phi_prime_[g]);
       } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
         // Source Derivative Propogation arrays
@@ -216,6 +218,7 @@ void SourceRegionContainer::clear()
   // Clear existing data
   n_source_regions_ = 0;
   material_.clear();
+  temperature_idx_.clear();
   density_mult_.clear();
   is_small_.clear();
   n_hits_.clear();
@@ -261,6 +264,7 @@ void SourceRegionContainer::clear()
     scalar_flux_rhs_bd_.clear();
 
     scalar_flux_time_series_.clear();
+
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       phi_prime_.clear();
     } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
@@ -312,6 +316,7 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
   SourceRegionHandle handle;
   handle.negroups_ = negroups();
   handle.material_ = &material(sr);
+  handle.temperature_idx_ = &temperature_idx(sr);
   handle.density_mult_ = &density_mult(sr);
   handle.is_small_ = &is_small(sr);
   handle.n_hits_ = &n_hits(sr);
@@ -419,7 +424,7 @@ void SourceRegionContainer::simulation_reset()
   std::fill(flux_moments_t_.begin(), flux_moments_t_.end(),
     MomentArray {0.0, 0.0, 0.0});
   // Reset arrays for kinetic adjoint simulations
-  if (settings::kinetic_simulation && !simulation::is_initial_condition) {
+  if (settings::kinetic_simulation) {
     if (settings::create_delayed_neutrons) {
       std::fill(
         delayed_fission_source_.begin(), delayed_fission_source_.end(), 0.0);
@@ -431,9 +436,8 @@ void SourceRegionContainer::simulation_reset()
     // BD Vectors
     std::fill(scalar_flux_rhs_bd_.begin(), scalar_flux_rhs_bd_.end(), 0.0);
 
-    if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
-      std::fill(phi_prime_.begin(), phi_prime_.end(), 0.0);
-    } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
+    std::fill(phi_prime_.begin(), phi_prime_.end(), 0.0);
+    if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
       std::fill(T1_.begin(), T1_.end(), 0.0);
 
       std::fill(source_rhs_bd_.begin(), source_rhs_bd_.end(), 0.0);

@@ -280,9 +280,9 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
   // TODO: protect for MPI_Exscan at rank 0
 
   // Allocate space for bank_position if this hasn't been done yet
-  int64_t bank_position[mpi::n_procs];
-  MPI_Allgather(
-    &start, 1, MPI_INT64_T, bank_position, 1, MPI_INT64_T, mpi::intracomm);
+  std::vector<int64_t> bank_position(mpi::n_procs)
+  MPI_Allgather(&start, 1, MPI_INT64_T, bank_position.data(), 1, MPI_INT64_T,
+    mpi::intracomm);
 #else
   start = 0;
   finish = index_temp;

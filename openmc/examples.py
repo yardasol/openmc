@@ -91,292 +91,6 @@ def pwr_pin_cell() -> openmc.Model:
 
     return model
 
-
-def pwr_pin_cell_homogenizable() -> openmc.Model:
-    """Create a PWR pin-cell model.
-
-    This model is identical to `pwr_pin_cell()`, but
-    has a universe structure allowing it to be homogenized by
-    `model.convert_to_multigroup()`.
-
-    Returns
-    -------
-    model : openmc.Model
-        A PWR pin-cell model
-
-    """
-    model = openmc.Model()
-
-    # Define materials.
-    fuel = openmc.Material(name='UO2 (2.4%)')
-    fuel.set_density('g/cm3', 10.29769)
-    fuel.add_nuclide('U234', 4.4843e-6)
-    fuel.add_nuclide('U235', 5.5815e-4)
-    fuel.add_nuclide('U238', 2.2408e-2)
-    fuel.add_nuclide('O16', 4.5829e-2)
-
-    clad = openmc.Material(name='Zircaloy')
-    clad.set_density('g/cm3', 6.55)
-    clad.add_nuclide('Zr90', 2.1827e-2)
-    clad.add_nuclide('Zr91', 4.7600e-3)
-    clad.add_nuclide('Zr92', 7.2758e-3)
-    clad.add_nuclide('Zr94', 7.3734e-3)
-    clad.add_nuclide('Zr96', 1.1879e-3)
-
-    hot_water = openmc.Material(name='Hot borated water')
-    hot_water.set_density('g/cm3', 0.740582)
-    hot_water.add_nuclide('H1', 4.9457e-2)
-    hot_water.add_nuclide('O16', 2.4672e-2)
-    hot_water.add_nuclide('B10', 8.0042e-6)
-    hot_water.add_nuclide('B11', 3.2218e-5)
-    hot_water.add_s_alpha_beta('c_H_in_H2O')
-
-    # Define the materials file.
-    model.materials = (fuel, clad, hot_water)
-
-    # Instantiate ZCylinder surfaces
-    pitch = 1.26
-    fuel_or = openmc.ZCylinder(x0=0, y0=0, r=0.39218, name='Fuel OR')
-    clad_or = openmc.ZCylinder(x0=0, y0=0, r=0.45720, name='Clad OR')
-    left = openmc.XPlane(x0=-pitch/2, name='left', boundary_type='reflective')
-    right = openmc.XPlane(x0=pitch/2, name='right', boundary_type='reflective')
-    bottom = openmc.YPlane(y0=-pitch/2, name='bottom',
-                           boundary_type='reflective')
-    top = openmc.YPlane(y0=pitch/2, name='top', boundary_type='reflective')
-
-    # Universes for homogenization
-    fuel_pin = openmc.Cell(name='Fuel', fill=fuel)
-    fuel_pin.region = -fuel_or
-    cladding = openmc.Cell(name='Cladding', fill=clad)
-    cladding.region = +fuel_or
-    water = openmc.Cell(name='Water', fill=hot_water)
-
-    fuel_univ = openmc.Universe(name="Homogenized Fuel")
-    fuel_univ.add_cells((fuel_pin, cladding))
-    water_univ = openmc.Universe(name="Homogenized Water")
-    water_univ.add_cell(water)
-
-    # Instantiate Cells
-    fuel_pin = openmc.Cell(name='Fuel', fill=fuel_univ)
-    water = openmc.Cell(name='Water', fill=water_univ)
-
-    # Use surface half-spaces to define regions
-    fuel_pin.region = -clad_or
-    water.region = +clad_or & +left & -right & +bottom & -top
-
-    # Create root universe
-    model.geometry.root_universe = openmc.Universe(0, name='root universe')
-    model.geometry.root_universe.add_cells([fuel_pin, water])
-
-    model.settings.batches = 200
-    model.settings.inactive = 50
-    model.settings.particles = 1000
-    model.settings.source = openmc.IndependentSource(
-        space=openmc.stats.Box([-pitch/2, -pitch/2, -1],
-                               [pitch/2, pitch/2, 1]),
-        constraints={'fissionable': True}
-    )
-
-    plot = openmc.SlicePlot.from_geometry(model.geometry)
-    plot.pixels = (300, 300)
-    plot.color_by = 'material'
-    model.plots.append(plot)
-
-    return model
-
-
-
-def pwr_2d_quarter_core(homog_pin_cell=False) -> openmc.Model:
-    """Create a 2D PWR quarter core model.
-
-    This model is based on the OECD/NEA Monte Carlo Performance benchmark which is a
-    grossly simplified pressurized water reactor (PWR) with 241 fuel
-    assemblies. Note that the number of particles/batches is initially set very
-    low for testing purposes.
-
-    Returns
-    -------
-    model : openmc.Model
-        2D quarter core PWR model
-
-    """
-    model = openmc.Model()
-
-    # Define materials.
-    fuel_mat = openmc.Material(1, name='UOX fuel')
-    fuel_mat.set_density('g/cm3', 10.062)
-    fuel_mat.add_nuclide('U234', 4.9476e-6)
-    fuel_mat.add_nuclide('U235', 4.8218e-4)
-    fuel_mat.add_nuclide('U238', 2.1504e-2)
-    fuel_mat.add_nuclide('Xe135', 1.0801e-8)
-    fuel_mat.add_nuclide('O16', 4.5737e-2)
-
-    clad = openmc.Material(2, name='Zircaloy')
-    clad.set_density('g/cm3', 5.77)
-    clad.add_nuclide('Zr90', 0.5145)
-    clad.add_nuclide('Zr91', 0.1122)
-    clad.add_nuclide('Zr92', 0.1715)
-    clad.add_nuclide('Zr94', 0.1738)
-    clad.add_nuclide('Zr96', 0.0280)
-
-    hot_water = openmc.Material(3, name='Hot borated water')
-    hot_water.set_density('atom/b-cm', 0.06614)
-    hot_water.add_nuclide('H1', 2.0)
-    hot_water.add_nuclide('O16', 1.0)
-    hot_water.add_nuclide('B10', 6.490e-4)
-    hot_water.add_nuclide('B11', 2.689e-3)
-    hot_water.add_s_alpha_beta('c_H_in_H2O')
-
-    # Define the materials file.
-    model.materials = (fuel_mat, clad, hot_water)
-
-    # Define surfaces.
-    s1 = openmc.ZCylinder(r=0.41, surface_id=1)
-    s2 = openmc.ZCylinder(r=0.475, surface_id=2)
-    s3 = openmc.ZCylinder(r=0.56, surface_id=3)
-    s4 = openmc.ZCylinder(r=0.62, surface_id=4)
-
-    s10 = openmc.XPlane(boundary_type='reflective')
-    s11 = openmc.YPlane(boundary_type='reflective')
-    s12 = openmc.XPlane(x0=PINCELL_PITCH * 10.5 * 17, boundary_type='vacuum')
-    s13 = openmc.YPlane(y0=PINCELL_PITCH * 10.5 * 17, boundary_type='vacuum')
-
-
-    # Define universes for MGXS homogenization.
-    inf_water = openmc.Universe(name='Infinite hot water',
-                               universe_id=1)
-    c20 = openmc.Cell(cell_id=20, fill=hot_water)
-    inf_water.add_cell(c20)
-
-    if homog_pin_cell:
-        fuel = openmc.Universe(name='Fuel pin, cladding, hot water',
-                                   universe_id=2)
-        c23 = openmc.Cell(cell_id=23, fill=fuel_mat, region=-s1)
-        c24 = openmc.Cell(cell_id=24, fill=clad, region=+s1 & -s2)
-        c25 = openmc.Cell(cell_id=25, fill=hot_water, region=+s2)
-        fuel.add_cells((c23, c24, c25))
-
-        tube = openmc.Universe(name='Instrumentation guide tube, hot water',
-                                   universe_id=3)
-        c26 = openmc.Cell(cell_id=26, fill=hot_water, region=-s3)
-        c27 = openmc.Cell(cell_id=27, fill=clad, region=+s3 & -s4)
-        c28 = openmc.Cell(cell_id=28, fill=hot_water, region=+s4)
-        tube.add_cells((c26, c27, c28))
-    else:
-        fuel = openmc.Universe(name='Fuel pin, cladding',
-                                   universe_id=2)
-        c23 = openmc.Cell(cell_id=23, fill=fuel_mat, region=-s1)
-        c24 = openmc.Cell(cell_id=24, fill=clad, region=+s1)
-        fuel.add_cells((c23, c24))
-
-        tube = openmc.Universe(name='Instrumentation guide tube',
-                                   universe_id=3)
-        c25 = openmc.Cell(cell_id=25, fill=hot_water, region=-s3)
-        c26 = openmc.Cell(cell_id=26, fill=clad, region=+s3)
-        tube.add_cells((c25, c26))
-
-    ## Pin universes
-    fuel_hot = openmc.Universe(name='Fuel pin, cladding, hot water',
-                               universe_id=10)
-    if homog_pin_cell:
-      c30 = openmc.Cell(cell_id=30, fill=fuel)
-      fuel_hot.add_cell(c30)
-    else:
-      c30 = openmc.Cell(cell_id=30, fill=fuel, region=-s2)
-      c31 = openmc.Cell(cell_id=31, fill=inf_water, region=+s2)
-      fuel_hot.add_cells((c30, c31))
-
-    tube_hot = openmc.Universe(name='Instrumentation guide tube, hot water',
-                               universe_id=11)
-    if homog_pin_cell:
-        c32 = openmc.Cell(cell_id=31, fill=tube)
-        tube_hot.add_cell(c32)
-    else:
-        c32 = openmc.Cell(cell_id=32, fill=tube, region= -s4)
-        c33 = openmc.Cell(cell_id=33, fill=inf_water, region=+s4)
-        tube_hot.add_cells((c32, c33))
-
-    # Set positions occupied by guide tubes
-    tube_x = np.array([5, 8, 11, 3, 13, 2, 5, 8, 11, 14, 2, 5, 8, 11, 14,
-                       2, 5, 8, 11, 14, 3, 13, 5, 8, 11])
-    tube_y = np.array([2, 2, 2, 3, 3, 5, 5, 5, 5, 5, 8, 8, 8, 8, 8,
-                       11, 11, 11, 11, 11, 13, 13, 14, 14, 14])
-
-    # Define fuel lattices.
-    l101 = openmc.RectLattice(
-        name='Fuel assembly', lattice_id=101)
-    pitch = PINCELL_PITCH
-    l101.lower_left = (-17 * pitch / 2, -17 * pitch / 2)
-    l101.pitch = (pitch, pitch)
-    l101.universes = np.tile(fuel_hot, (17, 17))
-    l101.universes[tube_x, tube_y] = tube_hot
-
-    # Define assemblies.
-    fa_hot = openmc.Universe(name='Fuel assembly (hot)', universe_id=20)
-    c50 = openmc.Cell(cell_id=40, fill=l101)
-    fa_hot.add_cell(c50)
-
-    # Define core lattices
-    l201 = openmc.RectLattice(name='Quarter core lattice', lattice_id=201)
-    l201.lower_left = (-17 * pitch / 2, -17 * pitch / 2)
-    l201.pitch = (17 * pitch, 17 * pitch)
-    l201.universes = [
-        [inf_water]*11,
-        [inf_water]*11,
-        [fa_hot]*4 + [inf_water]*7,
-        [fa_hot]*6 + [inf_water]*5,
-        [fa_hot]*7 + [inf_water]*4,
-        [fa_hot]*8 + [inf_water]*3,
-        [fa_hot]*8 + [inf_water]*3,
-        [fa_hot]*9 + [inf_water]*2,
-        [fa_hot]*9 + [inf_water]*2,
-        [fa_hot]*9 + [inf_water]*2,
-        [fa_hot]*9 + [inf_water]*2]
-
-    # Define root universe.
-    root = openmc.Universe(universe_id=0, name='root universe')
-    c1 = openmc.Cell(cell_id=1, fill=l201, region=+s10 & +s11 & -s12 &
-                     -s13)
-    root.add_cell(c1)
-
-    # Assign root universe to geometry
-    model.geometry.root_universe = root
-
-    model.settings.batches = 10
-    model.settings.inactive = 5
-    model.settings.particles = 100
-    # TODO
-    model.settings.source = openmc.IndependentSource(space=openmc.stats.Box(
-        [0, 0, -1], [8.5 * 17 * pitch, 8.5 * 17 * pitch, 1]))
-
-
-    # Mesh tally over pin cells:
-    mesh = openmc.RegularMesh()
-    n = int((10.5 * 17) + 0.5)
-    mesh.dimension = (n, n)
-    mesh.lower_left = (-pitch / 2, -pitch / 2)
-    mesh.upper_right = (10.5 * 17 * pitch, 10.5 * 17 * pitch)
-
-    mesh_filter = openmc.MeshFilter(mesh)
-
-    # Now use the mesh filter in a tally and indicate what scores are desired
-    tally = openmc.Tally(name="Mesh tally")
-    tally.filters = [mesh_filter]
-    tally.scores = ['flux', 'fission', 'nu-fission']
-    tally.estimator = 'analog'
-
-    model.tallies.append(tally)
-
-    plot = openmc.SlicePlot()
-    x = 10.5 * 17 * pitch
-    plot.origin = (x / 2, x / 2, 0)
-    plot.width = (x, x)
-    plot.pixels = (3000, 3000)
-    plot.color_by = 'material'
-    model.plots.append(plot)
-
-    return model
-
 def pwr_core() -> openmc.Model:
     """Create a PWR full-core model.
 
@@ -942,13 +656,19 @@ def slab_mg(num_regions=1, mat_names=None, mgxslib_name='2g.h5') -> openmc.Model
     return model
 
 
-def _generate_c5g7_materials(kinetic) -> openmc.Materials:
+def _generate_c5g7_materials(second_temp = False, kinetic = False) -> openmc.Materials:
     """Generate materials utilizing multi-group cross sections based on the
     the C5G7 Benchmark.
 
     Parameters
     ----------
-    kinetic : bool
+    second_temp : bool, optional
+        Whether or not the cross sections should contain two temperature datapoints.
+        The first data point is the C5G7 cross sections, which corresponds to a temperature
+        of 294 K. The second data point is the C5G7 cross sections multiplied by 1/2,
+        which corresponds to a temperature of 394 K. This temperature dependence is
+        fictitious; it is used for testing temperature feedback in the random ray solver.
+    kinetic : bool, optional
         Flag to generate cross sections for kinetic simulations.
 
     Returns
@@ -970,6 +690,7 @@ def _generate_c5g7_materials(kinetic) -> openmc.Materials:
     assembly transport calculations without spatial homogenization"
     """
     # Instantiate the energy group data
+    # MGXS for the UO2 pins.
     group_edges = [1e-5, 0.0635, 10.0, 1.0e2, 1.0e3, 0.5e6, 1.0e6, 20.0e6]
     groups = openmc.mgxs.EnergyGroups(group_edges)
 
@@ -979,6 +700,41 @@ def _generate_c5g7_materials(kinetic) -> openmc.Materials:
     # transport calculations without homogeniztaion"
     # DOI: 10.1016/j.nucengdes.2017.02.008
     n_dg = C5G7_N_DG if kinetic else 0
+
+    uo2_total = np.array([0.1779492, 0.3298048, 0.4803882, 0.5543674, 0.3118013, 0.3951678,
+                          0.5644058])
+    uo2_abs = np.array([8.0248e-03, 3.7174e-03, 2.6769e-02, 9.6236e-02, 3.0020e-02,
+                        1.1126e-01, 2.8278e-01])
+    uo2_scatter_matrix = np.array(
+        [[[0.1275370, 0.0423780, 0.0000094, 0.0000000, 0.0000000, 0.0000000, 0.0000000],
+          [0.0000000, 0.3244560, 0.0016314, 0.0000000, 0.0000000, 0.0000000, 0.0000000],
+          [0.0000000, 0.0000000, 0.4509400, 0.0026792, 0.0000000, 0.0000000, 0.0000000],
+          [0.0000000, 0.0000000, 0.0000000, 0.4525650, 0.0055664, 0.0000000, 0.0000000],
+          [0.0000000, 0.0000000, 0.0000000, 0.0001253, 0.2714010, 0.0102550, 0.0000000],
+          [0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.0012968, 0.2658020, 0.0168090],
+          [0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.0085458, 0.2730800]]])
+    uo2_scatter_matrix = np.rollaxis(uo2_scatter_matrix, 0, 3)
+    uo2_fission = np.array([7.21206e-03, 8.19301e-04, 6.45320e-03, 1.85648e-02, 1.78084e-02,
+                            8.30348e-02, 2.16004e-01])
+    uo2_nu_fission = np.array([2.005998e-02, 2.027303e-03, 1.570599e-02, 4.518301e-02,
+                               4.334208e-02, 2.020901e-01, 5.257105e-01])
+    uo2_chi = np.array([5.8791e-01, 4.1176e-01, 3.3906e-04, 1.1761e-07, 0.0000e+00,
+                        0.0000e+00, 0.0000e+00])
+
+    # MGXS for the H2O moderator.
+    h2o_total = np.array([0.15920605, 0.412969593, 0.59030986, 0.58435, 0.718, 1.2544497,
+                          2.650379])
+    h2o_abs = np.array([6.0105e-04, 1.5793e-05, 3.3716e-04, 1.9406e-03, 5.7416e-03,
+                        1.5001e-02, 3.7239e-02])
+    h2o_scatter_matrix = np.array(
+        [[[0.0444777, 0.1134000, 0.0007235, 0.0000037, 0.0000001, 0.0000000, 0.0000000],
+          [0.0000000, 0.2823340, 0.1299400, 0.0006234, 0.0000480, 0.0000074, 0.0000010],
+          [0.0000000, 0.0000000, 0.3452560, 0.2245700, 0.0169990, 0.0026443, 0.0005034],
+          [0.0000000, 0.0000000, 0.0000000, 0.0910284, 0.4155100, 0.0637320, 0.0121390],
+          [0.0000000, 0.0000000, 0.0000000, 0.0000714, 0.1391380, 0.5118200, 0.0612290],
+          [0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.0022157, 0.6999130, 0.5373200],
+          [0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.1324400, 2.4807000]]])
+    h2o_scatter_matrix = np.rollaxis(h2o_scatter_matrix, 0, 3)
 
     # Instantiate the 7-group (C5G7) cross section data
     uo2_xsdata = openmc.XSdata('UO2', groups, num_delayed_groups=n_dg)
@@ -1012,12 +768,19 @@ def _generate_c5g7_materials(kinetic) -> openmc.Materials:
     uo2_xsdata.set_nu_fission(nu_fission)
     uo2_xsdata.set_chi([5.8791e-01, 4.1176e-01, 3.3906e-04, 1.1761e-07, 0.0000e+00,
                         0.0000e+00, 0.0000e+00])
+    uo2_xsdata.set_total(uo2_total, temperature=294.0)
+    uo2_xsdata.set_absorption(uo2_abs, temperature=294.0)
+    uo2_xsdata.set_scatter_matrix(uo2_scatter_matrix, temperature=294.0)
+    uo2_xsdata.set_fission(uo2_fission, temperature=294.0)
+    uo2_xsdata.set_nu_fission(uo2_nu_fission, temperature=294.0)
+    uo2_xsdata.set_chi(uo2_chi, temperature=294.0)
 
     # Delayed and prompt cross sections for time-dependent simulation
     if kinetic:
 
         # Table A2 in Hou et. al
-        beta = np.array([[2.13333e-04, 2.13333e-04, 2.13333e-04, 2.13333e-04, 2.13333e-04, 2.13333e-04, 2.13333e-04],
+        beta = np.array([[2.13333e-04, 2.13333e-04, 2.13333e-04, 2.13333e-04,
+                          2.13333e-04, 2.13333e-04, 2.13333e-04],
                          [1.04514e-03, 1.04514e-03, 1.04514e-03, 1.04514e-03,
                              1.04514e-03, 1.04514e-03, 1.04514e-03],
                          [6.03969e-04, 6.03969e-04, 6.03969e-04, 6.03969e-04,
@@ -1030,7 +793,8 @@ def _generate_c5g7_materials(kinetic) -> openmc.Materials:
                           7.05174e-04, 7.05174e-04, 7.05174e-04],
                          [6.00381e-04, 6.00381e-04, 6.00381e-04, 6.00381e-04,
                           6.00381e-04, 6.00381e-04, 6.00381e-04],
-                         [2.07736e-04, 2.07736e-04, 2.07736e-04, 2.07736e-04, 2.07736e-04, 2.07736e-04, 2.07736e-04]])
+                         [2.07736e-04, 2.07736e-04, 2.07736e-04, 2.07736e-04,
+                          2.07736e-04, 2.07736e-04, 2.07736e-04]])
         # the actual tot is 7.009223e-03
         beta_tot = 7.00922e-03
 
@@ -1044,7 +808,8 @@ def _generate_c5g7_materials(kinetic) -> openmc.Materials:
                                    1.18440e-07, 0.00000e+00, 0.00000e+00,
                                    0.00000e+00])
         # Table A3 in Hou et al.
-        chi_delayed = np.array([[0.00075, 0.98512, 0.01413, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00],
+        chi_delayed = np.array([[0.00075, 0.98512, 0.01413, 0.0000e+00,
+                                 0.0000e+00, 0.0000e+00, 0.0000e+00],
                                 [0.03049, 0.96907, 0.00044, 0.0000e+00,
                                     0.0000e+00, 0.0000e+00, 0.0000e+00],
                                 [0.00457, 0.97401, 0.02142, 0.0000e+00,
@@ -1057,7 +822,8 @@ def _generate_c5g7_materials(kinetic) -> openmc.Materials:
                                     0.0000e+00, 0.0000e+00, 0.0000e+00],
                                 [0.10635, 0.88298, 0.01067, 0.0000e+00,
                                     0.0000e+00, 0.0000e+00, 0.0000e+00],
-                                [0.09346, 0.9026, 0.00394, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00]])
+                                [0.09346, 0.9026, 0.00394, 0.0000e+00,
+                                 0.0000e+00, 0.0000e+00, 0.0000e+00]])
         uo2_xsdata.set_chi_delayed(chi_delayed)
         # Table A4 in Hou et al.
         velocities = np.array([2.23466e+09, 5.07347e+08, 3.86595e+07,
@@ -1069,26 +835,24 @@ def _generate_c5g7_materials(kinetic) -> openmc.Materials:
 
     h2o_xsdata = openmc.XSdata('LWTR', groups, num_delayed_groups=n_dg)
     h2o_xsdata.order = 0
-    h2o_xsdata.set_total([0.15920605, 0.412969593, 0.59030986, 0.58435,
-                          0.718, 1.2544497, 2.650379])
-    h2o_xsdata.set_absorption([6.0105e-04, 1.5793e-05, 3.3716e-04,
-                               1.9406e-03, 5.7416e-03, 1.5001e-02,
-                               3.7239e-02])
-    scatter_matrix = np.array(
-        [[[0.0444777, 0.1134000, 0.0007235, 0.0000037, 0.0000001, 0.0000000, 0.0000000],
-          [0.0000000, 0.2823340, 0.1299400, 0.0006234,
-              0.0000480, 0.0000074, 0.0000010],
-          [0.0000000, 0.0000000, 0.3452560, 0.2245700,
-              0.0169990, 0.0026443, 0.0005034],
-          [0.0000000, 0.0000000, 0.0000000, 0.0910284,
-              0.4155100, 0.0637320, 0.0121390],
-          [0.0000000, 0.0000000, 0.0000000, 0.0000714,
-              0.1391380, 0.5118200, 0.0612290],
-          [0.0000000, 0.0000000, 0.0000000, 0.0000000,
-              0.0022157, 0.6999130, 0.5373200],
-          [0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.1324400, 2.4807000]]])
-    scatter_matrix = np.rollaxis(scatter_matrix, 0, 3)
-    h2o_xsdata.set_scatter_matrix(scatter_matrix)
+    h2o_xsdata.set_total(h2o_total, temperature=294.0)
+    h2o_xsdata.set_absorption(h2o_abs, temperature=294.0)
+    h2o_xsdata.set_scatter_matrix(h2o_scatter_matrix, temperature=294.0)
+
+    # Add the second temperature data point if requested.
+    if second_temp:
+        uo2_xsdata.add_temperature(394.0)
+        uo2_xsdata.set_total(0.5 * uo2_total, temperature=394.0)
+        uo2_xsdata.set_absorption(0.5 * uo2_abs, temperature=394.0)
+        uo2_xsdata.set_scatter_matrix(0.5 * uo2_scatter_matrix, temperature=394.0)
+        uo2_xsdata.set_fission(0.5 * uo2_fission, temperature=394.0)
+        uo2_xsdata.set_nu_fission(0.5 * uo2_nu_fission, temperature=394.0)
+        uo2_xsdata.set_chi(uo2_chi, temperature=394.0)
+
+        h2o_xsdata.add_temperature(394.0)
+        h2o_xsdata.set_total(0.5 * h2o_total, temperature=394.0)
+        h2o_xsdata.set_absorption(0.5 * h2o_abs, temperature=394.0)
+        h2o_xsdata.set_scatter_matrix(0.5 * h2o_scatter_matrix, temperature=394.0)
 
     if kinetic:
         # Table A4 in Hou et al.
@@ -1193,13 +957,20 @@ def _generate_subdivided_pin_cell(uo2, water) -> openmc.Universe:
     return pincell
 
 
-def random_ray_pin_cell(kinetic=False) -> openmc.Model:
+def random_ray_pin_cell(second_temp = False, kinetic = False) -> openmc.Model:
     """Create a PWR pin cell example using C5G7 cross section data.
 
     Parameters
     ----------
-    kinetic : bool
+    second_temp : bool, optional
+        Whether or not the cross sections should contain two temperature datapoints.
+        The first data point is the C5G7 cross sections, which corresponds to a temperature
+        of 294 K. The second data point is the C5G7 cross sections multiplied by 1/2,
+        which corresponds to a temperature of 3934 K. This temperature dependence is
+        fictitious; it is used for testing temperature feedback in the random ray solver.
+    kinetic : bool, optional
         Flag to generate kinetic simulation model or not.
+
 
     Returns
     -------
@@ -1211,7 +982,7 @@ def random_ray_pin_cell(kinetic=False) -> openmc.Model:
 
     ###########################################################################
     # Create Materials for the problem
-    materials = _generate_c5g7_materials(kinetic)
+    materials = _generate_c5g7_materials(second_temp, kinetic)
     uo2 = materials[0]
     water = materials[1]
 
@@ -1286,7 +1057,7 @@ def random_ray_pin_cell(kinetic=False) -> openmc.Model:
     return model
 
 
-def random_ray_lattice(kinetic=False) -> openmc.Model:
+def random_ray_lattice(second_temp = False, kinetic = False) -> openmc.Model:
     """Create a 2x2 PWR pin cell asymmetrical lattice example.
 
     This model is a 2x2 reflective lattice of fuel pins with one of the lattice
@@ -1295,7 +1066,13 @@ def random_ray_lattice(kinetic=False) -> openmc.Model:
 
     Parameters
     ----------
-    kinetic : bool
+    second_temp : bool, optional
+        Whether or not the cross sections should contain two temperature datapoints.
+        The first data point is the C5G7 cross sections, which corresponds to a temperature
+        of 294 K. The second data point is the C5G7 cross sections multiplied by 1/2,
+        which corresponds to a temperature of 3934 K. This temperature dependence is
+        fictitious; it is used for testing temperature feedback in the random ray solver.
+    kinetic : bool, optional
         Flag to generate a kinetic simulation model or not.
 
     Returns
@@ -1308,7 +1085,7 @@ def random_ray_lattice(kinetic=False) -> openmc.Model:
 
     ###########################################################################
     # Create Materials for the problem
-    materials = _generate_c5g7_materials(kinetic)
+    materials = _generate_c5g7_materials(second_temp, kinetic)
     uo2 = materials[0]
     water = materials[1]
 
