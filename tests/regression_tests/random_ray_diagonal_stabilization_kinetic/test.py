@@ -32,7 +32,7 @@ def test_random_ray_diagonal_stabilization(time_method):
         # MGXS data with some negatives on the diagonal, in order
         # to trigger diagonal correction.
         model.convert_to_multigroup(
-            material_method='material_wise', energy_groups='CASMO-70', nparticles=30,
+            method='material_wise', energy_groups='CASMO-70', nparticles=30,
             overwrite_mgxs_library=True, mgxs_path="mgxs.h5", correction='P0',
             kinetic=True, num_delayed_groups=6
         )
