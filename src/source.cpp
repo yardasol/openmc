@@ -80,6 +80,29 @@ Source::Source(pugi::xml_node node)
     }
   }
 
+  if (settings::kinetic_simulation) {
+    if (check_for_node(node, "strength_timeseries")) {
+      strength_timeseries_ =
+        get_node_array<double>(node, "strength_timeseries");
+      if (strength_timeseries_.size() >= settings::n_timesteps) {
+        warning(fmt::format(
+          "User-specified source has a strength_timeseries (size={}) longer "
+          "than "
+          "n_timesteps ({}). Only the first {} entries of the density "
+          "timeseries "
+          "will be simulated.",
+          strength_timeseries_.size(), settings::n_timesteps,
+          settings::n_timesteps));
+      } else {
+        fatal_error(fmt::format(
+          "User specified source has a density_timeseries (size={}) "
+          "shorter than n_timesteps ({}). Not all "
+          "time steps can be simulated. Aborting.",
+          strength_timeseries_.size(), settings::n_timesteps));
+      }
+    }
+  }
+
   // Check for additional defined constraints
   read_constraints(node);
 }
@@ -589,6 +612,7 @@ std::pair<Position, double> MeshElementSpatial::sample(uint64_t* seed) const
 // MeshSource implementation
 //==============================================================================
 
+// TODO: Add support for strength timeseries
 MeshSource::MeshSource(pugi::xml_node node) : Source(node)
 {
   int32_t mesh_id = stoi(get_node_value(node, "mesh"));

@@ -14,7 +14,7 @@ class MGXSTestHarness(WeightWindowPyAPITestHarness):
             os.remove(f)
 
 
-def test_random_ray_adjoint_fixed_source():
+def test_weight_windows_fw_cadis():
     model = random_ray_three_region_cube()
 
     ww_mesh = openmc.RegularMesh()

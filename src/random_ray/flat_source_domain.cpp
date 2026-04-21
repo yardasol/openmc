@@ -34,6 +34,8 @@ RandomRayVolumeEstimator FlatSourceDomain::volume_estimator_ {
   RandomRayVolumeEstimator::HYBRID};
 bool FlatSourceDomain::volume_normalized_flux_tallies_ {false};
 bool FlatSourceDomain::adjoint_ {false};
+bool FlatSourceDomain::save_forward_output_ {false};
+bool FlatSourceDomain::eigenvalue_fw_cadis_ {false};
 double FlatSourceDomain::diagonal_stabilization_rho_ {1.0};
 std::unordered_map<int, vector<std::pair<Source::DomainType, int>>>
   FlatSourceDomain::mesh_domain_map_;
@@ -147,7 +149,10 @@ void FlatSourceDomain::update_single_neutron_source(SourceRegionHandle& srh)
           nu_sigma_f = nu_sigma_f_[material_offset + g_in];
           chi = chi_[material_offset + g_out];
         }
-        nu_sigma_f *= density_mult;
+        if (adjoint_)
+          chi *= density_mult;
+        else
+          nu_sigma_f *= density_mult;
         scatter_source += sigma_s * scalar_flux;
         if (settings::create_fission_neutrons) {
           fission_source += nu_sigma_f * scalar_flux * chi;
@@ -165,6 +170,8 @@ void FlatSourceDomain::update_single_neutron_source(SourceRegionHandle& srh)
         for (int dg = 0; dg < ndgroups_; dg++) {
           double chi_d_lambda =
             chi_d_lambda_[delay_offset + dg * negroups_ + g_out];
+          if (adjoint_)
+            chi_d_lambda *= density_mult;
           double precursors = srh.precursors_old(dg);
           delayed_source += chi_d_lambda * precursors;
         }
@@ -238,6 +245,7 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
 {
   int material = source_regions_.material(sr);
   int temp = source_regions_.temperature_idx(sr);
+  const int material_offset = (material * ntemperature_ + temp) * negroups_;
   if (material == MATERIAL_VOID) {
     source_regions_.scalar_flux_new(sr, g) /= volume;
     if (settings::run_mode == RunMode::FIXED_SOURCE) {
@@ -247,22 +255,21 @@ void FlatSourceDomain::set_flux_to_flux_plus_source(
     }
   } else {
     double sigma_t =
-      sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-      source_regions_.density_mult(sr);
+      sigma_t_[material_offset + g] * source_regions_.density_mult(sr);
     source_regions_.scalar_flux_new(sr, g) /= (sigma_t * volume);
     source_regions_.scalar_flux_new(sr, g) += source_regions_.source(sr, g);
   }
   if (settings::kinetic_simulation && !simulation::is_initial_condition) {
-    double inverse_vbar =
-      inverse_vbar_[(material * ntemperature_ + temp) * negroups_ + g];
+    double inverse_vbar = inverse_vbar_[material_offset + g];
     double scalar_flux_rhs_bd = source_regions_.scalar_flux_rhs_bd(sr, g);
     double A0 =
       (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] / settings::dt;
 
-    // TODO: Add support for expicit void regions
-    double sigma_t =
-      sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-      source_regions_.density_mult(sr);
+    double sigma_t = 1.0;
+    if (material != MATERIAL_VOID) {
+      sigma_t =
+        sigma_t_[material_offset + g] * source_regions_.density_mult(sr);
+    }
     source_regions_.scalar_flux_new(sr, g) -=
       scalar_flux_rhs_bd * inverse_vbar / sigma_t;
     source_regions_.scalar_flux_new(sr, g) /= 1 + A0 * inverse_vbar / sigma_t;
@@ -676,6 +683,16 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
     return 1.0;
   }
 
+  // If we are running a transient fixed source problem, the
+  // fixed source is normalized during source correction, which
+  // allows all subsequent normalization steps to be applied retroactively
+  if (settings::kinetic_simulation &&
+      settings::run_mode == RunMode::FIXED_SOURCE &&
+      !simulation::is_initial_condition) {
+    return (*static_source_normalization_factor_)[simulation::current_batch -
+                                                  settings::n_inactive - 1];
+  }
+
   // Fixed source mode normalization
 
   // Step 1 is to sum over all source regions and energy groups to get the
@@ -710,6 +727,9 @@ double FlatSourceDomain::compute_fixed_source_normalization_factor() const
   // strength to the simulation external source strength.
   double source_normalization_factor =
     user_external_source_strength / simulation_external_source_strength;
+  if (settings::kinetic_simulation && simulation::is_initial_condition) {
+    static_source_normalization_factor_->push_back(source_normalization_factor);
+  }
 
   return source_normalization_factor;
 }
@@ -916,6 +936,7 @@ double FlatSourceDomain::evaluate_flux_at_point(
          (settings::n_batches - settings::n_inactive);
 }
 
+// TODO: Output different plot at each time step
 // Outputs all basic material, FSR ID, multigroup flux, and
 // fission source data to .vtk file that can be directly
 // loaded and displayed by Paraview. Note that .vtk binary
@@ -1249,7 +1270,6 @@ void FlatSourceDomain::convert_external_sources()
     // Extract source information
     Source* s = model::external_sources[es].get();
     IndependentSource* is = dynamic_cast<IndependentSource*>(s);
-    Discrete* energy = dynamic_cast<Discrete*>(is->energy());
     const std::unordered_set<int32_t>& domain_ids = is->domain_ids();
     double strength_factor = is->strength();
 
@@ -1475,7 +1495,7 @@ void FlatSourceDomain::set_adjoint_sources()
       } else {
         source_regions_.external_source(sr, g) = 1.0 / flux;
       }
-      if (flux > 0.0) {
+      if (source_regions_.external_source(sr, g) > 0.0) {
         source_regions_.external_source_present(sr) = 1;
       }
       source_regions_.scalar_flux_final(sr, g) = 0.0;
@@ -1787,11 +1807,6 @@ SourceRegionHandle FlatSourceDomain::get_subdivided_source_region_handle(
     }
   }
 
-  if (settings::kinetic_simulation && material == MATERIAL_VOID) {
-    fatal_error("Explicit void treatment for kinetic simulations "
-                " is not currently supported.");
-  }
-
   handle.material() = material;
   handle.temperature_idx() = temp;
 
@@ -2006,19 +2021,19 @@ int64_t FlatSourceDomain::lookup_mesh_bin(int64_t sr, Position r) const
 // kinetic simulations) sources in each source region based on the flux
 // estimate from the previous iteration.
 
-// TODO: support void regions
 void FlatSourceDomain::compute_single_phi_prime(SourceRegionHandle& srh)
 {
   double A0 =
     (bd_coefficients_first_order_.at(RandomRay::bd_order_))[0] / settings::dt;
   int material = srh.material();
   int temp = srh.temperature_idx();
-  double density_mult = srh.density_mult();
   const int material_offset = (material * ntemperature_ + temp) * negroups_;
   for (int g = 0; g < negroups_; g++) {
     double inverse_vbar = inverse_vbar_[material_offset + g];
-    // TODO: add support for explicit void
-    double sigma_t = sigma_t_[material_offset + g] * density_mult;
+    double sigma_t = 1.0;
+    if (material != MATERIAL_VOID) {
+      sigma_t = sigma_t_[material_offset + g] * srh.density_mult();
+    }
 
     double scalar_flux_time_derivative =
       A0 * srh.scalar_flux_old(g) + srh.scalar_flux_rhs_bd(g);
@@ -2027,7 +2042,6 @@ void FlatSourceDomain::compute_single_phi_prime(SourceRegionHandle& srh)
 }
 
 // T1 calculation
-// TODO: support void regions
 void FlatSourceDomain::compute_single_T1(SourceRegionHandle& srh)
 {
   double A0 =
@@ -2036,12 +2050,13 @@ void FlatSourceDomain::compute_single_T1(SourceRegionHandle& srh)
               (settings::dt * settings::dt);
   int material = srh.material();
   int temp = srh.temperature_idx();
-  double density_mult = srh.density_mult();
   const int material_offset = (material * ntemperature_ + temp) * negroups_;
   for (int g = 0; g < negroups_; g++) {
     double inverse_vbar = inverse_vbar_[material_offset + g];
-    // TODO: add support for explicit void
-    double sigma_t = sigma_t_[material_offset + g] * density_mult;
+    double sigma_t = 1.0;
+    if (material != MATERIAL_VOID) {
+      sigma_t = sigma_t_[material_offset + g] * srh.density_mult();
+    }
 
     // Multiply out sigma_t to correctly compute the derivative term
     float source_time_derivative =
@@ -2175,9 +2190,7 @@ void FlatSourceDomain::normalize_final_quantities()
   double normalization_factor =
     1.0 / (settings::n_batches - settings::n_inactive);
   double source_normalization_factor;
-  if (!settings::kinetic_simulation ||
-      settings::kinetic_simulation &&
-        simulation::current_timestep == settings::n_timesteps)
+  if (!settings::kinetic_simulation || adjoint_)
     source_normalization_factor =
       compute_fixed_source_normalization_factor() * normalization_factor;
   else
@@ -2234,10 +2247,13 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
         int material = source_regions_.material(sr);
         int temp = source_regions_.temperature_idx(sr);
         double density_mult = source_regions_.density_mult(sr);
-        // TODO: add support for explicit void regions
-        double sigma_t =
-          sigma_t_[(material * ntemperature_ + temp) * negroups_ + g] *
-          density_mult;
+        double sigma_t = 1.0;
+        if (material != MATERIAL_VOID) {
+          const int energy_offset =
+            (material * ntemperature_ + temp) * negroups_;
+          sigma_t =
+            sigma_t_[energy_offset + g] * source_regions_.density_mult(sr);
+        }
         float source = source_regions_.source_final(sr, g) * sigma_t;
         add_value_to_bd_vector(source_regions_.source_bd(sr, g), source,
           increment_not_initialize, RandomRay::bd_order_);
@@ -2251,6 +2267,65 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
       }
     }
   }
+}
+
+void FlatSourceDomain::store_quantity_time_series()
+{
+  double source_normalization_factor =
+    compute_fixed_source_normalization_factor();
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    for (int g = 0; g < negroups_; g++) {
+      source_regions_.scalar_flux_time_series(sr, g).push_back(
+        source_regions_.scalar_flux_final(sr, g) * source_normalization_factor);
+    }
+    if (settings::create_delayed_neutrons) {
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        source_regions_.precursors_time_series(sr, dg).push_back(
+          source_regions_.precursors_final(sr, dg) *
+          source_normalization_factor);
+      }
+    }
+  }
+}
+
+void FlatSourceDomain::reset_bd_vectors()
+{
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    for (int g = 0; g < negroups_; g++) {
+      int j = 0;
+      if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION)
+        j = 1;
+      for (int i = 0; i < RandomRay::bd_order_ + j; i++)
+        source_regions_.scalar_flux_bd(sr, g).pop_back();
+      if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
+        for (int i = 0; i < RandomRay::bd_order_; i++)
+          source_regions_.source_bd(sr, g).pop_back();
+      }
+    }
+    if (settings::create_delayed_neutrons) {
+      for (int dg = 0; dg < ndgroups_; dg++) {
+        for (int i = 0; i < RandomRay::bd_order_; i++)
+          source_regions_.precursors_bd(sr, dg).pop_back();
+      }
+    }
+  }
+}
+
+void FlatSourceDomain::set_td_adjoint_sources(int i)
+{
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+    for (int g = 0; g < negroups_; g++)
+      source_regions_.scalar_flux_final(sr, g) =
+        source_regions_.scalar_flux_time_series(sr, g)[i];
+    for (int dg = 0; dg < ndgroups_; dg++)
+      source_regions_.precursors_final(sr, dg) =
+        source_regions_.precursors_time_series(sr, dg)[i];
+  }
+  // Update the adjoint sources
+  set_adjoint_sources();
 }
 
 void FlatSourceDomain::compute_rhs_bd_quantities()
@@ -2287,10 +2362,49 @@ void FlatSourceDomain::update_material_density(int i)
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     int material = source_regions_.material(sr);
-    auto& mat {model::materials[material]};
-    if (mat->density_timeseries_.size() != 0) {
-      double density_factor = mat->density_timeseries_[i] / mat->density_;
-      source_regions_.density_mult(sr) = density_factor;
+    if (material != MATERIAL_VOID) {
+      auto& mat {model::materials[material]};
+      if (mat->density_timeseries_.size() != 0) {
+        double density_factor = mat->density_timeseries_[i] / mat->density_;
+
+        source_regions_.density_mult(sr) = density_factor;
+      }
+    }
+  }
+
+  // Update stored fixed source based on material density change
+  if (settings::run_mode == RunMode::FIXED_SOURCE) {
+#pragma omp parallel for
+    for (int64_t sr = 0; sr < n_source_regions(); sr++) {
+      int material = source_regions_.material(sr);
+      if (material != MATERIAL_VOID) {
+        auto& mat {model::materials[material]};
+        if (mat->density_timeseries_.size() != 0) {
+          double density_factor = mat->density_timeseries_[i] / mat->density_;
+          for (int g = 0; g < negroups_; g++) {
+            source_regions_.external_source(sr, g) /= density_factor;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Update external source strength
+// TODO: will not work in adjoint if zero strength values are present
+void FlatSourceDomain::update_external_source_strength(int i)
+{
+#pragma omp parallel for
+  for (auto& ext_source : model::external_sources) {
+    if (ext_source->strength_timeseries().size() != 0) {
+      double strength_factor =
+        ext_source->strength_timeseries()[i] / ext_source->strength();
+      ext_source->strength() = ext_source->strength_timeseries()[i];
+      // Set to zero if we have a nan value
+      if (!std::isfinite(strength_factor))
+        strength_factor = 0.0;
+      for (int64_t se = 0; se < n_source_elements(); se++)
+        source_regions_.external_source(se) *= strength_factor;
     }
   }
 }

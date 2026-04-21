@@ -1,0 +1,89 @@
+<?xml version='1.0' encoding='utf-8'?>
+<model>
+  <materials>
+    <cross_sections>mgxs.h5</cross_sections>
+    <material id="1" name="Plutonium_Sphere" depletable="true">
+      <density value="1.0" units="macro"/>
+      <macroscopic name="Plutonium_Sphere"/>
+    </material>
+    <material id="2" name="Tungsten_Carbide">
+      <density value="1.0" units="macro"/>
+      <macroscopic name="Tungsten_Carbide"/>
+    </material>
+    <material id="3" name="Boron_Carbide">
+      <density value="1.0" units="macro"/>
+      <macroscopic name="Boron_Carbide"/>
+    </material>
+  </materials>
+  <geometry>
+    <cell id="1" name="PU Sphere" material="1" region="-1" universe="1"/>
+    <cell id="2" name="Refector Blocks" material="2" region="1 3 -4 5 -6 -2 8" universe="1"/>
+    <cell id="3" name="Absorber Blocks" material="3" region="1 3 -4 5 -6 2 -7" universe="1"/>
+    <surface id="1" type="sphere" coeffs="0.0 0.0 0.0 6.3849"/>
+    <surface id="2" type="z-plane" coeffs="0.0"/>
+    <surface id="3" name="left" type="x-plane" boundary="vacuum" coeffs="-19.1547"/>
+    <surface id="4" name="right" type="x-plane" boundary="vacuum" coeffs="19.1547"/>
+    <surface id="5" name="back" type="y-plane" boundary="vacuum" coeffs="-19.1547"/>
+    <surface id="6" name="front" type="y-plane" boundary="vacuum" coeffs="19.1547"/>
+    <surface id="7" name="top" type="z-plane" boundary="vacuum" coeffs="19.1547"/>
+    <surface id="8" name="bottom" type="z-plane" boundary="vacuum" coeffs="-19.1547"/>
+  </geometry>
+  <settings>
+    <run_mode>eigenvalue</run_mode>
+    <particles>1000</particles>
+    <batches>400</batches>
+    <inactive>200</inactive>
+    <source type="independent" strength="1.0" particle="neutron">
+      <space type="box">
+        <parameters>-6.3849 -6.3849 -6.3849 6.3849 6.3849 6.3849</parameters>
+      </space>
+      <constraints>
+        <fissionable>true</fissionable>
+      </constraints>
+    </source>
+    <energy_mode>multi-group</energy_mode>
+    <weight_window_generators>
+      <weight_windows_generator>
+        <mesh>2</mesh>
+        <particle_type>neutron</particle_type>
+        <max_realizations>400</max_realizations>
+        <update_interval>1</update_interval>
+        <on_the_fly>true</on_the_fly>
+        <method>fw_cadis</method>
+      </weight_windows_generator>
+    </weight_window_generators>
+    <mesh id="2">
+      <dimension>40 40</dimension>
+      <lower_left>-19.1547 -19.1547</lower_left>
+      <upper_right>19.1547 19.1547</upper_right>
+    </mesh>
+    <random_ray>
+      <source type="independent" strength="1.0" particle="neutron">
+        <space type="box">
+          <parameters>-19.1547 -19.1547 -19.1547 19.1547 19.1547 19.1547</parameters>
+        </space>
+      </source>
+      <distance_inactive>15.0</distance_inactive>
+      <distance_active>150.0</distance_active>
+      <source_region_meshes>
+        <mesh id="2">
+          <domain id="1" type="universe"/>
+        </mesh>
+      </source_region_meshes>
+    </random_ray>
+  </settings>
+  <tallies>
+    <mesh id="1">
+      <dimension>12 12 12</dimension>
+      <lower_left>-19.1547 -19.1547 -19.1547</lower_left>
+      <upper_right>19.1547 19.1547 19.1547</upper_right>
+    </mesh>
+    <filter id="1" type="mesh">
+      <bins>1</bins>
+    </filter>
+    <tally id="1" name="Mesh tally">
+      <filters>1</filters>
+      <scores>flux fission nu-fission</scores>
+    </tally>
+  </tallies>
+</model>

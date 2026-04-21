@@ -358,8 +358,15 @@ void rename_time_step_file(
   // Rename file
   std::string old_filename_ =
     fmt::format("{0}{1}{2}", settings::path_output, base_filename, extension);
-  std::string new_filename_ = fmt::format(
-    "{0}{1}_{2}{3}", settings::path_output, base_filename, i, extension);
+  std::string new_filename_ =
+    fmt::format("{0}{1}", settings::path_output, base_filename);
+  if (i != -1) {
+    new_filename_ = fmt::format("{0}_{1}", new_filename_, i);
+  }
+  if (FlatSourceDomain::save_forward_output_) {
+    new_filename_ = fmt::format("{0}_{1}", new_filename_, "forward");
+  }
+  new_filename_ = fmt::format("{0}{1}", new_filename_, extension);
 
   const char* old_fname = old_filename_.c_str();
   const char* new_fname = new_filename_.c_str();
@@ -412,9 +419,15 @@ RandomRaySimulation::RandomRaySimulation()
   // stepping
   if (settings::kinetic_simulation) {
     // Initialize vars used for time-consistent seed approach
-    static_avg_k_eff_;
-    static_k_eff_;
-    static_fission_rate_;
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      static_avg_k_eff_;
+      static_k_eff_;
+      static_fission_rate_;
+    } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      static_source_normalization_factor_;
+      domain_->static_source_normalization_factor_ =
+        &static_source_normalization_factor_;
+    }
   }
 }
 
@@ -447,6 +460,15 @@ void RandomRaySimulation::prepare_adjoint_simulation()
   // Reset k-eff
   domain_->k_eff_ = 1.0;
 
+  if (FlatSourceDomain::eigenvalue_fw_cadis_) {
+    // Turn off adjoint fission
+    settings::create_fission_neutrons = false;
+    settings::create_delayed_neutrons = false;
+
+    // Set to fixed source mode
+    settings::run_mode = RunMode::FIXED_SOURCE;
+  }
+
   // Initialize adjoint fixed sources, if present
   prepare_fixed_sources_adjoint();
 
@@ -455,6 +477,16 @@ void RandomRaySimulation::prepare_adjoint_simulation()
 
   // Swap nu_sigma_f and chi
   domain_->nu_sigma_f_.swap(domain_->chi_);
+  if (settings::kinetic_simulation) {
+    // Swap nu_p_sigma_f and chi_p if a kinetic simulation
+    domain_->nu_p_sigma_f_.swap(domain_->chi_p_);
+    // Swap nu_d_sigma_f and chi_d * lambada if a kinetic simulation
+    domain_->nu_d_sigma_f_.swap(domain_->chi_d_lambda_);
+    // Clear bd vectors to prepare for storing adjoint values
+    domain_->reset_bd_vectors();
+    // Set adjoint initial condition
+    simulation::is_initial_condition = true;
+  }
 }
 
 void RandomRaySimulation::simulate()
@@ -482,7 +514,16 @@ void RandomRaySimulation::simulate()
 
     // MPI not supported in random ray solver, so all work is done by rank 0
     // TODO: Implement domain decomposition for MPI parallelism
-    if (mpi::master) {
+    if (mpi::master &&
+        (settings::run_mode == RunMode::FIXED_SOURCE &&
+          settings::kinetic_simulation && simulation::source_correction)) {
+      // Source correction for time-dependent fixed source simulations
+      // fills all our flux solutions with zero values to start from
+      // the correct IC of zero flux. The first simulate() call must allow
+      // transport to allocate space for necesary data structures in
+      // domain_->source_regions_.
+      continue;
+    } else if (mpi::master) {
 
       // Reset total starting particle weight used for normalizing tallies
       simulation::total_weight = 1.0;
@@ -495,11 +536,12 @@ void RandomRaySimulation::simulate()
       domain_->batch_reset();
 
       // At the beginning of the simulation, if mesh subdivision is in use, we
-      // need to swap the main source region container into the base container,
-      // as the main source region container will be used to hold the true
-      // subdivided source regions. The base container will therefore only
-      // contain the external source region information, the mesh indices,
-      // material properties, and initial guess values for the flux/source.
+      // need to swap the main source region container into the base
+      // container, as the main source region container will be used to hold
+      // the true subdivided source regions. The base container will therefore
+      // only contain the external source region information, the mesh
+      // indices, material properties, and initial guess values for the
+      // flux/source.
 
       // Start timer for transport
       simulation::time_transport.start();
@@ -534,7 +576,7 @@ void RandomRaySimulation::simulate()
         // This keff will be preserved
         if (simulation::is_initial_condition) {
           domain_->compute_k_eff();
-          if (settings::kinetic_simulation && simulation::k_eff_correction) {
+          if (settings::kinetic_simulation && simulation::source_correction) {
             static_fission_rate_.push_back(domain_->fission_rate_);
             static_k_eff_.push_back(domain_->k_eff_);
           }
@@ -607,16 +649,36 @@ void RandomRaySimulation::simulate()
 
 void RandomRaySimulation::initialize_time_step(int i)
 {
-  if (simulation::k_eff_correction)
-    static_avg_k_eff_ = simulation::keff;
-  domain_->k_eff_ = static_avg_k_eff_;
+  // Reset tally and volume tasks
+#pragma omp parallel for
+  for (int64_t sr = 0; sr < domain_->source_regions_.n_source_regions(); sr++) {
+    domain_->source_regions_.volume_task(sr).clear();
+    for (int g = 0; g < domain_->source_regions_.negroups(); g++) {
+      domain_->source_regions_.tally_task(sr, g).clear();
+    }
+    for (int dg = 0; dg < domain_->source_regions_.ndgroups(); dg++) {
+      domain_->source_regions_.tally_delay_task(sr, dg).clear();
+    }
+  }
+  // Recreate tally tasks for the new time bin.
+  domain_->convert_source_regions_to_tallies(0);
+
+  if (settings::run_mode == RunMode::EIGENVALUE) {
+    if (simulation::source_correction)
+      static_avg_k_eff_ = simulation::keff;
+    domain_->k_eff_ = static_avg_k_eff_;
+  }
 
   // Increment current timestep and simuation time
-  simulation::current_timestep = i + 1;
+  simulation::current_timestep = (FlatSourceDomain::adjoint_) ? i - 1 : i + 1;
 
   // Propagate previous converted solution for kinetic simulation
   domain_->source_regions_.simulation_reset();
-  domain_->propagate_final_quantities();
+  // For a kinetic fixed source simulation, only propagate
+  // the final quantity during the time steps (assume IC = 0)
+  if (!(settings::run_mode == RunMode::FIXED_SOURCE &&
+        simulation::is_initial_condition))
+    domain_->propagate_final_quantities();
   domain_->source_regions_.time_step_reset();
 
   if (!simulation::is_initial_condition) {
@@ -626,7 +688,23 @@ void RandomRaySimulation::initialize_time_step(int i)
     // Update time dependent cross section based on the density
     domain_->update_material_density(i);
 
-    simulation::current_time += settings::dt;
+    if (FlatSourceDomain::adjoint_) {
+      simulation::current_time -= settings::dt;
+    } else {
+      simulation::current_time += settings::dt;
+
+      // Update the external sorce strength if specified. This will only
+      // be done in the forward calculation, as the inverse calculation
+      // uses 1 / phi. When CADIS is implemented, this will need to be
+      // updated to account for detector cross sections.
+      if (settings::run_mode == RunMode::FIXED_SOURCE)
+        domain_->update_external_source_strength(i);
+    }
+  }
+
+  if (FlatSourceDomain::adjoint_) {
+    // Set adjoint sources for the current timestep
+    domain_->set_td_adjoint_sources(simulation::current_timestep);
   }
 }
 
@@ -637,10 +715,14 @@ void RandomRaySimulation::finalize_time_step()
     domain_->store_time_step_quantities(false);
     // Toggle off initial condition and source correction
     simulation::is_initial_condition = false;
-    simulation::k_eff_correction = false;
+    simulation::source_correction = false;
   } else {
     // Else, store final quantities for the current time step
     domain_->store_time_step_quantities();
+  }
+
+  if (adjoint_needed_ && !FlatSourceDomain::adjoint_) {
+    domain_->store_quantity_time_series();
   }
 
   // Rename statepoint and tallies file for the current time step
@@ -653,10 +735,13 @@ void RandomRaySimulation::finalize_time_step()
 void RandomRaySimulation::output_simulation_results() const
 {
   // Print random ray results
-  if (mpi::master) {
-    print_results_random_ray();
-    if (model::plots.size() > 0) {
-      domain_->output_to_vtk();
+  if (!(settings::run_mode == RunMode::FIXED_SOURCE &&
+        simulation::is_initial_condition && simulation::source_correction)) {
+    if (mpi::master) {
+      print_results_random_ray();
+      if (model::plots.size() > 0) {
+        domain_->output_to_vtk();
+      }
     }
   }
 }
@@ -885,7 +970,7 @@ void openmc_run_random_ray()
 
   if (openmc::settings::kinetic_simulation) {
     // Toggle initial condition source correction
-    openmc::simulation::k_eff_correction = true;
+    openmc::simulation::source_correction = true;
     int i_start = -1;
     // Timestepping loop,
     for (int i = i_start; i < openmc::settings::n_timesteps; i++) {
@@ -905,5 +990,17 @@ void openmc_run_random_ray()
 
     // Run adjoint simulation
     sim.simulate();
+
+    if (openmc::settings::kinetic_simulation) {
+      openmc::simulation::source_correction = true;
+      // source/k-eff correction (i = settings::n_timesteps + 1)
+      int i_start = openmc::settings::n_timesteps + 1;
+      // Timestepping loop,
+      for (int i = i_start; i > 0; i--) {
+        sim.initialize_time_step(i);
+        sim.simulate();
+        sim.finalize_time_step();
+      }
+    }
   }
 }

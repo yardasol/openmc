@@ -509,7 +509,6 @@ void RandomRay::attenuate_flux_flat_source(
 }
 
 // Alternative flux attenuation function for true void regions.
-// TODO: Implement support for time-dependent voids
 void RandomRay::attenuate_flux_flat_source_void(
   SourceRegionHandle& srh, double distance, bool is_active, Position r)
 {
@@ -553,6 +552,21 @@ void RandomRay::attenuate_flux_flat_source_void(
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
     for (int g = 0; g < negroups_; g++) {
       angular_flux_[g] += srh.external_source(g) * distance;
+      if (settings::kinetic_simulation && !simulation::is_initial_condition) {
+        if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
+          angular_flux_[g] -= distance * srh.phi_prime(g);
+        } else if (RandomRay::time_method_ ==
+                   RandomRayTimeMethod::PROPAGATION) {
+          // Source Derivative Propogation terms for Characteristic Equation
+          float inverse_vbar = domain_->inverse_vbar_[material * negroups_ + g];
+          float T1 = srh.T1(g);
+          angular_flux_[g] -= distance * inverse_vbar * angular_flux_prime_[g];
+          angular_flux_[g] -= distance * distance * 0.5 * inverse_vbar * T1;
+
+          // Time Derivative Characteristic Equation
+          angular_flux_prime_[g] += distance * T1;
+        }
+      }
     }
   }
 }

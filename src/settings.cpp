@@ -270,11 +270,11 @@ void get_run_parameters(pugi::xml_node node_base)
       fatal_error("Unsupported solver selected for kinetic simulation. Kinetic "
                   "simulations currently only support the random ray solver.");
     }
-    if (run_mode != RunMode::EIGENVALUE) {
+    if (run_mode != RunMode::EIGENVALUE && run_mode != RunMode::FIXED_SOURCE) {
       fatal_error(
         "Unsupported run mode selected for kinetic simulation. Kinetic "
         "simulations currently only support run mode based on an eigenvalue "
-        "simulation establishing an initial condition.");
+        "or fixed source simulation establishing an initial condition.");
     }
   }
 
@@ -381,9 +381,10 @@ void get_run_parameters(pugi::xml_node node_base)
     if (check_for_node(random_ray_node, "adjoint")) {
       FlatSourceDomain::adjoint_ =
         get_node_value_bool(random_ray_node, "adjoint");
-      if (FlatSourceDomain::adjoint_ && kinetic_simulation) {
-        fatal_error("Adjoint kinetic simulations are currently unsupported .");
-      }
+    }
+    if (check_for_node(random_ray_node, "save_forward_output")) {
+      FlatSourceDomain::save_forward_output_ =
+        get_node_value_bool(random_ray_node, "save_forward_output");
     }
     if (check_for_node(random_ray_node, "sample_method")) {
       std::string temp_str =

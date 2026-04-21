@@ -69,6 +69,7 @@ private:
   double static_avg_k_eff_;
   vector<double> static_k_eff_;
   vector<double> static_fission_rate_;
+  vector<double> static_source_normalization_factor_;
 
 }; // class RandomRaySimulation
 

@@ -214,6 +214,9 @@ class Settings:
         :adjoint:
             Whether to run the random ray solver in adjoint mode (bool). The
             default is 'False'.
+        :save_forward_output:
+            Whether to save the forward output from an adjoint solve (bool).
+            The default is 'False'.
         :sample_method:
             Sampling method for the ray starting location and direction of
             travel. Options are `prng` (default), `halton`, or `s2`. `s2`
@@ -1460,6 +1463,8 @@ class Settings:
                 cv.check_type('volume normalized flux tallies', value, bool)
             elif key == 'adjoint':
                 cv.check_type('adjoint', value, bool)
+            elif key == 'save_forward_ouput':
+                cv.check_type('save_forward_output', value, bool)
             elif key == 'source_region_meshes':
                 cv.check_type('source region meshes', value, Iterable)
                 for mesh, domains in value:
@@ -2556,6 +2561,10 @@ class Settings:
                     )
                 elif child.tag == 'adjoint':
                     self.random_ray['adjoint'] = (
+                        child.text in ('true', '1')
+                    )
+                elif child.tag == 'save_forward_output':
+                    self.random_ray['save_forward_output'] = (
                         child.text in ('true', '1')
                     )
                 elif child.tag == 'sample_method':

@@ -92,8 +92,12 @@ public:
   void normalize_final_quantities();
   void propagate_final_quantities();
   void store_time_step_quantities(bool increment_not_initialize = true);
+  void store_quantity_time_series();
+  void reset_bd_vectors();
+  void set_td_adjoint_sources(int i);
   void compute_rhs_bd_quantities();
   void update_material_density(int i);
+  void update_external_source_strength(int i);
 
   int64_t n_delay_elements() const
   {
@@ -104,6 +108,10 @@ public:
   // Static Data members
   static bool volume_normalized_flux_tallies_;
   static bool adjoint_; // If the user wants outputs based on the adjoint flux
+  static bool save_forward_output_; // If the user wants to save the forward
+                                    // output for an adjoint simulation
+  static bool eigenvalue_fw_cadis_; // If the user wants adjoint fission turned
+                                    // on.
   static double
     diagonal_stabilization_rho_; // Adjusts strength of diagonal stabilization
                                  // for transport corrected MGXS data
@@ -199,6 +207,8 @@ public:
   vector<double> nu_p_sigma_f_;
   vector<double> chi_p_;
   vector<double> inverse_vbar_;
+
+  vector<double>* static_source_normalization_factor_;
 
 protected:
   //----------------------------------------------------------------------------

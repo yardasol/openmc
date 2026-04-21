@@ -44,6 +44,8 @@ SourceRegionHandle::SourceRegionHandle(SourceRegion& sr)
     source_rhs_bd_(sr.source_rhs_bd_.data()),
     scalar_flux_rhs_bd_2_(sr.scalar_flux_rhs_bd_2_.data()),
     precursors_rhs_bd_(sr.precursors_rhs_bd_.data()),
+    scalar_flux_time_series_(sr.scalar_flux_time_series_.data()),
+    precursors_time_series_(sr.precursors_time_series_.data()),
     tally_delay_task_(sr.tally_delay_task_.data())
 {}
 
@@ -55,6 +57,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
   if (settings::run_mode == RunMode::EIGENVALUE) {
     // If in eigenvalue mode, set starting flux to guess of 1
     scalar_flux_old_.assign(negroups, 1.0);
+    if (FlatSourceDomain::eigenvalue_fw_cadis_)
+      external_source_.assign(negroups, 0.0);
   } else {
     // If in fixed source mode, set starting flux to guess of zero
     // and initialize external source arrays
@@ -76,6 +80,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
   if (settings::kinetic_simulation) {
     scalar_flux_bd_.resize(negroups);
     scalar_flux_rhs_bd_.resize(negroups);
+
+    scalar_flux_time_series_.resize(negroups);
 
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       // Time Isotropic arrays
@@ -99,6 +105,8 @@ SourceRegion::SourceRegion(int negroups, int ndgroups, bool is_linear)
 
       precursors_bd_.resize(ndgroups);
       precursors_rhs_bd_.resize(ndgroups);
+
+      precursors_time_series_.resize(ndgroups);
 
       tally_delay_task_.resize(ndgroups);
     }
@@ -147,7 +155,8 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
     scalar_flux_new_.push_back(sr.scalar_flux_new_[g]);
     scalar_flux_final_.push_back(sr.scalar_flux_final_[g]);
     source_.push_back(sr.source_[g]);
-    if (settings::run_mode == RunMode::FIXED_SOURCE) {
+    if (settings::run_mode == RunMode::FIXED_SOURCE ||
+        FlatSourceDomain::eigenvalue_fw_cadis_) {
       external_source_.push_back(sr.external_source_[g]);
     }
 
@@ -167,8 +176,11 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       scalar_flux_bd_.push_back(sr.scalar_flux_bd_[g]);
       scalar_flux_rhs_bd_.push_back(sr.scalar_flux_rhs_bd_[g]);
 
+      scalar_flux_time_series_.push_back(sr.scalar_flux_time_series_[g]);
+
       if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
         // Time Isotropic arrays
+
         phi_prime_.push_back(sr.phi_prime_[g]);
       } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
         // Source Derivative Propogation arrays
@@ -194,6 +206,9 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
       // Backward difference arrays
       precursors_bd_.push_back(sr.precursors_bd_[dg]);
       precursors_rhs_bd_.push_back(sr.precursors_rhs_bd_[dg]);
+
+      // Time series array
+      precursors_time_series_.push_back(sr.precursors_time_series_[dg]);
     }
   }
 }
@@ -249,6 +264,8 @@ void SourceRegionContainer::assign(
     scalar_flux_bd_.clear();
     scalar_flux_rhs_bd_.clear();
 
+    scalar_flux_time_series_.clear();
+
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       phi_prime_.clear();
     } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
@@ -264,6 +281,8 @@ void SourceRegionContainer::assign(
     if (settings::create_delayed_neutrons) {
       precursors_bd_.clear();
       precursors_rhs_bd_.clear();
+
+      precursors_time_series_.clear();
 
       delayed_fission_source_.clear();
       precursors_old_.clear();
@@ -336,6 +355,8 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
     handle.scalar_flux_bd_ = &scalar_flux_bd(sr, 0);
     handle.scalar_flux_rhs_bd_ = &scalar_flux_rhs_bd(sr, 0);
 
+    handle.scalar_flux_time_series_ = &scalar_flux_time_series(sr, 0);
+
     if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
       handle.phi_prime_ = &phi_prime(sr, 0);
     } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
@@ -356,6 +377,8 @@ SourceRegionHandle SourceRegionContainer::get_source_region_handle(int64_t sr)
 
       handle.precursors_bd_ = &precursors_bd(sr, 0);
       handle.precursors_rhs_bd_ = &precursors_rhs_bd(sr, 0);
+
+      handle.precursors_time_series_ = &precursors_time_series(sr, 0);
 
       handle.tally_delay_task_ = &tally_delay_task(sr, 0);
     }
@@ -396,7 +419,7 @@ void SourceRegionContainer::simulation_reset()
   std::fill(flux_moments_t_.begin(), flux_moments_t_.end(),
     MomentArray {0.0, 0.0, 0.0});
   // Reset arrays for kinetic adjoint simulations
-  if (settings::kinetic_simulation && !simulation::is_initial_condition) {
+  if (settings::kinetic_simulation) {
     if (settings::create_delayed_neutrons) {
       std::fill(
         delayed_fission_source_.begin(), delayed_fission_source_.end(), 0.0);
@@ -408,9 +431,8 @@ void SourceRegionContainer::simulation_reset()
     // BD Vectors
     std::fill(scalar_flux_rhs_bd_.begin(), scalar_flux_rhs_bd_.end(), 0.0);
 
-    if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
-      std::fill(phi_prime_.begin(), phi_prime_.end(), 0.0);
-    } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
+    std::fill(phi_prime_.begin(), phi_prime_.end(), 0.0);
+    if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
       std::fill(T1_.begin(), T1_.end(), 0.0);
 
       std::fill(source_rhs_bd_.begin(), source_rhs_bd_.end(), 0.0);
