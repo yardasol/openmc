@@ -200,8 +200,9 @@ void FlatSourceDomain::update_all_neutron_sources()
     SourceRegionHandle srh = source_regions_.get_source_region_handle(sr);
     update_single_neutron_source(srh);
     if (settings::kinetic_simulation && !simulation::is_initial_condition) {
-      compute_single_phi_prime(srh);
-      if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION)
+      if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC)
+        compute_single_phi_prime(srh);
+      else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION)
         compute_single_T1(srh);
     }
   }
@@ -1850,8 +1851,9 @@ SourceRegionHandle FlatSourceDomain::get_subdivided_source_region_handle(
   // Compute the combined source term
   update_single_neutron_source(handle);
   if (settings::kinetic_simulation && !simulation::is_initial_condition) {
-    compute_single_phi_prime(handle);
-    if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION)
+    if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC)
+      compute_single_phi_prime(handle);
+    else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION)
       compute_single_T1(handle);
   }
 
@@ -2035,11 +2037,7 @@ void FlatSourceDomain::compute_single_phi_prime(SourceRegionHandle& srh)
 
     double scalar_flux_time_derivative =
       A0 * srh.scalar_flux_old(g) + srh.scalar_flux_rhs_bd(g);
-    if (RandomRay::time_method_ == RandomRayTimeMethod::ISOTROPIC) {
-      srh.phi_prime(g) = scalar_flux_time_derivative * inverse_vbar / sigma_t;
-    } else if (RandomRay::time_method_ == RandomRayTimeMethod::PROPAGATION) {
-      srh.phi_prime(g) = scalar_flux_time_derivative;
-    }
+    srh.phi_prime(g) = scalar_flux_time_derivative * inverse_vbar / sigma_t;
   }
 }
 
