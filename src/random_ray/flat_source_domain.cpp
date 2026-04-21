@@ -2254,9 +2254,10 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
         double density_mult = source_regions_.density_mult(sr);
         double sigma_t = 1.0;
         if (material != MATERIAL_VOID) {
-          const int material_offset =
+          const int energy_offset =
             (material * ntemperature_ + temp) * negroups_;
-          sigma_t = sigma_t_[material_offset + g] * density_mult;
+          sigma_t =
+            sigma_t_[energy_offset + g] * source_regions_.density_mult(sr);
         }
         double source;
         if (settings::run_mode == RunMode::FIXED_SOURCE &&
