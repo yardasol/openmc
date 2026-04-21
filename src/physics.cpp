@@ -1413,7 +1413,7 @@ void bank_delayed_neutron(
   // Create delayed neutron and Put in time census bank
   SourceSite site;
   site.r = p.r();
-  site.particle = ParticleType::neutron;
+  site.particle = ParticleType::neutron();
   site.time = p.time() - decay_time;
   site.wgt = wgt_branchless;
   site.surf_id = 0;

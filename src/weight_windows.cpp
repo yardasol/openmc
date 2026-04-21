@@ -157,6 +157,8 @@ WeightWindows* WeightWindows::from_hdf5(
   int32_t mesh_id;
   read_dataset(ww_group, "mesh", mesh_id);
 
+  read_dataset<double>(ww_group, "time_bounds", wws->time_bounds_);
+
   if (model::mesh_map.count(mesh_id) == 0) {
     fatal_error(
       fmt::format("Mesh {} used in weight windows does not exist.", mesh_id));
@@ -165,10 +167,12 @@ WeightWindows* WeightWindows::from_hdf5(
 
   wws->lower_ww_ =
     tensor::Tensor<double>({static_cast<size_t>(wws->bounds_size()[0]),
-      static_cast<size_t>(wws->bounds_size()[1])});
+      static_cast<size_t>(wws->bounds_size()[1]),
+      static_cast<size_t>(wws->bounds_size()[2])});
   wws->upper_ww_ =
     tensor::Tensor<double>({static_cast<size_t>(wws->bounds_size()[0]),
-      static_cast<size_t>(wws->bounds_size()[1])});
+      static_cast<size_t>(wws->bounds_size()[1]),
+      static_cast<size_t>(wws->bounds_size()[2])});
 
   read_dataset<double>(ww_group, "lower_ww_bounds", wws->lower_ww_);
   read_dataset<double>(ww_group, "upper_ww_bounds", wws->upper_ww_);
@@ -193,6 +197,15 @@ void WeightWindows::set_defaults()
     energy_bounds_.push_back(data::energy_min[p_type]);
     energy_bounds_.push_back(data::energy_max[p_type]);
   }
+
+  if (time_bounds_.size() == 0) {
+    int p_type = particle_type_.transport_index();
+    if (p_type == C_NONE) {
+      fatal_error("Weight windows particle is not supported for transport.");
+    }
+    time_bounds_.push_back(0.0);
+    time_bounds_.push_back(INFTY);
+  }
 }
 
 void WeightWindows::allocate_ww_bounds()
@@ -203,11 +216,11 @@ void WeightWindows::allocate_ww_bounds()
       "Size of weight window bounds is zero for WeightWindows {}", id());
     warning(msg);
   }
-  lower_ww_ = tensor::Tensor<double>(
-    {static_cast<size_t>(shape[0]), static_cast<size_t>(shape[1])});
+  lower_ww_ = tensor::Tensor<double>({static_cast<size_t>(shape[0]),
+    static_cast<size_t>(shape[1]), static_cast<size_t>(shape[2])});
   lower_ww_.fill(-1);
-  upper_ww_ = tensor::Tensor<double>(
-    {static_cast<size_t>(shape[0]), static_cast<size_t>(shape[1])});
+  upper_ww_ = tensor::Tensor<double>({static_cast<size_t>(shape[0]),
+    static_cast<size_t>(shape[1]), static_cast<size_t>(shape[2])});
   upper_ww_.fill(-1);
 }
 
@@ -316,7 +329,7 @@ std::pair<bool, WeightWindow> WeightWindows::get_weight_window(
 
   // check to make sure time is in range, expects sorted time values
   if (t < time_bounds_.front() || t > time_bounds_.back())
-    return {};
+    return {false, {}};
 
   // get the time bin
   int time_bin = lower_bound_index(time_bounds_.begin(), time_bounds_.end(), t);
@@ -396,10 +409,10 @@ void WeightWindows::set_bounds(
 {
   check_bounds(lower_bounds, upper_bounds);
   auto shape = this->bounds_size();
-  lower_ww_ = tensor::Tensor<double>(
-    {static_cast<size_t>(shape[0]), static_cast<size_t>(shape[1])});
-  upper_ww_ = tensor::Tensor<double>(
-    {static_cast<size_t>(shape[0]), static_cast<size_t>(shape[1])});
+  lower_ww_ = tensor::Tensor<double>({static_cast<size_t>(shape[0]),
+    static_cast<size_t>(shape[1]), static_cast<size_t>(shape[2])});
+  upper_ww_ = tensor::Tensor<double>({static_cast<size_t>(shape[0]),
+    static_cast<size_t>(shape[1]), static_cast<size_t>(shape[2])});
 
   // Copy weight window values from input spans into the tensors
   std::copy(lower_bounds.data(), lower_bounds.data() + lower_ww_.size(),
@@ -413,10 +426,10 @@ void WeightWindows::set_bounds(span<const double> lower_bounds, double ratio)
   this->check_bounds(lower_bounds);
 
   auto shape = this->bounds_size();
-  lower_ww_ = tensor::Tensor<double>(
-    {static_cast<size_t>(shape[0]), static_cast<size_t>(shape[1])});
-  upper_ww_ = tensor::Tensor<double>(
-    {static_cast<size_t>(shape[0]), static_cast<size_t>(shape[1])});
+  lower_ww_ = tensor::Tensor<double>({static_cast<size_t>(shape[0]),
+    static_cast<size_t>(shape[1]), static_cast<size_t>(shape[2])});
+  upper_ww_ = tensor::Tensor<double>({static_cast<size_t>(shape[0]),
+    static_cast<size_t>(shape[1]), static_cast<size_t>(shape[2])});
 
   // Copy lower bounds into both arrays, then scale upper by ratio
   std::copy(lower_bounds.data(), lower_bounds.data() + lower_ww_.size(),
@@ -439,6 +452,7 @@ void WeightWindows::update_weights(const Tally* tally, const std::string& value,
   int64_t mesh_bins = lower_ww_.shape(1);
   int t_bins = lower_ww_.shape(2);
 
+  // TODO: this may need to be fixed
   int t = simulation::current_timestep;
 
   // Initialize weight window arrays to -1.0 by default

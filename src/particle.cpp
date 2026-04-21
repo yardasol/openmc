@@ -310,7 +310,7 @@ void Particle::event_advance()
     // Store particle in time census bank as a source site
     SourceSite site;
     site.r = r();
-    site.particle = ParticleType::neutron;
+    site.particle = ParticleType::neutron();
     site.time = time();
     site.wgt = wgt();
     site.surf_id = 0;
