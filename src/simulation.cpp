@@ -59,6 +59,8 @@ int openmc_run()
   if (openmc::settings::kinetic_simulation &&
       openmc::settings::run_mode == openmc::RunMode::FIXED_SOURCE) {
     openmc::simulation::is_initial_condition = false;
+    // TODO: add fixed source bank...
+    // openmc::simulation::initial_source_bank = ...
   }
 
   // Ensure that a batch isn't executed in the case that the maximum number of
@@ -662,19 +664,22 @@ void finalize_generation()
       settings::n_particles, simulation::work_per_rank, simulation::work_index);
   }
 
-  // Time census
   if (settings::solver_type == SolverType::MONTE_CARLO &&
       settings::kinetic_simulation) {
 
-    // If using shared memory, stable sort the time census bank (by parent IDs)
-    // so as to allow for reproducibility regardless of which order particles
-    // are run in.
-    sort_census_bank(simulation::time_census_bank,
-      simulation::progeny_per_particle, simulation::work_index);
+    // Time census only after the initial condition
+    if (!simulation::is_initial_condition) {
+      // If using shared memory, stable sort the time census bank (by parent
+      // IDs) so as to allow for reproducibility regardless of which order
+      // particles are run in.
+      sort_census_bank(simulation::time_census_bank,
+        simulation::progeny_per_particle, simulation::work_index);
 
-    // Distribute time census bank across processors evenly
-    synchronize_bank(simulation::time_census_bank, simulation::source_bank,
-      settings::n_particles, simulation::work_per_rank, simulation::work_index);
+      // Distribute time census bank across processors evenly
+      synchronize_bank(simulation::time_census_bank, simulation::source_bank,
+        settings::n_particles, simulation::work_per_rank,
+        simulation::work_index);
+    }
 
     if (settings::forced_decay) {
       // The precursor bank should also be sorted
