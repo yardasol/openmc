@@ -82,25 +82,32 @@ int openmc_run()
   if (openmc::settings::kinetic_simulation &&
       openmc::settings::run_mode == openmc::RunMode::EIGENVALUE) {
 
-    // Reset batch
-    openmc::simulation::current_batch = 0;
+    // No longer in initial condition
+    openmc::simulation::is_initial_condition = false;
+
+    // Loop over time census boundaries, generations are now time steps
+    openmc::settings::gen_per_batch =
+      openmc::settings::time_census_boundaries.size();
+
+    // Store steady state k-eff
+    openmc::simulation::initial_keff = openmc::simulation::keff;
 
     // Copy the criticality source bank. We will want to run
     // some criticality generations to decorrelate the batches.
     openmc::simulation::initial_source_bank = openmc::simulation::source_bank;
 
+    // No need to reinitialize every data structure. We can just reset global
+    // vars and set the initialized flag back to true
+    openmc_reset_global_variables();
+    openmc_hard_reset();
+    openmc::simulation::initialized = true;
+    openmc::simulation::current_batch = 0;
+
     // Run the kinetic simulation
     openmc::simulation::time_total.start();
-    openmc_simulation_init();
-    // Loop over time census boundaries, generations are now time steps
-    openmc::settings::gen_per_batch =
-      openmc::settings::time_census_boundaries.size();
-    openmc::simulation::is_initial_condition = false;
-
     while (status == 0 && err == 0) {
       err = openmc_next_batch(&status);
     }
-
     openmc_simulation_finalize();
     openmc::simulation::time_total.stop();
   }
@@ -158,12 +165,7 @@ int openmc_simulation_init()
 
   // Reset global variables -- this is done before loading state point (as that
   // will potentially populate k_generation and entropy)
-  simulation::current_batch = 0;
-  simulation::ct_current_file = 1;
-  simulation::ssw_current_file = 1;
-  simulation::k_generation.clear();
-  simulation::entropy.clear();
-  reset_source_rejection_counters();
+  openmc_reset_global_variables();
   openmc_reset();
 
   // If this is a restart run, load the state point data and binary source
@@ -219,6 +221,18 @@ int openmc_simulation_init()
   // Set flag indicating initialization is done
   simulation::initialized = true;
   return 0;
+}
+
+void openmc_reset_global_variables()
+{
+  using namespace openmc;
+
+  simulation::current_batch = 0;
+  simulation::ct_current_file = 1;
+  simulation::ssw_current_file = 1;
+  simulation::k_generation.clear();
+  simulation::entropy.clear();
+  reset_source_rejection_counters();
 }
 
 int openmc_simulation_finalize()
@@ -650,12 +664,17 @@ void finalize_generation()
     // If using shared memory, stable sort the fission bank (by parent IDs)
     // so as to allow for reproducibility regardless of which order particles
     // are run in.
-    sort_census_bank(simulation::fission_bank, simulation::progeny_per_particle,
-      simulation::work_index);
+    if (simulation::is_initial_condition) {
+      // Only sort fission bank if running a steady state simulation, or the IC
+      // of a kinetic simulation
+      sort_census_bank(simulation::fission_bank,
+        simulation::progeny_per_particle, simulation::work_index);
 
-    // Distribute fission bank across processors evenly
-    synchronize_bank(simulation::fission_bank, simulation::source_bank,
-      settings::n_particles, simulation::work_per_rank, simulation::work_index);
+      // Distribute fission bank across processors evenly
+      synchronize_bank(simulation::fission_bank, simulation::source_bank,
+        settings::n_particles, simulation::work_per_rank,
+        simulation::work_index);
+    }
   }
 
   if (settings::solver_type == SolverType::MONTE_CARLO &&

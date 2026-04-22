@@ -193,6 +193,7 @@ int openmc_set_n_batches(
   int32_t n_batches, bool set_max_batches, bool add_statepoint_batch);
 int openmc_simulation_finalize();
 int openmc_simulation_init();
+void openmc_reset_global_variables();
 int openmc_source_bank(void** ptr, int64_t* n);
 int openmc_spatial_legendre_filter_get_order(int32_t index, int* order);
 int openmc_spatial_legendre_filter_get_params(
