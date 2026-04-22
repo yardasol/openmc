@@ -213,7 +213,8 @@ void SourceRegionContainer::push_back(const SourceRegion& sr)
   }
 }
 
-void SourceRegionContainer::clear()
+void SourceRegionContainer::assign(
+  int n_source_regions, const SourceRegion& source_region)
 {
   // Clear existing data
   n_source_regions_ = 0;
@@ -290,12 +291,6 @@ void SourceRegionContainer::clear()
       tally_delay_task_.clear();
     }
   }
-}
-
-void SourceRegionContainer::assign(
-  int n_source_regions, const SourceRegion& source_region)
-{
-  this->clear();
 
   // Fill with copies of source_region
   for (int i = 0; i < n_source_regions; ++i) {

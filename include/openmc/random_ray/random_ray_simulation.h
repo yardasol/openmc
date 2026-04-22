@@ -88,6 +88,8 @@ void print_adjoint_header();
 
 // Functions for kinetic simulations
 void set_time_dependent_settings();
+void rename_time_step_file(
+  std::string base_filename, std::string extension, int i);
 
 } // namespace openmc
 

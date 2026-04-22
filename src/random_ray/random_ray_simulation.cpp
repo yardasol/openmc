@@ -351,6 +351,30 @@ void print_adjoint_header()
     header("ADJOINT FLUX SOLVE", 3);
 }
 
+//-----------------------------------------------------------------------------
+// Non-member functions for kinetic simulations
+
+void rename_time_step_file(
+  std::string base_filename, std::string extension, int i)
+{
+  // Rename file
+  std::string old_filename_ =
+    fmt::format("{0}{1}{2}", settings::path_output, base_filename, extension);
+  std::string new_filename_ =
+    fmt::format("{0}{1}", settings::path_output, base_filename);
+  if (i != -1) {
+    new_filename_ = fmt::format("{0}_{1}", new_filename_, i);
+  }
+  if (FlatSourceDomain::save_forward_output_) {
+    new_filename_ = fmt::format("{0}_{1}", new_filename_, "forward");
+  }
+  new_filename_ = fmt::format("{0}{1}", new_filename_, extension);
+
+  const char* old_fname = old_filename_.c_str();
+  const char* new_fname = new_filename_.c_str();
+  std::rename(old_fname, new_fname);
+}
+
 //==============================================================================
 // RandomRaySimulation implementation
 //==============================================================================

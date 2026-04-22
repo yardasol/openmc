@@ -324,9 +324,7 @@ int64_t FlatSourceDomain::add_source_to_scalar_flux()
       volume = volume_simulation_avg;
       break;
     case RandomRayVolumeEstimator::HYBRID:
-      if (source_regions_.external_source_present(
-            sr) || // Is it possible that external_source_present causes an
-                   // issue?
+      if (source_regions_.external_source_present(sr) ||
           source_regions_.is_small(sr)) {
         volume = volume_iteration;
       } else {

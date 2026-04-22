@@ -1060,7 +1060,6 @@ public:
   // Public Methods
 
   void push_back(const SourceRegion& sr);
-  void clear();
   void assign(int n_source_regions, const SourceRegion& source_region);
   void flux_swap();
   int64_t n_source_regions() const { return n_source_regions_; }

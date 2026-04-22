@@ -124,9 +124,6 @@ void transport_history_based();
 //! Simulate all particle histories using event-based parallelism
 void transport_event_based();
 
-void rename_time_step_file(
-  std::string base_filename, std::string extension, int i);
-
 void decorrelate_kinetic_eigenvalue_batch();
 
 } // namespace openmc
