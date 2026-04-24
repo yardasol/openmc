@@ -102,6 +102,9 @@ int openmc_run()
     openmc_hard_reset();
     openmc::simulation::initialized = true;
     openmc::simulation::current_batch = 0;
+    openmc::settings::n_inactive = 0;
+    status = 0;
+    openmc_display_header();
 
     // Run the kinetic simulation
     openmc::simulation::time_total.start();
@@ -182,36 +185,7 @@ int openmc_simulation_init()
   }
 
   // Display header
-  if (mpi::master) {
-    if (settings::kinetic_simulation) {
-      if (simulation::is_initial_condition) {
-        if (simulation::source_correction)
-          header("KINETIC SIMULATION INITIAL CONDITION (SOURCE CORRECTION)", 3);
-        else
-          header("KINETIC SIMULATION INITIAL CONDITION", 3);
-      } else {
-        std::string message = fmt::format(
-          "KINETIC SIMULATION TIME STEP {0}", simulation::current_timestep);
-        const char* msg = message.c_str();
-        header(msg, 3);
-      }
-    }
-    if (settings::run_mode == RunMode::FIXED_SOURCE) {
-      if (settings::solver_type == SolverType::MONTE_CARLO) {
-        header("FIXED SOURCE TRANSPORT SIMULATION", 3);
-      } else if (settings::solver_type == SolverType::RANDOM_RAY) {
-        header("FIXED SOURCE TRANSPORT SIMULATION (RANDOM RAY SOLVER)", 3);
-      }
-    } else if (settings::run_mode == RunMode::EIGENVALUE) {
-      if (settings::solver_type == SolverType::MONTE_CARLO) {
-        header("K EIGENVALUE SIMULATION", 3);
-      } else if (settings::solver_type == SolverType::RANDOM_RAY) {
-        header("K EIGENVALUE SIMULATION (RANDOM RAY SOLVER)", 3);
-      }
-      if (settings::verbosity >= 7)
-        print_columns();
-    }
-  }
+  openmc_display_header();
 
   // load weight windows from file
   if (!settings::weight_windows_file.empty()) {
@@ -233,6 +207,45 @@ void openmc_reset_global_variables()
   simulation::k_generation.clear();
   simulation::entropy.clear();
   reset_source_rejection_counters();
+}
+
+void openmc_display_header()
+{
+  using namespace openmc;
+
+  if (mpi::master) {
+    if (settings::kinetic_simulation) {
+      if (simulation::is_initial_condition) {
+        if (simulation::source_correction)
+          header("KINETIC SIMULATION INITIAL CONDITION (SOURCE CORRECTION)", 3);
+        else
+          header("KINETIC SIMULATION INITIAL CONDITION", 3);
+      } else {
+        std::string message = "KINETIC SIMULATION";
+        if (settings::solver_type == SolverType::RANDOM_RAY) {
+          message = fmt::format(
+            "{1} TIME STEP {0}", message, simulation::current_timestep);
+        }
+        const char* msg = message.c_str();
+        header(msg, 3);
+      }
+    }
+    if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      if (settings::solver_type == SolverType::MONTE_CARLO) {
+        header("FIXED SOURCE TRANSPORT SIMULATION", 3);
+      } else if (settings::solver_type == SolverType::RANDOM_RAY) {
+        header("FIXED SOURCE TRANSPORT SIMULATION (RANDOM RAY SOLVER)", 3);
+      }
+    } else if (settings::run_mode == RunMode::EIGENVALUE) {
+      if (settings::solver_type == SolverType::MONTE_CARLO) {
+        header("K EIGENVALUE SIMULATION", 3);
+      } else if (settings::solver_type == SolverType::RANDOM_RAY) {
+        header("K EIGENVALUE SIMULATION (RANDOM RAY SOLVER)", 3);
+      }
+      if (settings::verbosity >= 7)
+        print_columns();
+    }
+  }
 }
 
 int openmc_simulation_finalize()
@@ -313,6 +326,7 @@ int openmc_next_batch(int* status)
 
   // Run some criticality generations to decorrelate batches for eigenvalue
   // simulations
+  // TODO: add print statement to indicate decorrelation of this batch?
   if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       settings::run_mode == RunMode::EIGENVALUE &&
       settings::solver_type == SolverType::MONTE_CARLO)
@@ -338,14 +352,6 @@ int openmc_next_batch(int* status)
     simulation::time_transport.stop();
 
     finalize_generation();
-
-    if (settings::kinetic_simulation && !simulation::is_initial_condition &&
-        settings::run_mode == RunMode::EIGENVALUE &&
-        settings::solver_type == SolverType::MONTE_CARLO) {
-      // Maintain starting keff for kinetic simulation to bake in initial
-      // condition
-      simulation::keff = simulation::initial_keff;
-    }
   }
 
   finalize_batch();
@@ -408,6 +414,7 @@ vector<double> k_generation;
 vector<int64_t> work_index;
 
 bool is_initial_condition {true};
+bool is_decorrelation_generation {false};
 int current_timestep;
 double current_time {0.0};
 bool source_correction {false};
@@ -642,7 +649,10 @@ void finalize_generation()
   auto& gt = simulation::global_tallies;
 
   // Update global tallies with the accumulation variables
-  if (settings::run_mode == RunMode::EIGENVALUE) {
+  if (settings::run_mode == RunMode::EIGENVALUE &&
+      (simulation::is_initial_condition ||
+        !simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
     gt(GlobalTally::K_COLLISION, TallyResult::VALUE) += global_tally_collision;
     gt(GlobalTally::K_ABSORPTION, TallyResult::VALUE) +=
       global_tally_absorption;
@@ -664,9 +674,11 @@ void finalize_generation()
     // If using shared memory, stable sort the fission bank (by parent IDs)
     // so as to allow for reproducibility regardless of which order particles
     // are run in.
-    if (simulation::is_initial_condition) {
-      // Only sort fission bank if running a steady state simulation, or the IC
-      // of a kinetic simulation
+    if (simulation::is_initial_condition ||
+        (!simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
+      // Only sort fission bank if running a steady state simulation, the IC
+      // of a kinetic simulation, or decorrelateing a kinetic simulation batch
       sort_census_bank(simulation::fission_bank,
         simulation::progeny_per_particle, simulation::work_index);
 
@@ -715,8 +727,13 @@ void finalize_generation()
       shannon_entropy();
 
     // Collect results and statistics
-    calculate_generation_keff();
-    calculate_average_keff();
+    // Don't calculate k during kinetic simulations
+    if (simulation::is_initial_condition ||
+        (!simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
+      calculate_generation_keff();
+      calculate_average_keff();
+    }
 
     // Write generation output
     if (mpi::master && settings::verbosity >= 7) {
@@ -1092,17 +1109,22 @@ void transport_event_based()
 
 void decorrelate_kinetic_eigenvalue_batch()
 {
-  bool run_ic = true;
   int n_decorrelate_generations = 3;
   int gen_counter = 0;
   simulation::current_gen = 0;
-  while (run_ic) {
+  simulation::source_bank = simulation::initial_source_bank;
+  simulation::is_decorrelation_generation = true;
+  while (gen_counter < n_decorrelate_generations) {
     // Set source bank as the eigenvalue source bank when kinetic simulation is
     // toggled off
     simulation::current_gen++;
-    simulation::source_bank = simulation::initial_source_bank;
 
     initialize_generation();
+
+    // TODO: more elegant way to do this would be to integrate into
+    // initialize_generation()
+    if (gen_counter == 0)
+      simulation::keff_generation = simulation::initial_keff;
 
     // Start timer for transport
     simulation::time_transport.start();
@@ -1121,19 +1143,13 @@ void decorrelate_kinetic_eigenvalue_batch()
     finalize_generation();
 
     gen_counter++;
-    simulation::initial_source_bank = simulation::source_bank;
-    // Get rid of k_generation and entropy from decorrelation simulation
-    simulation::k_generation.pop_back();
-    simulation::entropy.pop_back();
-
-    if (gen_counter == n_decorrelate_generations)
-      run_ic = false;
   }
-  // Save the steady state source bank
+
+  // Save the steady state source bank and keff
   simulation::initial_source_bank = simulation::source_bank;
-  // TODO: maybe this should be the average keff?
-  // Store the current generation keff as initial_keff
-  simulation::initial_keff = simulation::keff;
+  simulation::initial_keff = simulation::k_generation.back();
+
+  simulation::is_decorrelation_generation = false;
 }
 
 } // namespace openmc

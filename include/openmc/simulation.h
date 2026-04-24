@@ -57,6 +57,7 @@ extern bool
                         //!< user utilizing time censusing if on for the Monte
                         //!< Carlo solver, and solves the kinetic NTE if on for
                         //!< the Random Ray solver
+extern bool is_decorrelation_generation;
 extern int current_timestep;  // !< current time step in kinetic simulation
 extern double current_time;   // !< current time in kinetic simulation
 extern bool source_correction; // !< flag to indicate if the simulation is meant
