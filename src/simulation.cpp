@@ -831,7 +831,8 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
   // Check particle time index
   int expected_tb_idx;
   if (openmc::settings::kinetic_simulation &&
-      !simulation::is_initial_condition) {
+      !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
     expected_tb_idx = openmc::simulation::current_gen - 1;
   } else {
     expected_tb_idx = 0;
