@@ -49,10 +49,11 @@ void collision(Particle& p)
   // Sample reaction for the material the particle is in
   switch (p.type().pdg_number()) {
   case PDG_NEUTRON:
-    if (!settings::branchless_collision)
-      sample_neutron_reaction(p);
-    else
+    if (settings::branchless_collision && !simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation)
       sample_branchless_neutron_reaction(p);
+    else
+      sample_neutron_reaction(p);
     break;
   case PDG_PHOTON:
     sample_photon_reaction(p);
