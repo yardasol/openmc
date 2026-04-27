@@ -110,6 +110,8 @@ int openmc_run()
     openmc::simulation::time_total.start();
     while (status == 0 && err == 0) {
       err = openmc_next_batch(&status);
+      // Add back infinity time boundary for next batch
+      openmc::settings::time_census_boundaries.push_front(openmc::INFTY);
     }
     openmc_simulation_finalize();
     openmc::simulation::time_total.stop();
@@ -329,8 +331,11 @@ int openmc_next_batch(int* status)
   // TODO: add print statement to indicate decorrelation of this batch?
   if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       settings::run_mode == RunMode::EIGENVALUE &&
-      settings::solver_type == SolverType::MONTE_CARLO)
+      settings::solver_type == SolverType::MONTE_CARLO) {
     decorrelate_kinetic_eigenvalue_batch();
+    // Remove infinity time boundary
+    settings::time_census_boundaries.pop_front();
+  }
 
   // =======================================================================
   // LOOP OVER GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
