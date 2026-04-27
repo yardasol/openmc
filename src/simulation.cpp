@@ -693,7 +693,8 @@ void finalize_generation()
       settings::kinetic_simulation) {
 
     // Time census only after the initial condition
-    if (!simulation::is_initial_condition) {
+    if (!simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation) {
       // If using shared memory, stable sort the time census bank (by parent
       // IDs) so as to allow for reproducibility regardless of which order
       // particles are run in.

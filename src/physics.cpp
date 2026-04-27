@@ -317,7 +317,9 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
   // or the secondary particle bank. Particles should be placed in the
   // secondary bank for kinetic simulation.
   bool use_fission_bank = (settings::run_mode == RunMode::EIGENVALUE &&
-                           simulation::is_initial_condition);
+                           (simulation::is_initial_condition ||
+                             (!simulation::is_initial_condition &&
+                               simulation::is_decorrelation_generation)));
 
   // Counter for the number of fission sites successfully stored to the shared
   // fission bank or the secondary particle bank
