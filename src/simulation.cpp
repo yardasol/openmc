@@ -330,7 +330,13 @@ int openmc_next_batch(int* status)
   if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       settings::run_mode == RunMode::EIGENVALUE &&
       settings::solver_type == SolverType::MONTE_CARLO) {
+    if (mpi::master)
+      write_message(
+        fmt::format(" Batch {0} decorrelation", simulation::current_batch));
     decorrelate_kinetic_eigenvalue_batch();
+    if (mpi::master)
+      write_message(
+        fmt::format(" Batch {0} time steps", simulation::current_batch));
   }
 
   // =======================================================================
