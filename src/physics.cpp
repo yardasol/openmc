@@ -187,7 +187,7 @@ void sample_branchless_neutron_reaction(Particle& p)
   double sigma_s = micro.total - micro.absorption;
   double nu_sigma_t = sigma_s + micro.nu_fission;
   const double wgt_branchless =
-    p.wgt() * (micro.nu_fission + sigma_s) / micro.total;
+    p.wgt() * (micro.nu_fission / simulation::keff + sigma_s) / micro.total;
 
   // There is probably a cleaner way to do this...
   double prob_fission = micro.nu_fission / nu_sigma_t;
@@ -1226,8 +1226,8 @@ void sample_fission_neutron(
       const auto& micro {p.neutron_xs(i_nuclide)};
       double beta_i = beta * delayed_yield;
       int K = nuc->n_precursor_;
-      equilibrium_wgt =
-        p.wgt() * K * beta_i * micro.nu_fission / decay_rate * p.speed();
+      equilibrium_wgt = p.wgt() * K * beta_i * micro.nu_fission /
+                        (simulation::keff * decay_rate) * p.speed();
 
       const double eq_wgt = equilibrium_wgt;
       create_precursor_particle(rx, p, eq_wgt);
@@ -1365,7 +1365,7 @@ void sample_branchless_fission(
 }
 
 void create_precursor_particle(
-  const Reaction& rx, Particle& p, const double& wgt_branchless)
+  const Reaction& rx, Particle& p, const double& banked_wgt)
 {
   // Initialize precursor particle source site
   SourceSite precursor_site;
@@ -1374,7 +1374,7 @@ void create_precursor_particle(
   precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
   precursor_site.time_born =
     p.time(); // Used for weight adjustment on forced decay
-  precursor_site.wgt = wgt_branchless;
+  precursor_site.wgt = banked_wgt;
   precursor_site.surf_id = 0;
 
   precursor_site.delayed_group = p.delayed_group();
@@ -1411,14 +1411,14 @@ void create_precursor_particle(
 }
 
 void bank_delayed_neutron(
-  Particle& p, double decay_time, double E_out, const double& wgt_branchless)
+  Particle& p, double decay_time, double E_out, const double& banked_wgt)
 {
   // Create delayed neutron and Put in time census bank
   SourceSite site;
   site.r = p.r();
   site.particle = ParticleType::neutron();
   site.time = p.time() - decay_time;
-  site.wgt = wgt_branchless;
+  site.wgt = banked_wgt;
   site.surf_id = 0;
 
   site.delayed_group = p.delayed_group();

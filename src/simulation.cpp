@@ -110,8 +110,6 @@ int openmc_run()
     openmc::simulation::time_total.start();
     while (status == 0 && err == 0) {
       err = openmc_next_batch(&status);
-      // Add back infinity time boundary for next batch
-      openmc::settings::time_census_boundaries.push_front(openmc::INFTY);
     }
     openmc_simulation_finalize();
     openmc::simulation::time_total.stop();
@@ -333,8 +331,6 @@ int openmc_next_batch(int* status)
       settings::run_mode == RunMode::EIGENVALUE &&
       settings::solver_type == SolverType::MONTE_CARLO) {
     decorrelate_kinetic_eigenvalue_batch();
-    // Remove infinity time boundary
-    settings::time_census_boundaries.pop_front();
   }
 
   // =======================================================================
@@ -839,7 +835,7 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
   if (openmc::settings::kinetic_simulation &&
       !simulation::is_initial_condition &&
       !simulation::is_decorrelation_generation) {
-    expected_tb_idx = openmc::simulation::current_gen - 1;
+    expected_tb_idx = openmc::simulation::current_gen;
   } else {
     expected_tb_idx = 0;
   }
@@ -1172,12 +1168,14 @@ void set_bank_times_to_zero()
 #pragma omp parallel for schedule(runtime)
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     simulation::source_bank[i_work - 1].time = 0.0;
+    simulation::source_bank[i_work - 1].time_bound_idx = 1;
     if (settings::forced_decay) {
 #pragma omp parallel for schedule(runtime)
       for (int64_t i_work = 1; i_work <= simulation::precursors_per_rank;
            ++i_work) {
         simulation::precursor_source_bank[i_work - 1].time = 0.0;
         simulation::precursor_source_bank[i_work - 1].time_born = 0.0;
+        simulation::precursor_source_bank[i_work - 1].time_bound_idx = 1;
       }
     }
   }

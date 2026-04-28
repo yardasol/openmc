@@ -64,10 +64,10 @@ void sample_branchless_fission(
   int i_nuclide, const Reaction& rx, Particle& p, const double& wgt_branchless);
 
 void create_precursor_particle(
-  const Reaction& rx, Particle& p, const double& wgt_branchless);
+  const Reaction& rx, Particle& p, const double& banked_wgt);
 
 void bank_delayed_neutron(
-  Particle& p, double decay_time, double E_out, const double& wgt_branchless);
+  Particle& p, double decay_time, double E_out, const double& banked_wgt);
 
 int sample_element(Particle& p);
 

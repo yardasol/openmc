@@ -273,7 +273,7 @@ void Particle::event_advance()
     distance_cutoff, distance_time});
 
   // Bank the particle immediately if it falls outside of the current time
-  // census bin
+  // census bin. These are typically delayed neutrons
   if (distance == distance_time && distance < 0) {
     this->event_cross_time_boundary();
     return;
