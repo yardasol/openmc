@@ -126,6 +126,7 @@ void transport_history_based();
 void transport_event_based();
 
 void decorrelate_kinetic_eigenvalue_batch();
+void set_bank_times_to_zero();
 
 } // namespace openmc
 

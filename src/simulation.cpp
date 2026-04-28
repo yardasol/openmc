@@ -782,6 +782,7 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
     p.wgt() *= 1 - exp;
     p.wgt_last() = p.wgt();
     precursor_site.wgt *= exp;
+    precursor_site.time += settings::time_census_boundaries[p.time_bound_idx()];
 
     // Add this precursor source to the shared precursor bank
     simulation::precursor_shared_bank.thread_safe_append(precursor_site);
@@ -1053,6 +1054,7 @@ void transport_history_based()
   // Only use forced decay for the transient part of a kinetic simulation
   if (settings::kinetic_simulation && settings::forced_decay &&
       !simulation::is_initial_condition) {
+#pragma omp parallel for schedule(runtime)
     for (int64_t i_work = 1; i_work <= simulation::precursors_per_rank;
          ++i_work) {
       Particle p;
@@ -1114,6 +1116,9 @@ void transport_event_based()
   }
 }
 
+// Consecutive batch decorrelation scheme from "New kinetic simulation
+// capabilites for Tripoli-4: Methods and applications", M. Faucher et
+// al. (2018)
 void decorrelate_kinetic_eigenvalue_batch()
 {
   int n_decorrelate_generations = 3;
@@ -1155,8 +1160,27 @@ void decorrelate_kinetic_eigenvalue_batch()
   // Save the steady state source bank and keff
   simulation::initial_source_bank = simulation::source_bank;
   simulation::initial_keff = simulation::k_generation.back();
+  set_bank_times_to_zero();
 
   simulation::is_decorrelation_generation = false;
+}
+
+// EDGE CASE TODO: This will affect generation of precursor particles
+// during the decorrelation generations.. will the effect matter?
+void set_bank_times_to_zero()
+{
+#pragma omp parallel for schedule(runtime)
+  for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
+    simulation::source_bank[i_work - 1].time = 0.0;
+    if (settings::forced_decay) {
+#pragma omp parallel for schedule(runtime)
+      for (int64_t i_work = 1; i_work <= simulation::precursors_per_rank;
+           ++i_work) {
+        simulation::precursor_source_bank[i_work - 1].time = 0.0;
+        simulation::precursor_source_bank[i_work - 1].time_born = 0.0;
+      }
+    }
+  }
 }
 
 } // namespace openmc

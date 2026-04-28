@@ -272,6 +272,13 @@ void Particle::event_advance()
   double distance = std::min({boundary().distance(), collision_distance(),
     distance_cutoff, distance_time});
 
+  // Bank the particle immediately if it falls outside of the current time
+  // census bin
+  if (distance == distance_time && distance < 0) {
+    this->event_cross_time_boundary();
+    return;
+  }
+
   // Advance particle in space and time
   this->move_distance(distance);
   double dt = distance / speed;
@@ -307,29 +314,34 @@ void Particle::event_advance()
 
   // Store the particle in the census bank if it hit the census boundary
   if (distance == distance_time) {
-    // Store particle in time census bank as a source site
-    SourceSite site;
-    site.r = r();
-    site.particle = ParticleType::neutron();
-    site.time = time();
-    site.wgt = wgt();
-    site.surf_id = 0;
-    site.delayed_group = delayed_group();
+    this->event_cross_time_boundary();
+  }
+}
 
-    // Set parent and progeny IDs
-    site.parent_id = id();
-    site.progeny_id = ++n_progeny(); // Should be 1
-    site.time_bound_idx = time_bound_idx() + 1;
+void Particle::event_cross_time_boundary()
+{
+  // Store particle in time census bank as a source site
+  SourceSite site;
+  site.r = r();
+  site.particle = ParticleType::neutron();
+  site.time = time();
+  site.wgt = wgt();
+  site.surf_id = 0;
+  site.delayed_group = delayed_group();
 
-    int64_t idx = simulation::time_census_bank.thread_safe_append(site);
-    wgt() = 0.0;
-    if (idx == -1) {
-      warning("The shared time census bank is full. Additional time boundary "
-              "crossing "
-              "in this generation will not be banked. Results may be "
-              "non-deterministic.");
-      n_progeny()--;
-    }
+  // Set parent and progeny IDs
+  site.parent_id = id();
+  site.progeny_id = ++n_progeny(); // Should be 1
+  site.time_bound_idx = time_bound_idx() + 1;
+
+  int64_t idx = simulation::time_census_bank.thread_safe_append(site);
+  wgt() = 0.0;
+  if (idx == -1) {
+    warning("The shared time census bank is full. Additional time boundary "
+            "crossing "
+            "in this generation will not be banked. Results may be "
+            "non-deterministic.");
+    n_progeny()--;
   }
 }
 

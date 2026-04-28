@@ -1217,7 +1217,7 @@ void sample_fission_neutron(
   site->u = rotate_angle(p.u(), mu, nullptr, seed);
 
   if (settings::kinetic_simulation && site->delayed_group > 0) {
-    // Create initial precursor particle if biased decay is on (which can only
+    // Create initial precursor particle if forced decay is on (which can only
     // be the case for a kinetic simulation) and we are in an initial condition
     if (simulation::is_initial_condition && settings::forced_decay) {
       double equilibrium_wgt;
