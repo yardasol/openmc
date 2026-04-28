@@ -235,16 +235,9 @@ void sample_branchless_neutron_reaction(Particle& p)
   if (p.wgt() != 0.0)
     p.wgt() = wgt_branchless;
 
-  // Play russian roulette
-  // if survival normalization is on, use normalized weight cutoff and
-  // normalized weight survive
-  if (settings::survival_normalization) {
-    if (p.wgt() < settings::weight_cutoff * p.wgt_born()) {
-      russian_roulette(p, settings::weight_survive * p.wgt_born());
-    }
-  } else if (p.wgt() < settings::weight_cutoff) {
-    russian_roulette(p, settings::weight_survive);
-  }
+  // Play russian roulette if there are no weight windows
+  if (!settings::weight_windows_on)
+    apply_russian_roulette(p);
 }
 
 void branchless_fission(
