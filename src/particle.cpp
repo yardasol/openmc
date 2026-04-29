@@ -331,7 +331,15 @@ void Particle::event_cross_time_boundary()
 
   // Set parent and progeny IDs
   site.parent_id = id();
-  site.progeny_id = ++n_progeny(); // Should be 1
+  if (settings::branchless_collision) {
+    // This should be 1, but that seems to cause an issue with the bank sorting
+    // algorithm when using time censusing with branchless collision, so we
+    // force it to be zero
+    site.progeny_id = 0;
+    ++n_progeny();
+  } else {
+    site.progeny_id = ++n_progeny();
+  }
   site.time_bound_idx = time_bound_idx() + 1;
 
   int64_t idx = simulation::time_census_bank.thread_safe_append(site);

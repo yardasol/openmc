@@ -1419,7 +1419,15 @@ void bank_delayed_neutron(
   site.u = p.u();
 
   site.parent_id = p.id();
-  site.progeny_id = ++p.n_progeny();
+  if (settings::branchless_collision) {
+    // This should be 1, but that seems to cause an issue with the bank sorting
+    // algorithm when using time censusing with branchless collision, so we
+    // force it to be zero
+    site.progeny_id = 0;
+    ++p.n_progeny();
+  } else {
+    site.progeny_id = ++p.n_progeny();
+  }
   site.time_bound_idx = p.time_bound_idx() + 1;
 
   int64_t idx = simulation::time_census_bank.thread_safe_append(site);
