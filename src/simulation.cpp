@@ -829,9 +829,10 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
   if (from_precursor)
     // Adjust the particle seed by the number of precursor particles simulated
     // to prevent duplicate seeds
-    particle_seed +=
-      (simulation::total_gen + overall_generation() - 1) *
-      settings::n_precursors init_particle_seeds(particle_seed, p.seeds());
+    particle_seed += (simulation::total_gen + overall_generation() - 1) *
+                     settings::n_precursors;
+
+  init_particle_seeds(particle_seed, p.seeds());
 
   // set particle trace
   // TODO: Will this mess up for TD sims?
