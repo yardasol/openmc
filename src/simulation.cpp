@@ -629,8 +629,12 @@ void finalize_batch()
 
 void initialize_generation()
 {
-  if (settings::run_mode == RunMode::EIGENVALUE) {
-    // Clear out the fission bank
+  if (settings::run_mode == RunMode::EIGENVALUE &&
+      (simulation::is_initial_condition ||
+        !simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
+    // Only clear out the fission bank if running a steady state simulation, the
+    // IC of a kinetic simulation, or decorrelateing a kinetic simulation batch
     simulation::fission_bank.resize(0);
 
     // Count source sites if using uniform fission source weighting
@@ -788,14 +792,17 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
 
     // Add this precursor source to the shared precursor bank
     simulation::precursor_shared_bank.thread_safe_append(precursor_site);
-
-    // Adjust index source to prevent duplicate particle IDs
-    index_source += simulation::work_per_rank;
   }
+  // TODO: add machinery to support forced decay neutrons
   p.current_work() = index_source;
 
   // set identifier for particle
-  p.id() = simulation::work_index[mpi::rank] + index_source;
+  if (from_precursor)
+    // Adjust ID by settings::n_particles to prevent duplicate particle IDs
+    p.id() = settings::n_particles + simulation::precursor_index[mpi::rank] +
+             index_source;
+  else
+    p.id() = simulation::work_index[mpi::rank] + index_source;
 
   // set progeny count to zero
   p.n_progeny() = 0;
@@ -819,7 +826,12 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
   int64_t particle_seed =
     (simulation::total_gen + overall_generation() - 1) * settings::n_particles +
     p.id();
-  init_particle_seeds(particle_seed, p.seeds());
+  if (from_precursor)
+    // Adjust the particle seed by the number of precursor particles simulated
+    // to prevent duplicate seeds
+    particle_seed +=
+      (simulation::total_gen + overall_generation() - 1) *
+      settings::n_precursors init_particle_seeds(particle_seed, p.seeds());
 
   // set particle trace
   // TODO: Will this mess up for TD sims?
