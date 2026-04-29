@@ -73,6 +73,7 @@ void calculate_generation_keff()
 
   // Normalize single batch estimate of k
   // TODO: This should be normalized by total_weight, not by n_particles
+  // TODO: support forced precursor decay
   if (settings::solver_type != SolverType::RANDOM_RAY) {
     keff_reduced /= settings::n_particles;
   }
@@ -83,11 +84,16 @@ void calculate_generation_keff()
 void calculate_average_keff()
 {
   // Determine overall generation and number of active generations
+  // TODO: add control flow to allow decorrelation simulations to update this
   int i = overall_generation() - 1;
   int n;
   if (simulation::current_batch > settings::n_inactive) {
     n = settings::gen_per_batch * simulation::n_realizations +
         simulation::current_gen;
+    if (simulation::is_decorrelation_generation) {
+      n +=
+        simulation::initial_gen_per_batch * simulation::initial_n_realizations;
+    }
   } else {
     n = 0;
   }

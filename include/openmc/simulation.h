@@ -57,7 +57,21 @@ extern bool
                         //!< user utilizing time censusing if on for the Monte
                         //!< Carlo solver, and solves the kinetic NTE if on for
                         //!< the Random Ray solver
+
+// Decorrelation generation variables
 extern bool is_decorrelation_generation;
+extern int initial_overall_generation;
+extern int32_t initial_n_realizations;
+extern int32_t initial_gen_per_batch;
+extern vector<double> initial_k_generation;
+extern array<double, 2> initial_k_sum;
+extern double initial_k_col;
+extern double initial_k_abs;
+extern double initial_k_tra;
+extern "C" double initial_k_col_abs;
+extern "C" double initial_k_col_tra;
+extern "C" double initial_k_abs_tra;
+
 extern int current_timestep;  // !< current time step in kinetic simulation
 extern double current_time;   // !< current time in kinetic simulation
 extern bool source_correction; // !< flag to indicate if the simulation is meant
@@ -126,6 +140,9 @@ void transport_history_based();
 void transport_event_based();
 
 void decorrelate_kinetic_eigenvalue_batch();
+void store_initial_k_eigenvalue_quantities();
+void set_initial_k_eigenvalue_quantities();
+
 void set_bank_times_to_zero();
 
 } // namespace openmc

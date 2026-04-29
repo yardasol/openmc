@@ -85,12 +85,23 @@ int openmc_run()
     // No longer in initial condition
     openmc::simulation::is_initial_condition = false;
 
-    // Loop over time census boundaries, generations are now time steps
-    openmc::settings::gen_per_batch =
-      openmc::settings::time_census_boundaries.size();
-
     // Store steady state k-eff
     openmc::simulation::initial_keff = openmc::simulation::keff;
+    // Store various eigenvalues quatnties, as well as overall_generation and
+    // n_realizations. These are needed to properly compute k_eff if using
+    // decorrelating generations for TDMC simulations
+    if (openmc::settings::n_decorrelate_generations > 0) {
+      using namespace openmc;
+      using namespace simulation;
+
+      // Used for consistent eigenvalue calculations and particle IDs + seeds
+      initial_overall_generation =
+        overall_generation() - 1; // off by one correction
+      // Used for consistent eigenvalue calculations
+      initial_n_realizations = n_realizations;
+      initial_gen_per_batch = settings::gen_per_batch;
+      store_initial_k_eigenvalue_quantities();
+    }
 
     // Copy the criticality source bank. We will want to run
     // some criticality generations to decorrelate the batches.
@@ -103,6 +114,9 @@ int openmc_run()
     openmc::simulation::initialized = true;
     openmc::simulation::current_batch = 0;
     openmc::settings::n_inactive = 0;
+    if (openmc::settings::n_decorrelate_generations > 0) {
+      openmc::set_initial_k_eigenvalue_quantities();
+    }
     status = 0;
     openmc_display_header();
 
@@ -330,10 +344,22 @@ int openmc_next_batch(int* status)
   if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       settings::run_mode == RunMode::EIGENVALUE &&
       settings::solver_type == SolverType::MONTE_CARLO) {
-    if (mpi::master)
-      write_message(
-        fmt::format(" Batch {0} decorrelation", simulation::current_batch));
-    decorrelate_kinetic_eigenvalue_batch();
+    if (settings::n_decorrelate_generations > 0) {
+      if (mpi::master)
+        write_message(
+          fmt::format(" Batch {0} decorrelation", simulation::current_batch));
+      // Decorrelate generations
+      settings::gen_per_batch = settings::n_decorrelate_generations;
+      decorrelate_kinetic_eigenvalue_batch();
+    } else {
+      // TODO: add initial_precursor_bank var...
+      simulation::source_bank = simulation::initial_source_bank;
+      simulation::keff = simulation::initial_keff;
+    }
+    // Prepare for loop over time census boundaries, generations are now time
+    // steps
+    settings::gen_per_batch = settings::time_census_boundaries.size();
+
     if (mpi::master)
       write_message(
         fmt::format(" Batch {0} time steps", simulation::current_batch));
@@ -421,7 +447,20 @@ vector<double> k_generation;
 vector<int64_t> work_index;
 
 bool is_initial_condition {true};
+
 bool is_decorrelation_generation {false};
+int initial_overall_generation {0};
+int32_t initial_n_realizations {0};
+int32_t initial_gen_per_batch {1};
+vector<double> initial_k_generation;
+array<double, 2> initial_k_sum {0.0, 0.0};
+double initial_k_col {0.0};
+double initial_k_abs {0.0};
+double initial_k_tra {0.0};
+double initial_k_col_abs {0.0};
+double initial_k_col_tra {0.0};
+double initial_k_abs_tra {0.0};
+
 int current_timestep;
 double current_time {0.0};
 bool source_correction {false};
@@ -461,6 +500,7 @@ void allocate_banks()
         simulation::progeny_per_particle, simulation::work_per_rank);
 
       if (settings::forced_decay) {
+        // TODO: add initial_precursor_bank var...
         simulation::precursor_source_bank.resize(
           simulation::precursors_per_rank);
         init_census_bank(simulation::precursor_shared_bank,
@@ -887,7 +927,11 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
 int overall_generation()
 {
   using namespace simulation;
-  return settings::gen_per_batch * (current_batch - 1) + current_gen;
+  int overall_gen = settings::gen_per_batch * (current_batch - 1) + current_gen;
+  if (is_decorrelation_generation)
+    // Increment the overall generation when decorrelating TD batches
+    overall_gen += initial_overall_generation;
+  return overall_gen;
 }
 
 void calculate_work(
@@ -1140,17 +1184,13 @@ void decorrelate_kinetic_eigenvalue_batch()
   simulation::current_gen = 0;
   simulation::source_bank = simulation::initial_source_bank;
   simulation::is_decorrelation_generation = true;
+
   while (gen_counter < settings::n_decorrelate_generations) {
     // Set source bank as the eigenvalue source bank when kinetic simulation is
     // toggled off
     simulation::current_gen++;
 
     initialize_generation();
-
-    // TODO: more elegant way to do this would be to integrate into
-    // initialize_generation()
-    if (gen_counter == 0)
-      simulation::keff_generation = simulation::initial_keff;
 
     // Start timer for transport
     simulation::time_transport.start();
@@ -1173,11 +1213,39 @@ void decorrelate_kinetic_eigenvalue_batch()
 
   // Save the steady state source bank and keff
   simulation::initial_source_bank = simulation::source_bank;
-  simulation::keff = simulation::initial_keff;
-  // simulation::initial_keff = simulation::keff;
   set_bank_times_to_zero();
 
   simulation::is_decorrelation_generation = false;
+}
+
+void store_initial_k_eigenvalue_quantities()
+{
+  using namespace simulation;
+  auto& gt = simulation::global_tallies;
+
+  initial_k_generation = k_generation;
+  initial_k_col = gt(GlobalTally::K_COLLISION, TallyResult::VALUE);
+  initial_k_abs = gt(GlobalTally::K_ABSORPTION, TallyResult::VALUE);
+  initial_k_tra = gt(GlobalTally::K_TRACKLENGTH, TallyResult::VALUE);
+  initial_k_sum = k_sum;
+  initial_k_col_abs = k_col_abs;
+  initial_k_col_tra = k_col_tra;
+  initial_k_abs_tra = k_abs_tra;
+}
+
+void set_initial_k_eigenvalue_quantities()
+{
+  using namespace simulation;
+  auto& gt = simulation::global_tallies;
+
+  k_generation = initial_k_generation;
+  gt(GlobalTally::K_COLLISION, TallyResult::VALUE) = initial_k_col;
+  gt(GlobalTally::K_ABSORPTION, TallyResult::VALUE) = initial_k_abs;
+  gt(GlobalTally::K_TRACKLENGTH, TallyResult::VALUE) = initial_k_tra;
+  k_sum = initial_k_sum;
+  k_col_abs = initial_k_col_abs;
+  k_col_tra = initial_k_col_tra;
+  k_abs_tra = initial_k_abs_tra;
 }
 
 // EDGE CASE TODO: This will affect generation of precursor particles
