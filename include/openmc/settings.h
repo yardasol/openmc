@@ -214,6 +214,9 @@ extern std::deque<double>
   time_census_boundaries; //!< Time grid boundaries. Used for time census in the
                           //!< Monte Carlo solver, and used as time grid points
                           //!< in the Random Ray solver
+extern int
+  n_decorrelate_generations; //!< Number of generations to run to decorrelate
+                             //!< consecutive batches for TDMC
 extern bool forced_decay; //!< Toggle for forced precursor decay.
 extern int64_t
   n_precursors; //!< Number of precursor particles to simulate in forced decay

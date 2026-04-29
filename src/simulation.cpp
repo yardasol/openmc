@@ -1136,12 +1136,11 @@ void transport_event_based()
 // al. (2018)
 void decorrelate_kinetic_eigenvalue_batch()
 {
-  int n_decorrelate_generations = 3;
   int gen_counter = 0;
   simulation::current_gen = 0;
   simulation::source_bank = simulation::initial_source_bank;
   simulation::is_decorrelation_generation = true;
-  while (gen_counter < n_decorrelate_generations) {
+  while (gen_counter < settings::n_decorrelate_generations) {
     // Set source bank as the eigenvalue source bank when kinetic simulation is
     // toggled off
     simulation::current_gen++;
@@ -1174,7 +1173,8 @@ void decorrelate_kinetic_eigenvalue_batch()
 
   // Save the steady state source bank and keff
   simulation::initial_source_bank = simulation::source_bank;
-  simulation::initial_keff = simulation::k_generation.back();
+  simulation::keff = simulation::initial_keff;
+  // simulation::initial_keff = simulation::keff;
   set_bank_times_to_zero();
 
   simulation::is_decorrelation_generation = false;

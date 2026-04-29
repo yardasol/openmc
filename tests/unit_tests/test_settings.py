@@ -21,6 +21,9 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     s.keff_trigger = {'type': 'std_dev', 'threshold': 0.001}
     s.kinetic_simulation = kinetic_simulation
     if kinetic_simulation:
+        s.n_decorrelate_generations = 3
+        s.forced_decay = True
+        s.precursor_particles = 100
         s.timestep_parameters = {
             'dt': 0.1,
             'n_timesteps': 41,
@@ -121,6 +124,9 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     assert s.keff_trigger == {'type': 'std_dev', 'threshold': 0.001}
     assert s.kinetic_simulation == kinetic_simulation
     if kinetic_simulation:
+        assert s.n_decorrelate_generations == 3
+        assert s.forced_decay == True
+        assert s.precursor_particles == 100
         assert s.timestep_parameters['dt'] == 0.1
         assert s.timestep_parameters['n_timesteps'] == 41
         assert s.timestep_parameters['timestep_units'] == 's'

@@ -108,6 +108,9 @@ class Settings:
         Energy multiplier (in units of :math:`kT`) below which the free gas
         scattering treatment is applied for elastic scattering. If not
         specified, a value of 400.0 is used.
+    forced_decay : bool
+        Indicate whether to use forced precursor decay for kinetic
+        Monte Carlo simulations.
     generations_per_batch : int
         Number of generations per batch
     ifp_n_generation : int
@@ -174,6 +177,9 @@ class Settings:
     no_reduce : bool
         Indicate that all user-defined and global tallies should not be reduced
         across processes in a parallel calculation.
+    n_decorrelate_generations : int
+        Number of generations to run to decorrelate consecutive batches
+        in kinetic Monte Carlo simulations.
     output : dict
         Dictionary indicating what files to output. Acceptable keys are:
 
@@ -189,6 +195,9 @@ class Settings:
        Initial seed for randomly generated plot colors.
     ptables : bool
         Determine whether probability tables are used.
+    precursor_particles : int
+        Number of precursor particles per generation. Only used
+        for kinetic Monte Carlo simulations if 'forced_decay' is True.
     properties_file : PathLike
         Location of the properties file to load cell temperatures/densities
         and material densities
@@ -430,6 +439,9 @@ class Settings:
         self._particles = None
         self._keff_trigger = None
         self._kinetic_simulation = None
+        self._n_decorrelate_generations = None
+        self._forced_decay = None
+        self._precursor_particles = None
         self._timestep_parameters = {}
 
         # Energy mode subelement
@@ -664,6 +676,35 @@ class Settings:
     def kinetic_simulation(self, value: bool):
         cv.check_type('kinetic simulation', value, bool)
         self._kinetic_simulation = value
+
+    @property
+    def n_decorrelate_generations(self) -> int:
+        return self._n_decorrelate_generations
+
+    @n_decorrelate_generations.setter
+    def n_decorrelate_generations(self, n_decorrelate_generations: int):
+        cv.check_type('n_decorrelate_generations', n_decorrelate_generations, Integral)
+        cv.check_greater_than('n_decorrelate_generations', n_decorrelate_generations, 0, True)
+        self._n_decorrelate_generations = n_decorrelate_generations
+
+    @property
+    def forced_decay(self) -> bool:
+        return self._forced_decay
+
+    @forced_decay.setter
+    def forced_decay(self, value: bool):
+        cv.check_type('kinetic simulation', value, bool)
+        self._forced_decay = value
+
+    @property
+    def precursor_particles(self) -> int:
+        return self._precursor_particles
+
+    @precursor_particles.setter
+    def precursor_particles(self, precursor_particles: int):
+        cv.check_type('precursor_particles', precursor_particles, Integral)
+        cv.check_greater_than('precursor_particles', precursor_particles, 0)
+        self._precursor_particles = precursor_particles
 
     @property
     def timestep_parameters(self) -> dict:
@@ -1612,6 +1653,21 @@ class Settings:
             elem = ET.SubElement(root, "kinetic_simulation")
             elem.text = str(self._kinetic_simulation).lower()
 
+    def _create_n_decorrelate_generations_subelement(self, root):
+        if self._n_decorrelate_generations is not None:
+            element = ET.SubElement(root, "n_decorrelate_generations")
+            element.text = str(self._n_decorrelate_generations)
+
+    def _create_forced_decay_subelement(self, root):
+        if self._forced_decay is not None:
+            elem = ET.SubElement(root, "forced_decay")
+            elem.text = str(self._forced_decay).lower()
+
+    def _create_precursor_particles_subelement(self, root):
+        if self._precursor_particles is not None:
+            element = ET.SubElement(root, "precursor_particles")
+            element.text = str(self._precursor_particles)
+
     def _create_timestep_parameters_subelement(self, root):
         if self._timestep_parameters:
             element = ET.SubElement(root, "timestep_parameters")
@@ -2202,6 +2258,21 @@ class Settings:
         if text is not None:
             self.kinetic_simulation = text in ('true', '1')
 
+    def _n_decorrelate_generations_from_xml_element(self, root):
+        text = get_text(root, 'n_decorrelate_generations')
+        if text is not None:
+            self.n_decorrelate_generations = int(text)
+
+    def _forced_decay_from_xml_element(self, root):
+        text = get_text(root, 'forced_decay')
+        if text is not None:
+            self.forced_decay = text in ('true', '1')
+
+    def _precursor_particles_from_xml_element(self, root):
+        text = get_text(root, 'precursor_particles')
+        if text is not None:
+            self.precursor_particles = int(text)
+
     def _timestep_parameters_from_xml_element(self, root):
         elem = root.find('timestep_parameters')
         if elem is not None:
@@ -2680,6 +2751,9 @@ class Settings:
         self._create_generations_per_batch_subelement(element)
         self._create_keff_trigger_subelement(element)
         self._create_kinetic_simulation_subelement(element)
+        self._create_n_decorrelate_generations_subelement(element)
+        self._create_precursor_particles_subelement(element)
+        self._create_forced_decay_subelement(element)
         self._create_timestep_parameters_subelement(element)
         self._create_source_subelement(element, mesh_memo)
         self._create_output_subelement(element)
@@ -2801,6 +2875,9 @@ class Settings:
         settings._generations_per_batch_from_xml_element(elem)
         settings._keff_trigger_from_xml_element(elem)
         settings._kinetic_simulation_from_xml_element(elem)
+        settings._n_decorrelate_generations_from_xml_element(elem)
+        settings._precursor_particles_from_xml_element(elem)
+        settings._forced_decay_from_xml_element(elem)
         settings._timestep_parameters_from_xml_element(elem)
         settings._source_from_xml_element(elem, meshes)
         settings._volume_calcs_from_xml_element(elem)
@@ -2859,7 +2936,7 @@ class Settings:
         settings._use_decay_photons_from_xml_element(elem)
         settings._source_rejection_fraction_from_xml_element(elem)
         settings._free_gas_threshold_from_xml_element(elem)
-        settings._time_census_boundaires_from_xml_element(elem)
+        settings._time_census_boundaries_from_xml_element(elem)
 
         return settings
 

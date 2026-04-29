@@ -160,8 +160,9 @@ double weight_survive {1.0};
 int n_timesteps {1};
 double dt {0};
 std::deque<double> time_census_boundaries {INFTY};
-int64_t n_precursors {0};
+int n_decorrelate_generations {3};
 bool forced_decay {false};
+int64_t n_precursors {-1};
 
 } // namespace settings
 
@@ -287,9 +288,18 @@ void get_run_parameters(pugi::xml_node node_base)
       std::move(
         begin(t_bounds), end(t_bounds), back_inserter(time_census_boundaries));
     }
-    // Biased decay is only checked for if kinetic_simulation is on
+    // Forced decay is only checked for if kinetic_simulation is on
     if (check_for_node(node_base, "forced_decay")) {
-      get_node_value_bool(node_base, "forced_decay");
+      forced_decay = get_node_value_bool(node_base, "forced_decay");
+      n_precursors =
+        std::stoll(get_node_value(node_base, "precursor_particles"));
+      if (n_precursors <= 0)
+        fatal_error(
+          "Number of precursors for forced decay must be greater than zero.");
+    }
+    if (check_for_node(node_base, "n_decorrelate_generations")) {
+      n_decorrelate_generations =
+        get_node_value_bool(node_base, "n_decorrelate_generations");
     }
     // TODO REPLACE TIMESTEP PARAMETERS WITH TIME FILTER TIME GRID
     // use model::time_grid (see tally.cpp, add to time grid)
