@@ -271,11 +271,11 @@ void get_run_parameters(pugi::xml_node node_base)
   // Kinetic variables
   if (check_for_node(node_base, "kinetic_simulation")) {
     kinetic_simulation = get_node_value_bool(node_base, "kinetic_simulation");
-    if (run_mode != RunMode::EIGENVALUE && run_mode != RunMode::FIXED_SOURCE) {
+    if (run_mode != RunMode::EIGENVALUE) {
       fatal_error(
         "Unsupported run mode selected for kinetic simulation. Kinetic "
         "simulations currently only support run mode based on an eigenvalue "
-        "or fixed source simulation establishing an initial condition.");
+        "simulation establishing an initial condition.");
     }
   }
 
@@ -803,6 +803,12 @@ void read_settings_xml(pugi::xml_node root)
     branchless_collision = get_node_value_bool(root, "branchless_collision");
     warning("Branchless collision will create large variations in particle "
             " weights. Weight windows are strongly recommended.");
+  }
+
+  if (kinetic_simulation && !branchless_collision) {
+    warning(
+      "Running kinetic Monte Carlo simulation without branchless collision. "
+      "Simulation may not finish due to large number of branching histories.");
   }
 
   // Survival biasing
