@@ -340,7 +340,6 @@ int openmc_next_batch(int* status)
 
   // Run some criticality generations to decorrelate batches for eigenvalue
   // simulations
-  // TODO: add print statement to indicate decorrelation of this batch?
   if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       settings::run_mode == RunMode::EIGENVALUE &&
       settings::solver_type == SolverType::MONTE_CARLO) {
@@ -355,6 +354,8 @@ int openmc_next_batch(int* status)
       // TODO: add initial_precursor_bank var...
       simulation::source_bank = simulation::initial_source_bank;
       simulation::keff = simulation::initial_keff;
+
+      set_bank_times_to_zero();
     }
     // Prepare for loop over time census boundaries, generations are now time
     // steps
@@ -1211,8 +1212,10 @@ void decorrelate_kinetic_eigenvalue_batch()
     gen_counter++;
   }
 
-  // Save the steady state source bank and keff
+  // Save the decorrelated source bank
   simulation::initial_source_bank = simulation::source_bank;
+
+  // Force all particles to have a time of zero
   set_bank_times_to_zero();
 
   simulation::is_decorrelation_generation = false;

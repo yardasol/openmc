@@ -299,7 +299,10 @@ void get_run_parameters(pugi::xml_node node_base)
     }
     if (check_for_node(node_base, "n_decorrelate_generations")) {
       n_decorrelate_generations =
-        get_node_value_bool(node_base, "n_decorrelate_generations");
+        std::stoll(get_node_value(node_base, "n_decorrelate_generations"));
+      if (n_decorrelate_generations < 0)
+        fatal_error("Number of decorrelation generations for kinetic "
+                    "simulations must be greater than or equal to zero.");
     }
     // TODO REPLACE TIMESTEP PARAMETERS WITH TIME FILTER TIME GRID
     // use model::time_grid (see tally.cpp, add to time grid)

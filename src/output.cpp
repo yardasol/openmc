@@ -384,6 +384,10 @@ void print_columns()
   if (settings::entropy_on) {
     fmt::print("  Bat./Gen.      k       Entropy         Average k \n"
                "  =========   ========   ========   ====================\n");
+  } else if (!simulation::is_initial_condition &&
+             settings::n_decorrelate_generations == 0) {
+    fmt::print("  Bat./Gen.\n"
+               "  =========\n");
   } else {
     fmt::print("  Bat./Gen.      k            Average k\n"
                "  =========   ========   ====================\n");
