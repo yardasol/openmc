@@ -55,14 +55,6 @@ int openmc_run()
   openmc::simulation::time_total.start();
   openmc_simulation_init();
 
-  // Kinetic fixed source simulations can start immediately
-  if (openmc::settings::kinetic_simulation &&
-      openmc::settings::run_mode == openmc::RunMode::FIXED_SOURCE) {
-    openmc::simulation::is_initial_condition = false;
-    // TODO: add fixed source bank...
-    // openmc::simulation::initial_source_bank = ...
-  }
-
   // Ensure that a batch isn't executed in the case that the maximum number of
   // batches has already been run in a restart statepoint file
   int status = 0;
