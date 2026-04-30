@@ -404,14 +404,23 @@ void print_generation()
   // write out batch/generation and generation k-effective
   auto batch_and_gen = std::to_string(simulation::current_batch) + "/" +
                        std::to_string(simulation::current_gen);
-  fmt::print("  {:>9}   {:8.5f}", batch_and_gen, simulation::k_generation[idx]);
+  if (!simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation)
+    // Don't print k_generation during time steps
+    fmt::print("  {:>9}           ", batch_and_gen);
+  else
+    fmt::print(
+      "  {:>9}   {:8.5f}", batch_and_gen, simulation::k_generation[idx]);
 
   // write out entropy info
   if (settings::entropy_on) {
     fmt::print("   {:8.5f}", simulation::entropy[idx]);
   }
 
-  if (n > 1) {
+  // Only print average k during steady state simulations, or when decorrelating
+  // k
+  if (n > 1 && simulation::is_initial_condition ||
+      (n > 0 && simulation::is_decorrelation_generation)) {
     fmt::print("   {:8.5f} +/-{:8.5f}", simulation::keff, simulation::keff_std);
   }
   fmt::print("\n");
