@@ -106,6 +106,9 @@ int openmc_run()
     // Copy the criticality source bank. We will want to run
     // some criticality generations to decorrelate the batches.
     openmc::simulation::initial_source_bank = openmc::simulation::source_bank;
+    if (openmc::settings::forced_decay)
+      openmc::simulation::initial_precursor_source_bank =
+        openmc::simulation::precursor_source_bank;
 
     // No need to reinitialize every data structure. We can just reset global
     // vars and set the initialized flag back to true
@@ -351,9 +354,12 @@ int openmc_next_batch(int* status)
       settings::gen_per_batch = settings::n_decorrelate_generations;
       decorrelate_kinetic_eigenvalue_batch();
     } else {
-      // TODO: add initial_precursor_bank var...
       simulation::source_bank = simulation::initial_source_bank;
       simulation::keff = simulation::initial_keff;
+
+      if (settings::forced_decay)
+        simulation::precursor_source_bank =
+          simulation::initial_precursor_source_bank;
 
       set_bank_times_to_zero();
     }
@@ -501,8 +507,9 @@ void allocate_banks()
         simulation::progeny_per_particle, simulation::work_per_rank);
 
       if (settings::forced_decay) {
-        // TODO: add initial_precursor_bank var...
         simulation::precursor_source_bank.resize(
+          simulation::precursors_per_rank);
+        simulation::initial_precursor_source_bank.resize(
           simulation::precursors_per_rank);
         init_census_bank(simulation::precursor_shared_bank,
           simulation::precursors_per_particle, simulation::precursors_per_rank);
@@ -1184,6 +1191,9 @@ void decorrelate_kinetic_eigenvalue_batch()
   int gen_counter = 0;
   simulation::current_gen = 0;
   simulation::source_bank = simulation::initial_source_bank;
+  if (settings::forced_decay)
+    simulation::precursor_source_bank =
+      simulation::initial_precursor_source_bank;
   simulation::is_decorrelation_generation = true;
 
   while (gen_counter < settings::n_decorrelate_generations) {
@@ -1214,6 +1224,9 @@ void decorrelate_kinetic_eigenvalue_batch()
 
   // Save the decorrelated source bank
   simulation::initial_source_bank = simulation::source_bank;
+  if (settings::forced_decay)
+    simulation::initial_precursor_source_bank =
+      simulation::precursor_source_bank;
 
   // Force all particles to have a time of zero
   set_bank_times_to_zero();
