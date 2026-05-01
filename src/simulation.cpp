@@ -145,8 +145,8 @@ int openmc_simulation_init()
 
   // Create precursor work as well
   if (settings::forced_decay)
-    calculate_work(settings::n_precursors, simulation::precursors_per_rank,
-      simulation::precursor_index);
+    calculate_work(settings::n_precursor_particles,
+      simulation::precursors_per_rank, simulation::precursor_index);
 
   // Allocate source, fission and surface source banks.
   allocate_banks();
@@ -765,7 +765,7 @@ void finalize_generation()
 
       // Distribute also precursors source sites
       synchronize_bank(simulation::precursor_shared_bank,
-        simulation::precursor_source_bank, settings::n_precursors,
+        simulation::precursor_source_bank, settings::n_precursor_particles,
         simulation::precursors_per_rank, simulation::precursor_index);
     }
   }
@@ -870,7 +870,7 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
     // Adjust the particle seed by the number of precursor particles simulated
     // to prevent duplicate seeds
     particle_seed += (simulation::total_gen + overall_generation() - 1) *
-                     settings::n_precursors;
+                     settings::n_precursor_particles;
 
   init_particle_seeds(particle_seed, p.seeds());
 

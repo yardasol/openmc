@@ -1388,7 +1388,7 @@ void create_precursor_particle(
 
   // Set parent and precursor IDs
   precursor_site.parent_id = p.id();
-  precursor_site.progeny_id = p.n_precursors()++;
+  precursor_site.progeny_id = p.n_precursor_progeny()++;
   precursor_site.time_bound_idx = p.time_bound_idx() + 1;
 
   // Add precursor particle to precursor bank
@@ -1399,7 +1399,7 @@ void create_precursor_particle(
             "sites created "
             "in this time bin will not be banked. Results may be "
             "non-deterministic.");
-    p.n_precursors()--;
+    p.n_precursor_progeny()--;
   }
 }
 

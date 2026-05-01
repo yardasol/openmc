@@ -571,7 +571,7 @@ private:
   double ww_factor_ {0.0};
 
   int64_t n_progeny_ {0};
-  int64_t n_precursors_ {0};
+  int64_t n_precursor_progeny_ {0};
 
 public:
   //----------------------------------------------------------------------------
@@ -767,7 +767,7 @@ public:
   int64_t& n_progeny() { return n_progeny_; }
 
   // Number of progeny produced by this particle
-  int64_t& n_precursors() { return n_precursors_; }
+  int64_t& n_precursor_progeny() { return n_precursor_progeny_; }
 
   //! Gets the pointer to the particle's current PRN seed
   uint64_t* current_seed() { return seeds_ + stream_; }

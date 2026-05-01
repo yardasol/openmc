@@ -601,7 +601,7 @@ void Particle::event_death()
     simulation::progeny_per_particle[offset] = n_progeny();
     if (settings::forced_decay) {
       int64_t offset = id() - 1 - simulation::precursor_index[mpi::rank];
-      simulation::precursors_per_particle[offset] = n_precursors();
+      simulation::precursors_per_particle[offset] = n_precursor_progeny();
     }
   }
 }

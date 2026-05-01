@@ -162,7 +162,7 @@ double dt {0};
 std::deque<double> time_census_boundaries {INFTY};
 int n_decorrelate_generations {3};
 bool forced_decay {false};
-int64_t n_precursors {-1};
+int64_t n_precursor_particles {-1};
 
 } // namespace settings
 
@@ -291,9 +291,9 @@ void get_run_parameters(pugi::xml_node node_base)
     // Forced decay is only checked for if kinetic_simulation is on
     if (check_for_node(node_base, "forced_decay")) {
       forced_decay = get_node_value_bool(node_base, "forced_decay");
-      n_precursors =
+      n_precursor_particles =
         std::stoll(get_node_value(node_base, "precursor_particles"));
-      if (n_precursors <= 0)
+      if (n_precursor_particles <= 0)
         fatal_error(
           "Number of precursors for forced decay must be greater than zero.");
     }
