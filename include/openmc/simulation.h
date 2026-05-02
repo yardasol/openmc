@@ -81,8 +81,8 @@ extern double initial_keff;    // !< Storage for initial keff for kinetic
                                // eigenvalue simulations.
 
 // Precursor Particle Variables
-extern int64_t precursors_per_rank; //!< number of precursors per MPI rank
-extern vector<int64_t> precursor_index;
+extern int64_t precursor_work_per_rank; //!< number of precursors per MPI rank
+extern vector<int64_t> precursor_work_index;
 
 } // namespace simulation
 

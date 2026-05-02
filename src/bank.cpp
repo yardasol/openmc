@@ -66,10 +66,10 @@ SharedArray<SourceSite> precursor_shared_bank;
 // used to efficiently sort the census bank after each iteration.
 vector<int64_t> progeny_per_particle;
 
-// Each entry in this vector corresponds to the number of precursors produced
-// this generation for the particle located at that index. This vector is
-// used to efficiently sort the precursor bank after each time step.
-vector<int64_t> precursors_per_particle;
+// Each entry in this vector corresponds to the number of precursors particles
+// produced this generation for the particle located at that index. This vector
+// is used to efficiently sort the precursor bank after each time step.
+vector<int64_t> precursor_progeny_per_particle;
 
 } // namespace simulation
 
@@ -91,7 +91,7 @@ void free_memory_bank()
   simulation::time_census_bank.clear();
   simulation::precursor_source_bank.clear();
   simulation::precursor_shared_bank.clear();
-  simulation::precursors_per_particle.clear();
+  simulation::precursor_progeny_per_particle.clear();
 }
 
 void init_census_bank(SharedArray<SourceSite>& census_bank,

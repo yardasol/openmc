@@ -44,7 +44,7 @@ extern SharedArray<SourceSite> precursor_shared_bank;
 
 extern vector<int64_t> progeny_per_particle;
 
-extern vector<int64_t> precursors_per_particle;
+extern vector<int64_t> precursor_progeny_per_particle;
 
 } // namespace simulation
 
