@@ -1308,7 +1308,6 @@ void sample_branchless_fission(
   double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
   double beta = nu_d / nu_t;
 
-  bool create_precursor = false;
   double decay_time = 0.;
   double decay_rate = 0.;
   int dg = 0;

@@ -84,7 +84,6 @@ void calculate_generation_keff()
 void calculate_average_keff()
 {
   // Determine overall generation and number of active generations
-  // TODO: add control flow to allow decorrelation simulations to update this
   int i = overall_generation() - 1;
   int n;
   if (simulation::current_batch > settings::n_inactive) {
