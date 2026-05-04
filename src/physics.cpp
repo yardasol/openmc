@@ -1176,10 +1176,8 @@ void sample_fission_neutron(
   // Determine total nu, delayed nu, and delayed neutron fraction
   const auto& nuc {data::nuclides[i_nuclide]};
   double nu_t = nuc->nu(E_in, Nuclide::EmissionMode::total);
-  double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
-  double beta = nu_d / nu_t;
-  double delayed_yield = 0.;
-  double decay_rate = 0.;
+  double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+  double beta = nu_d_tot / nu_t;
   double decay_time = 0.;
 
   if (prn(seed) < beta) {
@@ -1187,11 +1185,11 @@ void sample_fission_neutron(
     // DELAYED NEUTRON SAMPLED
 
     // sampled delayed precursor group
-    int group = sample_delay_group(i_nuclide, rx, E_in, seed, delayed_yield);
+    int group = sample_delay_group(i_nuclide, rx, E_in, seed);
     site->delayed_group = group;
 
     // Sample time of emission based on decay constant of precursor
-    decay_rate = rx.products_[site->delayed_group].decay_rate_;
+    double decay_rate = rx.products_[site->delayed_group].decay_rate_;
     decay_time = std::log(prn(p.current_seed())) / decay_rate;
     site->time -= decay_time;
   } else {
@@ -1203,29 +1201,34 @@ void sample_fission_neutron(
   }
 
   // sample from prompt neutron energy distribution
-  int dg = site->delayed_group;
-  double mu = sample_fission_neutron_energy(i_nuclide, rx, dg, E_in, site->E, seed);
+  double mu = sample_fission_neutron_energy(
+    i_nuclide, rx, site->delayed_group, E_in, site->E, seed);
 
   // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
   site->u = rotate_angle(p.u(), mu, nullptr, seed);
 
-  if (settings::kinetic_simulation && site->delayed_group > 0) {
+  if (settings::kinetic_simulation) {
     // Create initial precursor particle if forced decay is on (which can only
     // be the case for a kinetic simulation) and we are in an initial condition
-    if (simulation::is_initial_condition && settings::forced_decay) {
+    // TODO: Move this to it's own routine inside of create_fission_sites so we
+    // don't stack precursor particles on top of each other?
+    if ((simulation::is_initial_condition ||
+          simulation::is_decorrelation_generation) &&
+        settings::forced_decay) {
       double equilibrium_wgt;
       // Eigenvalue equilibrium weight from "A time-dependent Monte Carlo
       // simulation for nuclear reactor dynamics using GPUs", B. Molnar (2019)
-      const auto& micro {p.neutron_xs(i_nuclide)};
-      double beta_i = beta * delayed_yield;
-      int K = nuc->n_precursor_;
-      equilibrium_wgt = p.wgt() * K * beta_i * micro.nu_fission /
-                        (simulation::keff * decay_rate) * p.speed();
-
-      const double eq_wgt = equilibrium_wgt;
+      int group = sample_delay_group(i_nuclide, rx, E_in, seed);
+      double decay_rate = rx.products_[group].decay_rate_;
+      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+      double sigma_f = p.neutron_xs(i_nuclide).fission;
+      double N = model::materials[p.material()]->density();
+      const double eq_wgt = p.wgt() * nu_d * sigma_f * N /
+                            (simulation::keff * decay_rate) * p.speed();
       create_precursor_particle(rx, p, eq_wgt);
     }
-
+    // TODO: delete the below? Odds are we won't run TDMC without branchless
+    // collison or forced decay...
     double current_time_bound =
       settings::time_census_boundaries[p.time_bound_idx()];
     // Bank delayed neutron if it falls outside of the time boundary
@@ -1241,7 +1244,7 @@ void sample_fission_neutron(
 }
 
 int sample_delay_group(
-  int i_nuclide, const Reaction& rx, double E_in, uint64_t* seed, double& yield)
+  int i_nuclide, const Reaction& rx, double E_in, uint64_t* seed)
 {
   const auto& nuc {data::nuclides[i_nuclide]};
   double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
@@ -1252,7 +1255,7 @@ int sample_delay_group(
   int group;
   for (group = 1; group < nuc->n_precursor_; ++group) {
     // determine delayed neutron precursor yield for group j
-    yield = (*rx.products_[group].yield_)(E_in);
+    double yield = (*rx.products_[group].yield_)(E_in);
 
     // Check if this group is sampled
     prob += yield;
@@ -1305,19 +1308,18 @@ void sample_branchless_fission(
   // Determine total nu, delayed nu, and delayed neutron fraction
   const auto& nuc {data::nuclides[i_nuclide]};
   double nu_t = nuc->nu(E_in, Nuclide::EmissionMode::total);
-  double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
-  double beta = nu_d / nu_t;
+  double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+  double beta = nu_d_tot / nu_t;
 
   double decay_time = 0.;
   double decay_rate = 0.;
   int dg = 0;
-  double delayed_yield;
   if (prn(seed) < beta) {
     // ====================================================================
     // DELAYED NEUTRON SAMPLED
 
     // Sample delayed precursor group
-    int dg = sample_delay_group(i_nuclide, rx, E_in, seed, delayed_yield);
+    int dg = sample_delay_group(i_nuclide, rx, E_in, seed);
 
     // Sample time of emission based on decay constant of precursor
     decay_rate = rx.products_[dg].decay_rate_;
@@ -1337,6 +1339,7 @@ void sample_branchless_fission(
 
   double current_time_bound =
     settings::time_census_boundaries[p.time_bound_idx()];
+  // TODO: only allow these to be created as if dg > 0?
   if (settings::kinetic_simulation &&
       (p.time() - decay_time >= current_time_bound)) {
     // Determine if particle should continue simulation as delayed neutron
@@ -1363,6 +1366,7 @@ void create_precursor_particle(
   SourceSite precursor_site;
   precursor_site.r = p.r();
   precursor_site.particle = ParticleType::neutron();
+  // TODO: this is initializing as zero on the eigenvalue simulation...
   precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
   precursor_site.time_born =
     p.time(); // Used for weight adjustment on forced decay
