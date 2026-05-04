@@ -162,7 +162,7 @@ double dt {0};
 std::deque<double> time_census_boundaries {INFTY};
 int n_decorrelate_generations {3};
 bool forced_decay {false};
-int64_t n_precursor_particles {-1};
+int64_t n_precursor_particles {0};
 
 } // namespace settings
 

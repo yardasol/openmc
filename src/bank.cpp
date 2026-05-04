@@ -71,6 +71,8 @@ vector<int64_t> progeny_per_particle;
 // is used to efficiently sort the precursor bank after each time step.
 vector<int64_t> precursor_progeny_per_particle;
 
+vector<int64_t> time_progeny_per_particle;
+
 } // namespace simulation
 
 //==============================================================================
@@ -89,6 +91,7 @@ void free_memory_bank()
   simulation::ifp_fission_delayed_group_bank.clear();
   simulation::ifp_fission_lifetime_bank.clear();
   simulation::time_census_bank.clear();
+  simulation::time_progeny_per_particle.clear();
   simulation::precursor_source_bank.clear();
   simulation::precursor_shared_bank.clear();
   simulation::precursor_progeny_per_particle.clear();
@@ -222,6 +225,8 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
   // sites were created, so overallocate by a factor of 3
   int64_t index_temp = 0;
 
+  // TODO: this is way overallocated for time census bank I think...
+  // We know at most one census site will exist per particle
   vector<SourceSite> temp_sites(3 * work_per_rank);
 
   // Temporary banks for IFP

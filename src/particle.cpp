@@ -597,12 +597,27 @@ void Particle::event_death()
   // This data will be used to efficiently sort the fission bank.
   if (settings::run_mode == RunMode::EIGENVALUE ||
       settings::kinetic_simulation) {
-    int64_t offset = id() - 1 - simulation::work_index[mpi::rank];
-    simulation::progeny_per_particle[offset] = n_progeny();
+    // TODO: this may break when simulating particles spawned from precursors...
+    // need to check
+    if (!simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation) {
+      int64_t offset = id() - 1 - simulation::combined_work_index[mpi::rank];
+      simulation::time_progeny_per_particle[offset] = n_progeny();
+    } else {
+      int64_t offset = id() - 1 - simulation::work_index[mpi::rank];
+      simulation::progeny_per_particle[offset] = n_progeny();
+    }
     if (settings::forced_decay) {
-      int64_t offset = id() - 1 - simulation::precursor_work_index[mpi::rank];
-      simulation::precursor_progeny_per_particle[offset] =
-        n_precursor_progeny();
+      if (!simulation::is_initial_condition &&
+          !simulation::is_decorrelation_generation) {
+        int64_t offset = id() - 1 - simulation::combined_work_index[mpi::rank];
+        simulation::precursor_progeny_per_particle[offset] =
+          n_precursor_progeny();
+      } else {
+        int64_t offset = id() - 1 - simulation::work_index[mpi::rank];
+        simulation::precursor_progeny_per_particle[offset] =
+          n_precursor_progeny();
+      }
     }
   }
 }
