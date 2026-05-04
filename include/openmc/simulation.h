@@ -148,6 +148,8 @@ void set_initial_k_eigenvalue_quantities();
 
 void set_bank_times_to_zero();
 
+void forced_precursor_decay(Particle& p, int64_t i_work);
+
 } // namespace openmc
 
 #endif // OPENMC_SIMULATION_H

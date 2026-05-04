@@ -10,6 +10,7 @@
 #include "openmc/geometry_aux.h"
 #include "openmc/ifp.h"
 #include "openmc/material.h"
+#include "openmc/math_functions.h"
 #include "openmc/message_passing.h"
 #include "openmc/nuclide.h"
 #include "openmc/output.h"
@@ -775,7 +776,7 @@ void finalize_generation()
       // IDs) so as to allow for reproducibility regardless of which order
       // particles are run in.
       sort_census_bank(simulation::time_census_bank,
-        simulation::progeny_per_particle, simulation::combined_work_index);
+        simulation::time_progeny_per_particle, simulation::combined_work_index);
 
       // Distribute time census bank across processors evenly
       synchronize_bank(simulation::time_census_bank, simulation::source_bank,
@@ -842,23 +843,6 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
     SourceSite precursor_site =
       simulation::precursor_source_bank[index_source - 1];
     p.from_source(&precursor_site);
-
-    // FORCED DECAY
-
-    // Sample decay time
-    double dt = settings::time_census_boundaries[p.time_bound_idx()] - p.time();
-    p.time() += dt * prn(p.current_seed());
-
-    // Weight adjustment
-    dt = p.time() - precursor_site.time_born;
-    double exp = std::exp(-1.0 * dt * precursor_site.decay_rate);
-    p.wgt() *= 1 - exp;
-    p.wgt_last() = p.wgt();
-    precursor_site.wgt *= exp;
-    precursor_site.time += settings::time_census_boundaries[p.time_bound_idx()];
-
-    // Add this precursor source to the shared precursor bank
-    simulation::precursor_shared_bank.thread_safe_append(precursor_site);
   }
   // TODO: this is for IFP, disable for kinetic simulations
   p.current_work() = index_source;
@@ -1144,12 +1128,14 @@ void transport_history_based()
   }
   // Only use forced decay for the transient part of a kinetic simulation
   if (settings::kinetic_simulation && settings::forced_decay &&
-      !simulation::is_initial_condition) {
+      !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
 #pragma omp parallel for schedule(runtime)
     for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
          ++i_work) {
       Particle p;
       initialize_history(p, i_work, true);
+      forced_precursor_decay(p, i_work);
       transport_history_based_single_particle(p);
     }
   }
@@ -1306,6 +1292,39 @@ void set_bank_times_to_zero()
       }
     }
   }
+}
+
+void forced_precursor_decay(Particle& p, int64_t i_work)
+{
+  SourceSite precursor_site = simulation::precursor_source_bank[i_work - 1];
+  // Sample decay time
+  double dt = settings::time_census_boundaries[p.time_bound_idx()] - p.time();
+  p.time() += dt * prn(p.current_seed());
+
+  // TODO:
+  // Sample delay group
+
+  // Sample energy out
+  double E_in =
+    precursor_site.E; // Banked energy of incoming fissioning neutron
+  double E_out;
+  double mu;
+  uint64_t* seed = p.current_seed();
+  precursor_site.decay_reaction->sample(E_in, E_out, mu, seed);
+
+  // Apply angle out
+  p.u() = rotate_angle(p.u(), mu, nullptr, seed);
+
+  // Weight adjustment
+  dt = p.time() - precursor_site.time_born;
+  double exp = std::exp(-1.0 * dt * precursor_site.decay_rate);
+  p.wgt() *= 1 - exp;
+  p.wgt_last() = p.wgt();
+  precursor_site.wgt *= exp;
+  precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
+
+  // Add this precursor source to the shared precursor bank
+  simulation::precursor_shared_bank.thread_safe_append(precursor_site);
 }
 
 } // namespace openmc

@@ -6,6 +6,7 @@
 #include "openmc/particle_type.h"
 #include "openmc/position.h"
 #include "openmc/random_lcg.h"
+#include "openmc/reaction_product.h"
 #include "openmc/tallies/filter_match.h"
 #include "openmc/vector.h"
 
@@ -55,6 +56,7 @@ struct SourceSite {
   int64_t parent_id;
   int64_t progeny_id;
   int time_bound_idx {0};
+  const ReactionProduct* decay_reaction;
 };
 
 struct CollisionTrackSite {
