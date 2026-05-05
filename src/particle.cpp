@@ -102,6 +102,9 @@ bool Particle::create_secondary(
   bank.E = settings::run_CE ? E : g();
   bank.time = time();
   bank_second_E() += bank.E;
+  if (!simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation)
+    bank.time_bound_idx = time_bound_idx();
   return true;
 }
 
@@ -122,6 +125,10 @@ void Particle::split(double wgt)
     int surf_id = model::surfaces[surface_index()]->id_;
     bank.surf_id = (surface() > 0) ? surf_id : -surf_id;
   }
+
+  if (!simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation)
+    bank.time_bound_idx = time_bound_idx();
 }
 
 void Particle::from_source(const SourceSite* src)
@@ -247,7 +254,6 @@ void Particle::event_advance()
 {
   // Find the distance to the nearest boundary
   boundary() = distance_to_boundary(*this);
-
   // Sample a distance to collision
   if (type() == ParticleType::electron() ||
       type() == ParticleType::positron()) {

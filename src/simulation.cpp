@@ -370,9 +370,10 @@ int openmc_next_batch(int* status)
       if (settings::forced_decay)
         simulation::precursor_source_bank =
           simulation::initial_precursor_source_bank;
-
-      set_bank_times_to_zero();
     }
+    // Force all particles to have a time of zero
+    set_bank_times_to_zero();
+
     // Prepare for loop over time census boundaries, generations are now time
     // steps
     settings::gen_per_batch = settings::time_census_boundaries.size();
@@ -1238,9 +1239,6 @@ void decorrelate_kinetic_eigenvalue_batch()
     simulation::initial_precursor_source_bank =
       simulation::precursor_source_bank;
 
-  // Force all particles to have a time of zero
-  set_bank_times_to_zero();
-
   simulation::is_decorrelation_generation = false;
 }
 
@@ -1322,6 +1320,7 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
   p.wgt_last() = p.wgt();
   precursor_site.wgt *= exp;
   precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
+  precursor_site.time_bound_idx += 1;
 
   // Add this precursor source to the shared precursor bank
   simulation::precursor_shared_bank.thread_safe_append(precursor_site);
