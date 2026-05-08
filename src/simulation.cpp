@@ -790,7 +790,6 @@ void finalize_generation()
       sort_census_bank(simulation::precursor_shared_bank,
         simulation::precursor_progeny_per_particle,
         simulation::combined_work_index);
-
       // Distribute also precursors source sites
       synchronize_bank(simulation::precursor_shared_bank,
         simulation::precursor_source_bank, settings::n_precursor_particles,
@@ -928,8 +927,11 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
   }
 
 // Add particle's starting weight to count for normalizing tallies later
+  if (simulation::is_initial_condition ||
+      simulation::is_decorrelation_generation) {
 #pragma omp atomic
-  simulation::total_weight += p.wgt();
+    simulation::total_weight += p.wgt();
+  }
 
   // Force calculation of cross-sections by setting last energy to zero
   if (settings::run_CE) {
@@ -1121,6 +1123,13 @@ void transport_history_based_single_particle(Particle& p)
 
 void transport_history_based()
 {
+  // Zero out precursor_progeny_per_particle
+  if (settings::kinetic_simulation && settings::forced_decay &&
+      !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    std::fill(simulation::precursor_progeny_per_particle.begin(),
+      simulation::precursor_progeny_per_particle.end(), 0);
+  }
 #pragma omp parallel for schedule(runtime)
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     Particle p;
@@ -1208,6 +1217,7 @@ void decorrelate_kinetic_eigenvalue_batch()
   simulation::is_decorrelation_generation = true;
 
   while (gen_counter < settings::n_decorrelate_generations) {
+    simulation::total_weight = 0.0;
     // Set source bank as the eigenvalue source bank when kinetic simulation is
     // toggled off
     simulation::current_gen++;
@@ -1300,7 +1310,8 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
   p.time() += dt * prn(p.current_seed());
 
   // TODO:
-  // Sample delay group
+  // Sample delay group (to be implemented with combined precursor particles
+  // representing all delay groups)
 
   // Sample energy out
   double E_in =
@@ -1316,11 +1327,23 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
   // Weight adjustment
   dt = p.time() - precursor_site.time_born;
   double exp = std::exp(-1.0 * dt * precursor_site.decay_rate);
-  p.wgt() *= 1 - exp;
+  p.wgt() = precursor_site.wgt * (1 - exp);
   p.wgt_last() = p.wgt();
+
   precursor_site.wgt *= exp;
   precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
   precursor_site.time_bound_idx += 1;
+
+  // Progeny vector adjustment to allow sorting algorithm to function properly
+  // This happens after all banked neutrons have already been transported, so
+  // we need to adjust the precursor_progeny_per_particle when adding the
+  // precursor site to the shared bank.
+
+  int64_t offset =
+    precursor_site.parent_id - 1 - simulation::work_index[mpi::rank];
+  precursor_site.progeny_id =
+    simulation::precursor_progeny_per_particle[offset];
+  simulation::precursor_progeny_per_particle[offset] += 1;
 
   // Add this precursor source to the shared precursor bank
   simulation::precursor_shared_bank.thread_safe_append(precursor_site);

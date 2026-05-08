@@ -1439,7 +1439,17 @@ void create_precursor_particle(
 
   // Set parent and precursor IDs
   precursor_site.parent_id = p.id();
-  precursor_site.progeny_id = p.n_precursor_progeny()++;
+  if (!simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    int64_t offset = p.id() - 1 - simulation::work_index[mpi::rank];
+    // Consistent ordering of precursor sites when using forced decay, which may
+    // have duplicate parent_ids that are not captured.
+    precursor_site.progeny_id =
+      simulation::precursor_progeny_per_particle[offset] +
+      p.n_precursor_progeny()++;
+  } else {
+    precursor_site.progeny_id = p.n_precursor_progeny()++;
+  }
   precursor_site.time_bound_idx = p.time_bound_idx() + 1;
 
   // Add precursor particle to precursor bank

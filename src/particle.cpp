@@ -617,7 +617,7 @@ void Particle::event_death()
       if (!simulation::is_initial_condition &&
           !simulation::is_decorrelation_generation) {
         int64_t offset = id() - 1 - simulation::combined_work_index[mpi::rank];
-        simulation::precursor_progeny_per_particle[offset] =
+        simulation::precursor_progeny_per_particle[offset] +=
           n_precursor_progeny();
       } else {
         int64_t offset = id() - 1 - simulation::work_index[mpi::rank];
