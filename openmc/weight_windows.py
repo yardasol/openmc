@@ -541,6 +541,12 @@ class WeightWindowGenerator:
         A list of values for which each successive pair constitutes a range of
         energies in [eV] for a single bin. If no energy bins are provided, the
         maximum and minimum energy for the data available at runtime.
+    time_bounds : Iterable of Real
+        A list of values for which each successive pair constitutes a range of
+        times in [s] for a single bin. If no time bins are provided, the
+        t=0 and t=infty are used.
+
+        ..versionadded:: 0.16.0
     particle_type : str or int or openmc.ParticleType
         Particle type the weight windows apply to
     method : {'magic', 'fw_cadis'}
@@ -560,6 +566,10 @@ class WeightWindowGenerator:
     energy_bounds : Iterable of Real
         A list of values for which each successive pair constitutes a range of
         energies in [eV] for a single bin
+    time_bounds : Iterable of Real
+        A list of values for which each successive pair constitutes a range of
+        times in [s] for a single bin. If no time bins are provided, the
+        t=0 and t=infty are used.
     particle_type : openmc.ParticleType
         Particle type the weight windows apply to
     method : {'magic', 'fw_cadis'}
@@ -581,6 +591,7 @@ class WeightWindowGenerator:
         self,
         mesh: openmc.MeshBase,
         energy_bounds: Sequence[float] | None = None,
+        time_bounds: Sequence[float] | None = None,
         particle_type: str | int | openmc.ParticleType = 'neutron',
         method: str = 'magic',
         max_realizations: int = 1,
@@ -593,6 +604,8 @@ class WeightWindowGenerator:
         self._energy_bounds = None
         if energy_bounds is not None:
             self.energy_bounds = energy_bounds
+        if time_bounds is not None:
+            self.time_bounds = time_bounds
         self.particle_type = particle_type
         self.method = method
         self.max_realizations = max_realizations
@@ -604,6 +617,7 @@ class WeightWindowGenerator:
         string += f'\t{"Mesh":<20}=\t{self.mesh.id}\n'
         string += f'\t{"Particle:":<20}=\t{str(self.particle_type)}\n'
         string += f'\t{"Energy Bounds:":<20}=\t{self.energy_bounds}\n'
+        string += f'\t{"Time Bounds:":<20}=\t{self.time_bounds}\n'
         string += f'\t{"Method":<20}=\t{self.method}\n'
         string += f'\t{"Max Realizations:":<20}=\t{self.max_realizations}\n'
         string += f'\t{"Update Interval:":<20}=\t{self.update_interval}\n'
@@ -628,9 +642,18 @@ class WeightWindowGenerator:
         return self._energy_bounds
 
     @energy_bounds.setter
-    def energy_bounds(self, eb: Iterable[float]):
+    def energy_bounds(self, eb: Iterable[Real]):
         cv.check_type('energy bounds', eb, Iterable, Real)
         self._energy_bounds = eb
+
+    @property
+    def time_bounds(self) -> Iterable[Real]:
+        return self._time_bounds
+
+    @time_bounds.setter
+    def time_bounds(self, tb: Iterable[Real]):
+        cv.check_type('time bounds', tb, Iterable, Real)
+        self._time_bounds = tb
 
     @property
     def particle_type(self) -> ParticleType:
@@ -743,6 +766,9 @@ class WeightWindowGenerator:
         if self.energy_bounds is not None:
             subelement = ET.SubElement(element, 'energy_bounds')
             subelement.text = ' '.join(str(e) for e in self.energy_bounds)
+        if self.time_bounds is not None:
+            subelement = ET.SubElement(element, 'time_bounds')
+            subelement.text = ' '.join(str(e) for e in self.time_bounds)
         particle_elem = ET.SubElement(element, 'particle_type')
         particle_elem.text = str(self.particle_type)
         realizations_elem = ET.SubElement(element, 'max_realizations')
@@ -781,9 +807,10 @@ class WeightWindowGenerator:
         mesh = meshes[mesh_id]
 
         energy_bounds = get_elem_list(elem, "energy_bounds, float")
+        time_bounds = get_elem_list(elem, "time_bounds, float")
         particle_type = get_text(elem, 'particle_type')
 
-        wwg = cls(mesh, energy_bounds, particle_type)
+        wwg = cls(mesh, energy_bounds, time_bounds, particle_type)
 
         wwg.max_realizations = int(get_text(elem, 'max_realizations'))
         wwg.update_interval = int(get_text(elem, 'update_interval'))
