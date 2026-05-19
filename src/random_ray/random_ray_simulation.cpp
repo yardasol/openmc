@@ -651,7 +651,8 @@ void RandomRaySimulation::simulate()
 
 void RandomRaySimulation::initialize_time_step(int i)
 {
-  // Reset tally and volume tasks
+  // Reset tally and volume tasks so the particle time can be incremented the
+  // time step
 #pragma omp parallel for
   for (int64_t sr = 0; sr < domain_->source_regions_.n_source_regions(); sr++) {
     domain_->source_regions_.volume_task(sr).clear();

@@ -251,7 +251,7 @@ void openmc_display_header()
         std::string message = "KINETIC SIMULATION";
         if (settings::solver_type == SolverType::RANDOM_RAY) {
           message = fmt::format(
-            "{1} TIME STEP {0}", message, simulation::current_timestep);
+            "{0} TIME STEP {1}", message, simulation::current_timestep);
         }
         const char* msg = message.c_str();
         header(msg, 3);

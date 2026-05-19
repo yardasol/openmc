@@ -1391,10 +1391,6 @@ void read_settings_xml(pugi::xml_node root)
 
   // Create weight window generator objects
   if (check_for_node(root, "weight_window_generators")) {
-    if (kinetic_simulation) {
-      fatal_error("Weight window generation is currently unsupported in kinetic"
-                  " random ray solver mode.");
-    }
     auto wwgs_node = root.child("weight_window_generators");
     for (pugi::xml_node node_wwg :
       wwgs_node.children("weight_windows_generator")) {
