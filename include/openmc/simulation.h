@@ -6,6 +6,7 @@
 
 #include "openmc/mesh.h"
 #include "openmc/particle.h"
+#include "openmc/reaction.h"
 #include "openmc/vector.h"
 
 #include <cstdint>
@@ -149,6 +150,13 @@ void set_initial_k_eigenvalue_quantities();
 void set_bank_times_to_zero();
 
 void forced_precursor_decay(Particle& p, int64_t i_work);
+double compute_lambda_b(SourceSite& precursor_site, const Reaction& rx);
+void compute_forced_decay_weight_factors(const Reaction& rx,
+  SourceSite& precursor_site, Particle& p, double lambda_b, double& neutron_sum,
+  double& precursor_sum);
+double sample_precursor_delay_group(const Reaction& rx,
+  SourceSite& precursor_site, Particle& p, double lambda_b, double neutron_sum,
+  uint64_t* seed);
 
 } // namespace openmc
 

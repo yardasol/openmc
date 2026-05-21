@@ -218,6 +218,7 @@ extern int
   n_decorrelate_generations; //!< Number of generations to run to decorrelate
                              //!< consecutive batches for TDMC
 extern bool forced_decay; //!< Toggle for forced precursor decay.
+extern bool combined_precursor;       //!< Toggle for using combined precursors
 extern int64_t n_precursor_particles; //!< Number of precursor particles to
                                       //!< simulate in forced decay
 

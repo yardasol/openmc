@@ -25,8 +25,6 @@ class _SourceSite(Structure):
                 ('u', c_double*3),
                 ('E', c_double),
                 ('time', c_double),
-                ('time_born', c_double),
-                ('decay_rate', c_double),
                 ('wgt', c_double),
                 ('delayed_group', c_int),
                 ('surf_id', c_int),
@@ -34,7 +32,10 @@ class _SourceSite(Structure):
                 ('parent_nuclide', c_int),
                 ('parent_id', c_int64),
                 ('progeny_id', c_int64),
-                ('time_bound_idx', c_int)]
+                ('time_bound_idx', c_int),
+                ('time_born', c_double),
+                ('i_fission_idx', c_int),
+                ('i_nuclide', c_int)]
 
 # Define input type for numpy arrays that will be passed into C++ functions
 # Must be an int or double array, with single dimension that is contiguous

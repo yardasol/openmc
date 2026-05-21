@@ -17,6 +17,7 @@
 #include "openmc/particle.h"
 #include "openmc/photon.h"
 #include "openmc/random_lcg.h"
+#include "openmc/reaction.h"
 #include "openmc/settings.h"
 #include "openmc/source.h"
 #include "openmc/state_point.h"
@@ -1305,40 +1306,61 @@ void set_bank_times_to_zero()
 void forced_precursor_decay(Particle& p, int64_t i_work)
 {
   SourceSite precursor_site = simulation::precursor_source_bank[i_work - 1];
+  uint64_t* seed = p.current_seed();
+  const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+
+  auto& rx = *nuc->fission_rx_[precursor_site.i_fission_rx];
+
   // Sample decay time
   double dt = settings::time_census_boundaries[p.time_bound_idx()] - p.time();
-  p.time() += dt * prn(p.current_seed());
+  p.time() += dt * prn(seed);
 
-  // TODO:
-  // Sample delay group (to be implemented with combined precursor particles
-  // representing all delay groups)
+  double lambda_b = compute_lambda_b(precursor_site, rx);
+
+  double neutron_sum;
+  double precursor_sum;
+  // Compute weight factors for forced decay neutron and precursor
+  compute_forced_decay_weight_factors(
+    rx, precursor_site, p, lambda_b, neutron_sum, precursor_sum);
+
+  double group;
+  if (settings::combined_precursor) {
+    // Sample delay group of combined precursor particle
+    group = sample_precursor_delay_group(
+      rx, precursor_site, p, lambda_b, neutron_sum, seed);
+  } else {
+    group = precursor_site.delayed_group;
+  }
+
+  p.wgt() = precursor_site.wgt * neutron_sum;
+  // LSH Approach
+  // if (settings::combined_precursor) {
+  //  double dt = settings::time_census_boundaries[p.time_bound_idx()] -
+  //              settings::time_census_boundaries[p.time_bound_idx() - 1];
+  //  p.wgt() *= dt;
+  //}
+
+  p.wgt_last() = p.wgt();
+
+  precursor_site.wgt *= precursor_sum;
+  precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
+  precursor_site.time_bound_idx += 1;
 
   // Sample energy out
+  // TODO: sample E_in?
   double E_in =
     precursor_site.E; // Banked energy of incoming fissioning neutron
   double E_out;
   double mu;
-  uint64_t* seed = p.current_seed();
-  precursor_site.decay_reaction->sample(E_in, E_out, mu, seed);
+  rx.products_[group].sample(E_in, E_out, mu, seed);
 
   // Apply angle out
   p.u() = rotate_angle(p.u(), mu, nullptr, seed);
-
-  // Weight adjustment
-  dt = p.time() - precursor_site.time_born;
-  double exp = std::exp(-1.0 * dt * precursor_site.decay_rate);
-  p.wgt() = precursor_site.wgt * (1 - exp);
-  p.wgt_last() = p.wgt();
-
-  precursor_site.wgt *= exp;
-  precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
-  precursor_site.time_bound_idx += 1;
 
   // Progeny vector adjustment to allow sorting algorithm to function properly
   // This happens after all banked neutrons have already been transported, so
   // we need to adjust the precursor_progeny_per_particle when adding the
   // precursor site to the shared bank.
-
   int64_t offset =
     precursor_site.parent_id - 1 - simulation::work_index[mpi::rank];
   precursor_site.progeny_id =
@@ -1347,6 +1369,86 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
 
   // Add this precursor source to the shared precursor bank
   simulation::precursor_shared_bank.thread_safe_append(precursor_site);
+}
+
+double compute_lambda_b(SourceSite& precursor_site, const Reaction& rx)
+{
+  const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+  double nu_d_tot = nuc->nu(precursor_site.E, Nuclide::EmissionMode::delayed);
+  double& E_in = precursor_site.E;
+
+  // compute lambda_b if needed (precursor site is from equilibrium calculation)
+  double lambda_b;
+  if (precursor_site.time_born == 0.0 && settings::combined_precursor) {
+    for (int group = 1; group < nuc->n_precursor_; ++group) {
+      double decay_rate = rx.products_[group].decay_rate_;
+      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+      lambda_b += nu_d / decay_rate;
+    }
+    return nu_d_tot / lambda_b;
+  } else {
+    return 1.0;
+  }
+}
+
+void compute_forced_decay_weight_factors(const Reaction& rx,
+  SourceSite& precursor_site, Particle& p, double lambda_b, double& neutron_sum,
+  double& precursor_sum)
+{
+  double dt = p.time() - precursor_site.time_born;
+  double& E_in = precursor_site.E;
+
+  // Compute weight factors for forced decay neutron and precursor
+  if (settings::combined_precursor) {
+    const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+    double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+    for (int group = 1; group < nuc->n_precursor_; ++group) {
+      double decay_rate = rx.products_[group].decay_rate_;
+      double exp = std::exp(-1.0 * dt * decay_rate);
+      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+      double gamma_i = nu_d / nu_d_tot;
+      if (precursor_site.time_born = 0.0) {
+        gamma_i *= lambda_b / decay_rate;
+      }
+      // LSH Approach
+      // neutron_sum += gamma_i * decay_rate * exp;
+      // precursor_sum += gamma_i * exp;
+      neutron_sum += gamma_i * (1.0 - exp);
+      precursor_sum += gamma_i * exp;
+    }
+  } else {
+    double decay_rate = rx.products_[precursor_site.delayed_group].decay_rate_;
+    double exp = std::exp(-1.0 * dt * decay_rate);
+    neutron_sum = 1.0 - exp;
+    precursor_sum = exp;
+  }
+}
+
+double sample_precursor_delay_group(const Reaction& rx,
+  SourceSite& precursor_site, Particle& p, double lambda_b, double neutron_sum,
+  uint64_t* seed)
+{
+  double& E_in = precursor_site.E;
+  const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+  double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+
+  double dt = p.time() - precursor_site.time_born;
+  double xi = prn(seed) * neutron_sum;
+  double prob = 0.0;
+  int group;
+  for (group = 1; group < nuc->n_precursor_; ++group) {
+    double decay_rate = rx.products_[group].decay_rate_;
+    double exp = std::exp(-1.0 * dt * decay_rate);
+    double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+    double gamma_i = nu_d / nu_d_tot;
+    if (precursor_site.time_born = 0.0) {
+      gamma_i *= lambda_b / decay_rate;
+    }
+    prob += gamma_i * decay_rate * exp;
+    if (xi < prob)
+      break;
+  }
+  return group;
 }
 
 } // namespace openmc

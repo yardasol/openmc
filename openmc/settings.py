@@ -111,6 +111,10 @@ class Settings:
     forced_decay : bool
         Indicate whether to use forced precursor decay for kinetic
         Monte Carlo simulations.
+    combined_precursor : bool
+        Indicate whether to use individual precursor particles or combined
+        precursor particles. Only used for kinetic Monte Carlo simulations if
+        'forced_decay' is True.
     generations_per_batch : int
         Number of generations per batch
     ifp_n_generation : int
@@ -441,6 +445,7 @@ class Settings:
         self._kinetic_simulation = None
         self._n_decorrelate_generations = None
         self._forced_decay = None
+        self._combined_precursor = None
         self._precursor_particles = None
         self._timestep_parameters = {}
 
@@ -697,6 +702,16 @@ class Settings:
         self._forced_decay = value
 
     @property
+    def combined_precursor(self) -> bool:
+        return self._combined_precursor
+
+    @combined_precursor.setter
+    def combined_precursor(self, value: bool):
+        cv.check_type('kinetic simulation', value, bool)
+        self._combined_precursor = value
+
+
+    @property
     def precursor_particles(self) -> int:
         return self._precursor_particles
 
@@ -847,7 +862,7 @@ class Settings:
         cv.check_type('random number generator stride', stride, Integral)
         cv.check_greater_than('random number generator stride', stride, 0)
         self._stride = stride
- 
+
     @property
     def surface_grazing_cutoff(self) -> float:
         return self._surface_grazing_cutoff
@@ -1663,6 +1678,11 @@ class Settings:
             elem = ET.SubElement(root, "forced_decay")
             elem.text = str(self._forced_decay).lower()
 
+    def _create_combined_precursor_subelement(self, root):
+        if self._combined_precursor is not None:
+            elem = ET.SubElement(root, "combined_precursor")
+            elem.text = str(self._combined_precursor).lower()
+
     def _create_precursor_particles_subelement(self, root):
         if self._precursor_particles is not None:
             element = ET.SubElement(root, "precursor_particles")
@@ -2268,6 +2288,11 @@ class Settings:
         if text is not None:
             self.forced_decay = text in ('true', '1')
 
+    def _combined_precursor_from_xml_element(self, root):
+        text = get_text(root, 'combined_precursor')
+        if text is not None:
+            self.combined_precursor = text in ('true', '1')
+
     def _precursor_particles_from_xml_element(self, root):
         text = get_text(root, 'precursor_particles')
         if text is not None:
@@ -2754,6 +2779,7 @@ class Settings:
         self._create_n_decorrelate_generations_subelement(element)
         self._create_precursor_particles_subelement(element)
         self._create_forced_decay_subelement(element)
+        self._create_combined_precursor_subelement(element)
         self._create_timestep_parameters_subelement(element)
         self._create_source_subelement(element, mesh_memo)
         self._create_output_subelement(element)
@@ -2878,6 +2904,7 @@ class Settings:
         settings._n_decorrelate_generations_from_xml_element(elem)
         settings._precursor_particles_from_xml_element(elem)
         settings._forced_decay_from_xml_element(elem)
+        settings._combined_precursor_from_xml_element(elem)
         settings._timestep_parameters_from_xml_element(elem)
         settings._source_from_xml_element(elem, meshes)
         settings._volume_calcs_from_xml_element(elem)

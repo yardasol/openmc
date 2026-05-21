@@ -23,6 +23,7 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     if kinetic_simulation:
         s.n_decorrelate_generations = 3
         s.forced_decay = True
+        s.combined_precursor = True
         s.precursor_particles = 100
         s.timestep_parameters = {
             'dt': 0.1,
@@ -126,6 +127,7 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     if kinetic_simulation:
         assert s.n_decorrelate_generations == 3
         assert s.forced_decay == True
+        assert s.combined_precursor == True
         assert s.precursor_particles == 100
         assert s.timestep_parameters['dt'] == 0.1
         assert s.timestep_parameters['n_timesteps'] == 41

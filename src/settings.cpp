@@ -162,6 +162,7 @@ double dt {0};
 std::deque<double> time_census_boundaries {INFTY};
 int n_decorrelate_generations {3};
 bool forced_decay {false};
+bool combined_precursor {false};
 int64_t n_precursor_particles {0};
 
 } // namespace settings
@@ -296,6 +297,9 @@ void get_run_parameters(pugi::xml_node node_base)
       if (n_precursor_particles <= 0)
         fatal_error(
           "Number of precursors for forced decay must be greater than zero.");
+      if (check_for_node(node_base, "combined_precursor"))
+        combined_precursor =
+          get_node_value_bool(node_base, "combined_precursor");
     }
     if (check_for_node(node_base, "n_decorrelate_generations")) {
       n_decorrelate_generations =

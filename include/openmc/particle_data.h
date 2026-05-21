@@ -44,8 +44,6 @@ struct SourceSite {
   Direction u;
   double E;
   double time {0.0};
-  double time_born {0.0};
-  double decay_rate {0.0};
   double wgt {1.0};
   int delayed_group {0};
   int surf_id {SURFACE_NONE};
@@ -55,8 +53,12 @@ struct SourceSite {
   int parent_nuclide {-1};
   int64_t parent_id;
   int64_t progeny_id;
+
+  // Forced decay / time census fields
   int time_bound_idx {0};
-  const ReactionProduct* decay_reaction;
+  double time_born {0.0};
+  int i_fission_rx;
+  int i_nuclide;
 };
 
 struct CollisionTrackSite {
