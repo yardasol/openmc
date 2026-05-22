@@ -135,6 +135,7 @@ std::unordered_set<int> sourcepoint_batch;
 std::unordered_set<int> statepoint_batch;
 double source_rejection_fraction {0.05};
 double free_gas_threshold {400.0};
+bool weighted_comb {false};
 std::unordered_set<int> source_write_surf_id;
 CollisionTrackConfig collision_track_config {};
 int64_t ssw_max_particles;
@@ -800,6 +801,10 @@ void read_settings_xml(pugi::xml_node root)
 
   if (check_for_node(root, "free_gas_threshold")) {
     free_gas_threshold = std::stod(get_node_value(root, "free_gas_threshold"));
+  }
+
+  if (check_for_node(root, "weighted_comb")) {
+    weighted_comb = get_node_value_bool(root, "weighted_comb");
   }
 
   // Surface grazing

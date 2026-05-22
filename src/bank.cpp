@@ -73,6 +73,8 @@ vector<int64_t> precursor_progeny_per_particle;
 
 vector<int64_t> time_progeny_per_particle;
 
+vector<double> cumulative_weight;
+
 } // namespace simulation
 
 //==============================================================================
@@ -145,6 +147,13 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank,
       sorted_ifp_delayed_group_bank, sorted_ifp_lifetime_bank);
   }
 
+  // Initialize and clear cumulative_weight
+  if (settings::weighted_comb) {
+    simulation::cumulative_weight.resize(census_bank.size());
+    std::fill(simulation::cumulative_weight.begin(),
+      simulation::cumulative_weight.end(), 0);
+  }
+
   // Use parent and progeny indices to sort census bank
   for (int64_t i = 0; i < census_bank.size(); i++) {
     const auto& site = census_bank[i];
@@ -155,11 +164,19 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank,
                   "shared census bank size.");
     }
     sorted_bank[idx] = site;
+    if (settings::weighted_comb)
+      simulation::cumulative_weight[idx] = site.wgt;
     // TODO: disable for time census bank?
     if (settings::ifp_on) {
       copy_ifp_data_from_fission_banks(
         i, sorted_ifp_delayed_group_bank[idx], sorted_ifp_lifetime_bank[idx]);
     }
+  }
+
+  if (settings::weighted_comb) {
+    std::inclusive_scan(simulation::cumulative_weight.begin(),
+      simulation::cumulative_weight.end(),
+      simulation::cumulative_weight.begin());
   }
 
   // Copy sorted bank into the census bank
@@ -188,25 +205,50 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
   // census bank its own sites starts in order to ensure reproducibility by
   // skipping ahead to the proper seed.
 
+  int64_t start;
+  int64_t finish;
+  int64_t total;
+  double w_total;
+  double w_start;
+
 #ifdef OPENMC_MPI
-  int64_t start = 0;
-  int64_t n_bank = census_bank.size();
-  MPI_Exscan(&n_bank, &start, 1, MPI_INT64_T, MPI_SUM, mpi::intracomm);
+  if (settings::weighted_comb) {
+    w_start = 0.0;
+    double w_bank = simulation::cumulative_weight[census_bank.size() - 1];
+    MPI_Exscan(&w_bank, &w_start, 1, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
+  } else {
+    start = 0;
+    int64_t n_bank = census_bank.size();
+    MPI_Exscan(&n_bank, &start, 1, MPI_INT64_T, MPI_SUM, mpi::intracomm);
+  }
 
   // While we would expect the value of start on rank 0 to be 0, the MPI
   // standard says that the receive buffer on rank 0 is undefined and not
   // significant
-  if (mpi::rank == 0)
-    start = 0;
+  if (mpi::rank == 0) {
+    if (settings::weighted_comb)
+      w_start = 0.0;
+    else
+      start = 0;
+  }
 
-  int64_t finish = start + census_bank.size();
-  int64_t total = finish;
-  MPI_Bcast(&total, 1, MPI_INT64_T, mpi::n_procs - 1, mpi::intracomm);
-
+  if (settings::weighted_comb) {
+    w_total = w_start + simulation::cumulative_weight[census_bank.size() - 1];
+    MPI_Bcast(&w_total, 1, MPI_DOUBLE, mpi::n_procs - 1, mpi::intracomm);
+  } else {
+    finish = start + census_bank.size();
+    total = finish;
+    MPI_Bcast(&total, 1, MPI_INT64_T, mpi::n_procs - 1, mpi::intracomm);
+  }
 #else
-  int64_t start = 0;
-  int64_t finish = census_bank.size();
-  int64_t total = finish;
+  if (settings::weighted_comb) {
+    w_start = 0.0;
+    w_total = simulation::cumulative_weight[census_bank.size() - 1];
+  } else {
+    start = 0;
+    finish = census_bank.size();
+    total = finish;
+  }
 #endif
 
   // If there are not that many particles per generation, it's possible that no
@@ -248,18 +290,55 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
   uint64_t seed = init_seed(id, STREAM_TRACKING);
 
   // Comb specification
-  double teeth_distance = static_cast<double>(total) / n_particles;
+  double teeth_distance;
+  if (settings::weighted_comb) {
+    teeth_distance = w_total / n_particles;
+  } else {
+    teeth_distance = static_cast<double>(total) / n_particles;
+  }
   double teeth_offset = prn(&seed) * teeth_distance;
 
   // First and last hitting tooth
-  int64_t end = start + census_bank.size();
-  int64_t tooth_start = std::ceil((start - teeth_offset) / teeth_distance);
-  int64_t tooth_end = std::floor((end - teeth_offset) / teeth_distance) + 1;
+  double w_end;
+  int64_t end;
+  if (settings::weighted_comb) {
+    w_end = w_start + simulation::cumulative_weight[census_bank.size() - 1];
+  } else {
+    end = start + census_bank.size();
+  }
+  int64_t tooth_start;
+  int64_t tooth_end;
+  if (settings::weighted_comb) {
+    tooth_start = std::ceil((w_start - teeth_offset) / teeth_distance);
+    tooth_end = std::floor((w_end - teeth_offset) / teeth_distance) + 1;
+  } else {
+    tooth_start = std::ceil((start - teeth_offset) / teeth_distance);
+    tooth_end = std::floor((end - teeth_offset) / teeth_distance) + 1;
+  }
 
   // Locally comb particles in census_bank
   double tooth = tooth_start * teeth_distance + teeth_offset;
+
+  int64_t idx;
+  if (settings::weighted_comb) {
+    for (int i = 0; i < simulation::cumulative_weight.size(); i++)
+      simulation::cumulative_weight[i] += w_start;
+
+    // Set the starting index
+    idx = 0;
+    while (tooth > simulation::cumulative_weight[idx]) {
+      idx++;
+    }
+    //// Off by one correction
+    // idx -= 1;
+  }
   for (int64_t i = tooth_start; i < tooth_end; i++) {
-    int64_t idx = std::floor(tooth) - start;
+    if (settings::weighted_comb) {
+      while (tooth > simulation::cumulative_weight[idx])
+        idx++;
+    } else {
+      idx = std::floor(tooth) - start;
+    }
     temp_sites[index_temp] = census_bank[idx];
     // TODO: disable for time census bank
     if (settings::ifp_on) {

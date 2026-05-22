@@ -48,6 +48,8 @@ extern vector<int64_t> time_progeny_per_particle;
 
 extern vector<int64_t> precursor_progeny_per_particle;
 
+extern vector<double> cumulative_weight;
+
 } // namespace simulation
 
 //==============================================================================

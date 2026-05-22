@@ -177,6 +177,8 @@ extern double source_rejection_fraction; //!< Minimum fraction of source sites
 extern double free_gas_threshold;        //!< Threshold multiplier for free gas
                                          //!< scattering treatment
 
+extern bool weighted_comb; //!< whether or not to use a weight-based comb
+                           //!< when syncrhonizing particle bank
 extern int
   max_history_splits; //!< maximum number of particle splits for weight windows
 extern int max_secondaries;       //!< maximum number of secondaries in the bank

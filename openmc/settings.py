@@ -117,6 +117,9 @@ class Settings:
         'forced_decay' is True.
     generations_per_batch : int
         Number of generations per batch
+    weighted_comb : bool
+        Indicate whether to use a weighted comb when synchronizing the census
+        bank.
     ifp_n_generation : int
         Number of generations to consider for the Iterated Fission Probability
         method.
@@ -436,6 +439,7 @@ class Settings:
         self._run_mode = RunMode.EIGENVALUE
         self._batches = None
         self._generations_per_batch = None
+        self._weighted_comb = None
         self._inactive = None
         self._max_lost_particles = None
         self._rel_max_lost_particles = None
@@ -585,6 +589,15 @@ class Settings:
         cv.check_greater_than('generations per batch',
                               generations_per_batch, 0)
         self._generations_per_batch = generations_per_batch
+
+    @property
+    def weighted_comb(self) -> bool:
+        return self._weighted_comb
+
+    @weighted_comb.setter
+    def weighted_comb(self, value: bool):
+        self._weighted_comb = value
+
 
     @property
     def inactive(self) -> int:
@@ -1631,6 +1644,11 @@ class Settings:
             element = ET.SubElement(root, "generations_per_batch")
             element.text = str(self._generations_per_batch)
 
+    def _create_weighted_comb_subelement(self, root):
+        if self._weighted_comb is not None:
+            elem = ET.SubElement(root, "weighted_comb")
+            elem.text = str(self._weighted_comb).lower()
+
     def _create_inactive_subelement(self, root):
         if self._inactive is not None:
             element = ET.SubElement(root, "inactive")
@@ -2266,6 +2284,11 @@ class Settings:
         if text is not None:
             self.generations_per_batch = int(text)
 
+    def _weighted_comb_from_xml_element(self, root):
+        text = get_text(root, 'weighted_comb')
+        if text is not None:
+            self.weighted_comb = text in ('true', '1')
+
     def _keff_trigger_from_xml_element(self, root):
         elem = root.find('keff_trigger')
         if elem is not None:
@@ -2774,6 +2797,7 @@ class Settings:
         self._create_rel_max_lost_particles_subelement(element)
         self._create_max_write_lost_particles_subelement(element)
         self._create_generations_per_batch_subelement(element)
+        self._create_weighted_comb_subelement(element)
         self._create_keff_trigger_subelement(element)
         self._create_kinetic_simulation_subelement(element)
         self._create_n_decorrelate_generations_subelement(element)
@@ -2899,6 +2923,7 @@ class Settings:
         settings._rel_max_lost_particles_from_xml_element(elem)
         settings._max_write_lost_particles_from_xml_element(elem)
         settings._generations_per_batch_from_xml_element(elem)
+        settings._weighted_comb_from_xml_element(elem)
         settings._keff_trigger_from_xml_element(elem)
         settings._kinetic_simulation_from_xml_element(elem)
         settings._n_decorrelate_generations_from_xml_element(elem)

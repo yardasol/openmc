@@ -14,6 +14,7 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
 
     s = openmc.Settings(run_mode='fixed source', batches=1000, seed=17)
     s.generations_per_batch = 10
+    s.weighted_comb = False
     s.inactive = 100
     s.particles = 1000000
     s.max_lost_particles = 5
@@ -118,6 +119,7 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     assert s.run_mode == 'fixed source'
     assert s.batches == 1000
     assert s.generations_per_batch == 10
+    assert s.weighted_comb == False
     assert s.inactive == 100
     assert s.particles == 1000000
     assert s.max_lost_particles == 5
