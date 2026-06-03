@@ -425,7 +425,7 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
     // Sample equilibrium precursor particle if forced decay is on (which can
     // only be the case for a kinetic simulation)
     if (settings::forced_decay) {
-      sample_equilibrium_precursor_particle(i_nuclide, rx, p);
+      sample_equilibrium_precursor_site(i_nuclide, rx, p);
     }
   }
 }
@@ -1234,27 +1234,31 @@ void sample_fission_neutron(
     site->time_bound_idx = p.time_bound_idx();
     double current_time_bound =
       settings::time_census_boundaries[p.time_bound_idx()];
-    if (site->delayed_group > 0 && site->time >= current_time_bound) {
-      // Determine if particle should continue simulation as delayed neutron
-      // or if it shoud be converted into a precursor particle
+    if (site->delayed_group > 0) {
       if (settings::forced_decay) {
         // Reset particle delay group if using combined precursors
         if (settings::combined_precursor)
           p.delayed_group() = 0;
 
-        // Create precursor particle if delayed neutron falls outside of the
-        // time boundary and using forced decay
-        create_precursor_particle(rx, i_nuclide, p, p.wgt());
-      } else {
-        // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
-        p.u() = rotate_angle(p.u(), mu, nullptr, seed);
+        // Create precursor particle
+        int64_t idx = create_precursor_site(rx, i_nuclide, p, p.wgt());
+        SourceSite& precursor_site = simulation::precursor_shared_bank[idx];
 
-        // TODO: make this based off of site instead of particle
-        //  Otherwise, bank delayed neutron
-        bank_delayed_neutron(p, decay_time, site->E, p.wgt());
+        // Forced decay weight adjustment
+        int group = sample_forced_decay(p, precursor_site);
+        p.delayed_group() = group;
       }
-      // Kill neutron
-      p.wgt() = 0.0;
+
+      // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
+      p.u() = rotate_angle(p.u(), mu, nullptr, seed);
+
+      if (!settings::forced_decay && site->time >= current_time_bound) {
+        // Bank delayed neutron
+        bank_delayed_neutron(p, decay_time, site->E, p.wgt());
+
+        // Kill neutron
+        p.wgt() = 0.0;
+      }
     }
   }
 }
@@ -1312,7 +1316,25 @@ double sample_fission_neutron_energy(int i_nuclide, const Reaction& rx,
   return mu;
 }
 
-void sample_equilibrium_precursor_particle(
+void sample_equilibrium_precursor_site(
+  int i_nuclide, const Reaction& rx, Particle& p)
+{
+  int64_t idx;
+  if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER) {
+    // Default base equilibrium weight should be 1.0, but may differ
+    // depending on application of weight windows
+    const double eq_wgt = p.wgt();
+    idx = create_precursor_site(rx, i_nuclide, p, eq_wgt);
+  } else {
+    const double eq_weight = compute_precursor_eq_weight(i_nuclide, rx, p);
+    idx = create_precursor_site(rx, i_nuclide, p, eq_weight);
+  }
+  SourceSite& precursor_site = simulation::precursor_shared_bank[idx];
+  precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
+  precursor_site.time_bound_idx += 1;
+}
+
+const double compute_precursor_eq_weight(
   int i_nuclide, const Reaction& rx, Particle& p)
 {
   const auto& nuc {data::nuclides[i_nuclide]};
@@ -1338,8 +1360,9 @@ void sample_equilibrium_precursor_particle(
   // We need a macro xs, so multiply by the density
   double N = model::materials[p.material()]->density();
   double sigma_f = p.neutron_xs(i_nuclide).fission * N;
-  const double eq_wgt = p.wgt() * sum * sigma_f / simulation::keff * p.speed();
-  create_precursor_particle(rx, i_nuclide, p, eq_wgt);
+  const double eq_weight =
+    p.wgt() * sum * sigma_f / simulation::keff * p.speed();
+  return eq_weight;
 }
 
 void sample_branchless_fission(
@@ -1380,29 +1403,31 @@ void sample_branchless_fission(
 
   double current_time_bound =
     settings::time_census_boundaries[p.time_bound_idx()];
-  // TODO: This may not allow for sufficient number of precursor particles to be
-  // created... Maybe force a precursor particle to be created every delayed
-  // fission, and if the decay time is within bounds adjust the weight via
-  // forced decay and continue this as the delayed neturon?
-  if (dg > 0 && (p.time() - decay_time >= current_time_bound)) {
-    // Determine if particle should continue simulation as delayed neutron
-    // or if it shoud be converted into a precursor particle
+  if (dg > 0) {
+    // Create precursor if forced decay is on
     if (settings::forced_decay) {
       // Reset particle delay group if using combined precursors
       if (settings::combined_precursor)
         p.delayed_group() = 0;
-      // Bank precursor particle if using forced decay
-      create_precursor_particle(rx, i_nuclide, p, wgt_branchless);
-    } else {
-      // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
-      p.u() = rotate_angle(p.u(), mu, nullptr, seed);
+      int64_t idx = create_precursor_site(rx, i_nuclide, p, wgt_branchless);
+      SourceSite& precursor_site = simulation::precursor_shared_bank[idx];
 
-      // Otherwise, bank delayed neutron
-      bank_delayed_neutron(p, decay_time, E_out, wgt_branchless);
+      // Forced Decay weight adjustment
+      int group = sample_forced_decay(p, precursor_site);
+      p.delayed_group() = group;
     }
 
-    // Kill neutron
-    p.wgt() = 0.0;
+    // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
+    p.u() = rotate_angle(p.u(), mu, nullptr, seed);
+
+    if (!settings::forced_decay &&
+        p.time() - decay_time >= current_time_bound) {
+      // Bank delayed neutron
+      bank_delayed_neutron(p, decay_time, E_out, wgt_branchless);
+
+      // Kill current particle
+      p.wgt() = 0.0;
+    }
   } else {
     p.time() -= decay_time;
     p.E() = E_out;
@@ -1412,7 +1437,7 @@ void sample_branchless_fission(
   }
 }
 
-void create_precursor_particle(
+int64_t create_precursor_site(
   const Reaction& rx, int i_nuclide, Particle& p, const double& banked_wgt)
 {
   // Initialize precursor particle source site
@@ -1421,13 +1446,20 @@ void create_precursor_particle(
   precursor_site.particle = ParticleType::neutron();
   if (!simulation::is_initial_condition &&
       !simulation::is_decorrelation_generation) {
-    precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
+    precursor_site.time = p.time();
     precursor_site.time_born = p.time(); // Used forced decay weight adjustment
   } else {
     precursor_site.time = 0.0;
     precursor_site.time_born = 0.0;
   }
-  precursor_site.wgt = banked_wgt;
+  if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER) {
+    // Precursor weight will be set during forced decay
+    precursor_site.wgt = 1.0;
+    precursor_site.base_wgt = banked_wgt;
+  } else {
+    precursor_site.wgt = banked_wgt;
+  }
+
   precursor_site.surf_id = 0;
 
   precursor_site.E = p.E();
@@ -1441,13 +1473,17 @@ void create_precursor_particle(
     std::find(fission_rx.begin(), fission_rx.end(), &rx) - fission_rx.begin();
   precursor_site.i_nuclide = i_nuclide;
 
+  // TODO: This may not work with the new approach where precursors are forced
+  // to decay every time step
+  //
+  //
   // Reject precursor particle if it exceeds time cutoff for neutrons. No time
   // cutoff is defined for precursors since they just act as a buffer for
   // delayed neutrons for the next time step.
   double t_cutoff =
     settings::time_cutoff[ParticleType::neutron().transport_index()];
   if (precursor_site.time > t_cutoff) {
-    return;
+    return 0;
   }
 
   // Set parent and precursor IDs
@@ -1463,7 +1499,7 @@ void create_precursor_particle(
   } else {
     precursor_site.progeny_id = p.n_precursor_progeny()++;
   }
-  precursor_site.time_bound_idx = p.time_bound_idx() + 1;
+  precursor_site.time_bound_idx = p.time_bound_idx();
 
   // Add precursor particle to precursor bank
   int64_t idx =
@@ -1475,6 +1511,7 @@ void create_precursor_particle(
             "non-deterministic.");
     p.n_precursor_progeny()--;
   }
+  return idx;
 }
 
 void bank_delayed_neutron(

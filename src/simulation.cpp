@@ -492,6 +492,8 @@ vector<int64_t> combined_work_index;
 int64_t precursor_work_per_rank {0};
 vector<int64_t> precursor_work_index;
 
+PrecursorFormalism precursor_formalism {PrecursorFormalism::MOLNAR};
+
 } // namespace simulation
 
 //==============================================================================
@@ -787,6 +789,8 @@ void finalize_generation()
     }
 
     if (settings::forced_decay) {
+      // Force Weighted Comb for precursors
+      settings::weighted_comb = true;
       // The precursor bank should also be sorted
       sort_census_bank(simulation::precursor_shared_bank,
         simulation::precursor_progeny_per_particle,
@@ -795,6 +799,7 @@ void finalize_generation()
       synchronize_bank(simulation::precursor_shared_bank,
         simulation::precursor_source_bank, settings::n_precursor_particles,
         simulation::combined_work_per_rank, simulation::precursor_work_index);
+      settings::weighted_comb = false;
     }
   }
 
@@ -1311,40 +1316,7 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
 
   auto& rx = *nuc->fission_rx_[precursor_site.i_fission_rx];
 
-  // Sample decay time
-  double dt = settings::time_census_boundaries[p.time_bound_idx()] - p.time();
-  p.time() += dt * prn(seed);
-
-  double lambda_b = compute_lambda_b(precursor_site, rx);
-
-  double neutron_sum;
-  double precursor_sum;
-  // Compute weight factors for forced decay neutron and precursor
-  compute_forced_decay_weight_factors(
-    rx, precursor_site, p, lambda_b, neutron_sum, precursor_sum);
-
-  double group;
-  if (settings::combined_precursor) {
-    // Sample delay group of combined precursor particle
-    group = sample_precursor_delay_group(
-      rx, precursor_site, p, lambda_b, neutron_sum, seed);
-  } else {
-    group = precursor_site.delayed_group;
-  }
-
-  p.wgt() = precursor_site.wgt * neutron_sum;
-  // LSH Approach
-  // if (settings::combined_precursor) {
-  //  double dt = settings::time_census_boundaries[p.time_bound_idx()] -
-  //              settings::time_census_boundaries[p.time_bound_idx() - 1];
-  //  p.wgt() *= dt;
-  //}
-
-  p.wgt_last() = p.wgt();
-
-  precursor_site.wgt *= precursor_sum;
-  precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
-  precursor_site.time_bound_idx += 1;
+  int group = sample_forced_decay(p, precursor_site);
 
   // Sample energy out
   // TODO: sample E_in?
@@ -1369,6 +1341,55 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
 
   // Add this precursor source to the shared precursor bank
   simulation::precursor_shared_bank.thread_safe_append(precursor_site);
+}
+
+int sample_forced_decay(Particle& p, SourceSite& precursor_site)
+{
+  uint64_t* seed = p.current_seed();
+  const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+  auto& rx = *nuc->fission_rx_[precursor_site.i_fission_rx];
+
+  // Sample decay time
+  double dt = settings::time_census_boundaries[p.time_bound_idx()] - p.time();
+  p.time() += dt * prn(seed);
+
+  double lambda_b = compute_lambda_b(precursor_site, rx);
+
+  double neutron_sum;
+  double precursor_sum;
+  // Compute weight factors for forced decay neutron and precursor
+  compute_forced_decay_weight_factors(
+    rx, precursor_site, p, lambda_b, neutron_sum, precursor_sum);
+
+  int group;
+  if (settings::combined_precursor) {
+    // Sample delay group of combined precursor particle
+    group = sample_precursor_delay_group(
+      rx, precursor_site, p, lambda_b, neutron_sum, seed);
+  } else {
+    group = precursor_site.delayed_group;
+  }
+
+  p.wgt() = neutron_sum;
+  if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER) {
+    double dt = settings::time_census_boundaries[p.time_bound_idx()] -
+                settings::time_census_boundaries[p.time_bound_idx() - 1];
+    p.wgt() *= dt * precursor_site.base_wgt;
+  } else {
+    p.wgt() *= precursor_site.wgt;
+  }
+
+  p.wgt_last() = p.wgt();
+
+  if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER)
+    precursor_site.wgt = precursor_sum * precursor_site.base_wgt;
+  else
+    precursor_site.wgt *= precursor_sum;
+
+  precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
+  precursor_site.time_bound_idx += 1;
+
+  return group;
 }
 
 double compute_lambda_b(SourceSite& precursor_site, const Reaction& rx)
@@ -1410,23 +1431,25 @@ void compute_forced_decay_weight_factors(const Reaction& rx,
       if (precursor_site.time_born = 0.0) {
         gamma_i *= lambda_b / decay_rate;
       }
-      // LSH Approach
-      // neutron_sum += gamma_i * decay_rate * exp;
-      // precursor_sum += gamma_i * exp;
-      neutron_sum += gamma_i * (1.0 - exp);
+      if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER)
+        neutron_sum += gamma_i * decay_rate * exp;
+      else
+        neutron_sum += gamma_i * (1.0 - exp);
       precursor_sum += gamma_i * exp;
     }
   } else {
     double decay_rate = rx.products_[precursor_site.delayed_group].decay_rate_;
     double exp = std::exp(-1.0 * dt * decay_rate);
-    neutron_sum = 1.0 - exp;
+    if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER)
+      neutron_sum = decay_rate * exp;
+    else
+      neutron_sum = 1.0 - exp;
     precursor_sum = exp;
   }
 }
 
-double sample_precursor_delay_group(const Reaction& rx,
-  SourceSite& precursor_site, Particle& p, double lambda_b, double neutron_sum,
-  uint64_t* seed)
+int sample_precursor_delay_group(const Reaction& rx, SourceSite& precursor_site,
+  Particle& p, double lambda_b, double neutron_sum, uint64_t* seed)
 {
   double& E_in = precursor_site.E;
   const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
