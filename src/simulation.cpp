@@ -1305,7 +1305,7 @@ void set_bank_times_to_zero()
 
 void forced_precursor_decay(Particle& p, int64_t i_work)
 {
-  SourceSite precursor_site = simulation::precursor_source_bank[i_work - 1];
+  SourceSite& precursor_site = simulation::precursor_source_bank[i_work - 1];
   uint64_t* seed = p.current_seed();
   const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
 

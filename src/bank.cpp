@@ -334,12 +334,15 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
   }
   for (int64_t i = tooth_start; i < tooth_end; i++) {
     if (settings::weighted_comb) {
+      // TODO: replace with binary search
       while (tooth > simulation::cumulative_weight[idx])
         idx++;
     } else {
       idx = std::floor(tooth) - start;
     }
     temp_sites[index_temp] = census_bank[idx];
+    if (settings::weighted_comb)
+      temp_sites[index_temp].wgt = teeth_distance;
     // TODO: disable for time census bank
     if (settings::ifp_on) {
       copy_ifp_data_from_fission_banks(
