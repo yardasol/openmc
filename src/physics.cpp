@@ -1343,12 +1343,25 @@ const double compute_precursor_eq_weight(
 
   // Eigenvalue equilibrium weight from "A time-dependent Monte Carlo
   // simulation for nuclear reactor dynamics using GPUs", B. Molnar (2019)
+
   double sum = 0.0;
   if (settings::combined_precursor) {
+    double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+
+    double lambda_b;
     for (int group = 1; group < nuc->n_precursor_; ++group) {
       double decay_rate = rx.products_[group].decay_rate_;
       double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
-      sum += nu_d / decay_rate;
+      lambda_b += nu_d / decay_rate;
+    }
+    lambda_b = nu_d_tot / lambda_b;
+
+    for (int group = 1; group < nuc->n_precursor_; ++group) {
+      double decay_rate = rx.products_[group].decay_rate_;
+      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+      double gamma_i = nu_d / nu_d_tot;
+      gamma_i *= lambda_b / decay_rate;
+      sum += gamma_i * nu_d / decay_rate;
     }
   } else {
     int group = sample_delay_group(i_nuclide, rx, E_in, seed);
