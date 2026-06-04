@@ -63,7 +63,7 @@ void branchless_fission(
 void sample_branchless_fission(
   int i_nuclide, const Reaction& rx, Particle& p, const double& wgt_branchless);
 
-int64_t create_precursor_site(
+void create_precursor_particle(
   const Reaction& rx, int i_nuclide, Particle& p, const double& banked_wgt);
 
 void bank_delayed_neutron(
@@ -108,10 +108,7 @@ int sample_delay_group(
 double sample_fission_neutron_energy(int i_nuclide, const Reaction& rx,
   int delayed_group, double E_in, double& E_out, uint64_t* seed);
 
-void sample_equilibrium_precursor_site(
-  int i_nuclide, const Reaction& rx, Particle& p);
-
-const double compute_precursor_eq_weight(
+void sample_equilibrium_precursor_particle(
   int i_nuclide, const Reaction& rx, Particle& p);
 
 //! handles all reactions with a single secondary neutron (other than fission),
