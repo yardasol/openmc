@@ -311,32 +311,34 @@ void get_run_parameters(pugi::xml_node node_base)
     }
     // TODO REPLACE TIMESTEP PARAMETERS WITH TIME FILTER TIME GRID
     // use model::time_grid (see tally.cpp, add to time grid)
-    xml_node ts_node = node_base.child("timestep_parameters");
-    if (check_for_node(ts_node, "n_timesteps")) {
-      n_timesteps = std::stoi(get_node_value(ts_node, "n_timesteps"));
-    } else {
-      fatal_error("Specify number of timesteps in settings XML");
-    }
-    if (check_for_node(ts_node, "timestep_units")) {
-      std::string units = get_node_value(ts_node, "timestep_units");
-      if (check_for_node(ts_node, "dt")) {
-        dt = std::stod(get_node_value(ts_node, "dt"));
-        double factor_to_seconds;
-        if (units == "ms") {
-          factor_to_seconds = 1e-3;
-        } else if (units == "s") {
-          factor_to_seconds = 1.0;
-        } else if (units == "min") {
-          factor_to_seconds = 1 / 60;
-        } else {
-          fatal_error("Invalid timestep unit, " + units);
-        }
-        dt *= factor_to_seconds;
+    if (solver_type == SolverType::RANDOM_RAY) {
+      xml_node ts_node = node_base.child("timestep_parameters");
+      if (check_for_node(ts_node, "n_timesteps")) {
+        n_timesteps = std::stoi(get_node_value(ts_node, "n_timesteps"));
       } else {
-        fatal_error("Specify dt in settings XML");
+        fatal_error("Specify number of timesteps in settings XML");
       }
-    } else {
-      fatal_error("Specify timestep units in settings XML");
+      if (check_for_node(ts_node, "timestep_units")) {
+        std::string units = get_node_value(ts_node, "timestep_units");
+        if (check_for_node(ts_node, "dt")) {
+          dt = std::stod(get_node_value(ts_node, "dt"));
+          double factor_to_seconds;
+          if (units == "ms") {
+            factor_to_seconds = 1e-3;
+          } else if (units == "s") {
+            factor_to_seconds = 1.0;
+          } else if (units == "min") {
+            factor_to_seconds = 1 / 60;
+          } else {
+            fatal_error("Invalid timestep unit, " + units);
+          }
+          dt *= factor_to_seconds;
+        } else {
+          fatal_error("Specify dt in settings XML");
+        }
+      } else {
+        fatal_error("Specify timestep units in settings XML");
+      }
     }
   }
 
