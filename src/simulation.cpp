@@ -495,6 +495,8 @@ vector<int64_t> precursor_work_index;
 double average_neutron_weight;
 double average_precursor_weight;
 
+bool weighted_comb {false};
+
 } // namespace simulation
 
 //==============================================================================
@@ -777,6 +779,8 @@ void finalize_generation()
     // Time census only after the initial condition
     if (!simulation::is_initial_condition &&
         !simulation::is_decorrelation_generation) {
+      if (settings::neutron_weighted_comb)
+        simulation::weighted_comb = true;
       // If using shared memory, stable sort the time census bank (by parent
       // IDs) so as to allow for reproducibility regardless of which order
       // particles are run in.
@@ -787,10 +791,13 @@ void finalize_generation()
       synchronize_bank(simulation::time_census_bank, simulation::source_bank,
         settings::n_particles, simulation::combined_work_per_rank,
         simulation::work_index, simulation::average_neutron_weight);
+      if (settings::neutron_weighted_comb)
+        simulation::weighted_comb = false;
     }
 
     if (settings::forced_decay) {
-      settings::weighted_comb = true;
+      if (settings::precursor_weighted_comb)
+        simulation::weighted_comb = true;
       // The precursor bank should also be sorted
       sort_census_bank(simulation::precursor_shared_bank,
         simulation::precursor_progeny_per_particle,
@@ -800,7 +807,8 @@ void finalize_generation()
         simulation::precursor_source_bank, settings::n_precursor_particles,
         simulation::combined_work_per_rank, simulation::precursor_work_index,
         simulation::average_precursor_weight);
-      settings::weighted_comb = false;
+      if (settings::precursor_weighted_comb)
+        simulation::weighted_comb = false;
     }
   }
 

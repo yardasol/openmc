@@ -135,7 +135,8 @@ std::unordered_set<int> sourcepoint_batch;
 std::unordered_set<int> statepoint_batch;
 double source_rejection_fraction {0.05};
 double free_gas_threshold {400.0};
-bool weighted_comb {false};
+bool neutron_weighted_comb {false};
+bool precursor_weighted_comb {true};
 std::unordered_set<int> source_write_surf_id;
 CollisionTrackConfig collision_track_config {};
 int64_t ssw_max_particles;
@@ -806,7 +807,11 @@ void read_settings_xml(pugi::xml_node root)
   }
 
   if (check_for_node(root, "weighted_comb")) {
-    weighted_comb = get_node_value_bool(root, "weighted_comb");
+    xml_node node_wc = root.child("weighted_comb");
+    if (check_for_node(node_wc, "neutron"))
+      neutron_weighted_comb = get_node_value_bool(node_wc, "neutron");
+    if (check_for_node(node_wc, "precursor"))
+      precursor_weighted_comb = get_node_value_bool(node_wc, "precursor");
   }
 
   // Surface grazing

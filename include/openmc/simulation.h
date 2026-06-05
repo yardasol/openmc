@@ -91,6 +91,8 @@ extern vector<int64_t> combined_work_index;
 extern double average_neutron_weight;
 extern double average_precursor_weight;
 
+extern bool weighted_comb;
+
 } // namespace simulation
 
 //==============================================================================

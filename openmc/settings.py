@@ -418,6 +418,12 @@ class Settings:
 
         .. versionadded:: 0.14.0
 
+    weighted_comb : dict
+        Dictionary defining if a weighted comb should be used instead of a uniform comb
+        when making synchronizing particle source banks. The dictionary may have
+        the following keys, 'neutron', 'precursor'. Value for both of these should
+        be a boolean.
+
     create_delayed_neutrons : bool
         Whether delayed neutrons are created in fission.
 
@@ -451,6 +457,7 @@ class Settings:
         self._forced_decay = None
         self._combined_precursor = None
         self._precursor_particles = None
+        self._weighted_comb = None
         self._timestep_parameters = {}
 
         # Energy mode subelement
@@ -723,7 +730,6 @@ class Settings:
         cv.check_type('kinetic simulation', value, bool)
         self._combined_precursor = value
 
-
     @property
     def precursor_particles(self) -> int:
         return self._precursor_particles
@@ -733,6 +739,25 @@ class Settings:
         cv.check_type('precursor_particles', precursor_particles, Integral)
         cv.check_greater_than('precursor_particles', precursor_particles, 0)
         self._precursor_particles = precursor_particles
+
+    @property
+    def weighted_comb(self) -> dict:
+        return self._weighted_comb
+
+    @weighted_comb.setter
+    def weighted_comb(self, weighted_comb: dict):
+        if not isinstance(weighted_comb, Mapping):
+            msg = f'Unable to set weighted_comb from "{weighted_comb}" which is not a '\
+                'Python dictionary'
+            raise ValueError(msg)
+        for key in weighted_comb:
+            if key in ['neutron', 'precursor']:
+                cv.check_type('particle type', weighted_comb[key], bool)
+            else:
+                msg = f'Unable to set weighted_comb to "{key}" which is unsupported ' \
+                    'by OpenMC'
+
+        self._weighted_comb = weighted_comb
 
     @property
     def timestep_parameters(self) -> dict:
@@ -1706,6 +1731,13 @@ class Settings:
             element = ET.SubElement(root, "precursor_particles")
             element.text = str(self._precursor_particles)
 
+    def _create_weighted_comb_subelement(self, root):
+        if self._weighted_comb is not None:
+            element = ET.SubElement(root, "weighted_comb")
+            for key, value in self._weighted_comb.items():
+                subelement = ET.SubElement(element, key)
+                subelement.text = str(value).lower()
+
     def _create_timestep_parameters_subelement(self, root):
         if self._timestep_parameters:
             element = ET.SubElement(root, "timestep_parameters")
@@ -2321,6 +2353,15 @@ class Settings:
         if text is not None:
             self.precursor_particles = int(text)
 
+    def _weighted_comb_from_xml_element(self, root):
+        elem = root.find('weighted_comb')
+        if elem is not None:
+            self.weighted_comb = {}
+            for key in ('neutron', 'precursor'):
+                value = get_text(elem, key)
+                if value is not None:
+                    self.weighted_comb[key] = value in ('true', '1')
+
     def _timestep_parameters_from_xml_element(self, root):
         elem = root.find('timestep_parameters')
         if elem is not None:
@@ -2802,6 +2843,7 @@ class Settings:
         self._create_kinetic_simulation_subelement(element)
         self._create_n_decorrelate_generations_subelement(element)
         self._create_precursor_particles_subelement(element)
+        self._create_weighted_comb_subelement(element)
         self._create_forced_decay_subelement(element)
         self._create_combined_precursor_subelement(element)
         self._create_timestep_parameters_subelement(element)
@@ -2927,8 +2969,9 @@ class Settings:
         settings._keff_trigger_from_xml_element(elem)
         settings._kinetic_simulation_from_xml_element(elem)
         settings._n_decorrelate_generations_from_xml_element(elem)
-        settings._precursor_particles_from_xml_element(elem)
         settings._forced_decay_from_xml_element(elem)
+        settings._precursor_particles_from_xml_element(elem)
+        settings._weighted_comb_from_xml_element(elem)
         settings._combined_precursor_from_xml_element(elem)
         settings._timestep_parameters_from_xml_element(elem)
         settings._source_from_xml_element(elem, meshes)

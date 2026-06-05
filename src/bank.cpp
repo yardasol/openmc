@@ -277,21 +277,21 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
   double w_teeth_distance = w_total / n_particles;
   double teeth_distance = static_cast<double>(total) / n_particles;
   average_weight = w_teeth_distance;
-  if (settings::weighted_comb)
+  if (simulation::weighted_comb)
     teeth_distance = w_teeth_distance;
   double teeth_offset = prn(&seed) * teeth_distance;
 
   // First and last hitting tooth
   double w_end;
   int64_t end;
-  if (settings::weighted_comb) {
+  if (simulation::weighted_comb) {
     w_end = w_start + simulation::cumulative_weight[census_bank.size() - 1];
   } else {
     end = start + census_bank.size();
   }
   int64_t tooth_start;
   int64_t tooth_end;
-  if (settings::weighted_comb) {
+  if (simulation::weighted_comb) {
     tooth_start = std::ceil((w_start - teeth_offset) / teeth_distance);
     tooth_end = std::floor((w_end - teeth_offset) / teeth_distance) + 1;
   } else {
@@ -303,7 +303,7 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
   double tooth = tooth_start * teeth_distance + teeth_offset;
 
   int64_t idx;
-  if (settings::weighted_comb) {
+  if (simulation::weighted_comb) {
     for (int i = 0; i < simulation::cumulative_weight.size(); i++)
       simulation::cumulative_weight[i] += w_start;
 
@@ -316,7 +316,7 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
     // idx -= 1;
   }
   for (int64_t i = tooth_start; i < tooth_end; i++) {
-    if (settings::weighted_comb) {
+    if (simulation::weighted_comb) {
       // TODO: replace with binary search
       while (tooth > simulation::cumulative_weight[idx])
         idx++;
@@ -324,7 +324,7 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
       idx = std::floor(tooth) - start;
     }
     temp_sites[index_temp] = census_bank[idx];
-    if (settings::weighted_comb)
+    if (simulation::weighted_comb)
       temp_sites[index_temp].wgt = teeth_distance;
     // TODO: disable for time census bank
     if (settings::ifp_on) {
