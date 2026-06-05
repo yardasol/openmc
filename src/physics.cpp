@@ -425,7 +425,7 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
     // Sample equilibrium precursor particle if forced decay is on (which can
     // only be the case for a kinetic simulation)
     if (settings::forced_decay) {
-      sample_equilibrium_precursor_particle(i_nuclide, rx, p);
+      sample_equilibrium_precursor_site(i_nuclide, rx, p);
     }
   }
 }
@@ -1244,7 +1244,7 @@ void sample_fission_neutron(
 
         // Create precursor particle if delayed neutron falls outside of the
         // time boundary and using forced decay
-        create_precursor_particle(rx, i_nuclide, p, p.wgt());
+        create_precursor_site(rx, i_nuclide, p, p.wgt());
       } else {
         // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
         p.u() = rotate_angle(p.u(), mu, nullptr, seed);
@@ -1312,7 +1312,14 @@ double sample_fission_neutron_energy(int i_nuclide, const Reaction& rx,
   return mu;
 }
 
-void sample_equilibrium_precursor_particle(
+void sample_equilibrium_precursor_site(
+  int i_nuclide, const Reaction& rx, Particle& p)
+{
+  const double eq_weight = compute_precursor_eq_weight(i_nuclide, rx, p);
+  create_precursor_site(rx, i_nuclide, p, eq_weight);
+}
+
+const double compute_precursor_eq_weight(
   int i_nuclide, const Reaction& rx, Particle& p)
 {
   const auto& nuc {data::nuclides[i_nuclide]};
@@ -1323,10 +1330,21 @@ void sample_equilibrium_precursor_particle(
   // simulation for nuclear reactor dynamics using GPUs", B. Molnar (2019)
   double sum = 0.0;
   if (settings::combined_precursor) {
+    double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+
+    double lambda_b;
     for (int group = 1; group < nuc->n_precursor_; ++group) {
       double decay_rate = rx.products_[group].decay_rate_;
       double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
-      sum += nu_d / decay_rate;
+      lambda_b += nu_d / decay_rate;
+    }
+    lambda_b = nu_d_tot / lambda_b;
+    for (int group = 1; group < nuc->n_precursor_; ++group) {
+      double decay_rate = rx.products_[group].decay_rate_;
+      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+      double gamma_i = nu_d / nu_d_tot;
+      gamma_i *= lambda_b / decay_rate;
+      sum += gamma_i * nu_d / decay_rate;
     }
   } else {
     int group = sample_delay_group(i_nuclide, rx, E_in, seed);
@@ -1339,7 +1357,8 @@ void sample_equilibrium_precursor_particle(
   double N = model::materials[p.material()]->density();
   double sigma_f = p.neutron_xs(i_nuclide).fission * N;
   const double eq_wgt = p.wgt() * sum * sigma_f / simulation::keff * p.speed();
-  create_precursor_particle(rx, i_nuclide, p, eq_wgt);
+
+  return eq_wgt;
 }
 
 void sample_branchless_fission(
@@ -1392,7 +1411,7 @@ void sample_branchless_fission(
       if (settings::combined_precursor)
         p.delayed_group() = 0;
       // Bank precursor particle if using forced decay
-      create_precursor_particle(rx, i_nuclide, p, wgt_branchless);
+      create_precursor_site(rx, i_nuclide, p, wgt_branchless);
     } else {
       // Sample azimuthal angle uniformly in [0, 2*pi) and assign angle
       p.u() = rotate_angle(p.u(), mu, nullptr, seed);
@@ -1412,7 +1431,7 @@ void sample_branchless_fission(
   }
 }
 
-void create_precursor_particle(
+void create_precursor_site(
   const Reaction& rx, int i_nuclide, Particle& p, const double& banked_wgt)
 {
   // Initialize precursor particle source site
