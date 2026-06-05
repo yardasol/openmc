@@ -787,6 +787,7 @@ void finalize_generation()
     }
 
     if (settings::forced_decay) {
+      settings::weighted_comb = true;
       // The precursor bank should also be sorted
       sort_census_bank(simulation::precursor_shared_bank,
         simulation::precursor_progeny_per_particle,
@@ -795,6 +796,7 @@ void finalize_generation()
       synchronize_bank(simulation::precursor_shared_bank,
         simulation::precursor_source_bank, settings::n_precursor_particles,
         simulation::combined_work_per_rank, simulation::precursor_work_index);
+      settings::weighted_comb = false;
     }
   }
 
