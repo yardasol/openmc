@@ -92,6 +92,7 @@ extern double average_neutron_weight;
 extern double average_precursor_weight;
 
 extern bool weighted_comb;
+extern double dt;
 
 } // namespace simulation
 

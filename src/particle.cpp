@@ -889,6 +889,7 @@ void Particle::mark_as_lost(const char* message)
 #pragma omp atomic
   simulation::n_lost_particles += 1;
 
+  // TODO: SUPPORT TD SIMS (gen_per_batch, work_per_rank)
   // Count the total number of simulated particles (on this processor)
   auto n = simulation::current_batch * settings::gen_per_batch *
            simulation::work_per_rank;

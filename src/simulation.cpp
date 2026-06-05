@@ -376,8 +376,9 @@ int openmc_next_batch(int* status)
     set_bank_times_to_zero();
 
     // Prepare for loop over time census boundaries, generations are now time
-    // steps
-    settings::gen_per_batch = settings::time_census_boundaries.size();
+    // steps. Subtract one to account for the infinity boundary at the zeroth
+    // index
+    settings::gen_per_batch = settings::time_census_boundaries.size() - 1;
 
     if (mpi::master)
       write_message(
@@ -389,6 +390,12 @@ int openmc_next_batch(int* status)
   for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
 
     initialize_generation();
+
+    if (current_gen == 1)
+      simulation::dt = settings::time_census_boundaries[1];
+    else
+      simulation::dt = settings::time_census_boundaries[current_gen] -
+                       settings::time_census_boundaries[current_gen - 1];
 
     // Start timer for transport
     simulation::time_transport.start();
@@ -496,6 +503,7 @@ double average_neutron_weight;
 double average_precursor_weight;
 
 bool weighted_comb {false};
+double dt;
 
 } // namespace simulation
 
@@ -718,6 +726,17 @@ void initialize_generation()
     simulation::keff_generation = simulation::global_tallies(
       GlobalTally::K_TRACKLENGTH, TallyResult::VALUE);
   }
+
+  if (settings::kinetic_simulation &&
+      settings::solver_type == SolverType::MONTE_CARLO &&
+      (simulation::is_decorrelation_generation ||
+        !simulation::is_decorrelation_generation &&
+          !simulation::is_initial_condition)) {
+    // Reset total starting particle weight used for normalizing tallies for
+    // decorrleation generations AND for time census generations
+    simulation::total_weight = 0.0;
+  }
+
   if (settings::kinetic_simulation &&
       settings::solver_type == SolverType::MONTE_CARLO) {
     // Clear out the time census bank
@@ -942,11 +961,8 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
   }
 
 // Add particle's starting weight to count for normalizing tallies later
-  if (simulation::is_initial_condition ||
-      simulation::is_decorrelation_generation) {
 #pragma omp atomic
-    simulation::total_weight += p.wgt();
-  }
+  simulation::total_weight += p.wgt();
 
   // Force calculation of cross-sections by setting last energy to zero
   if (settings::run_CE) {
@@ -1237,7 +1253,6 @@ void decorrelate_kinetic_eigenvalue_batch()
   simulation::is_decorrelation_generation = true;
 
   while (gen_counter < settings::n_decorrelate_generations) {
-    simulation::total_weight = 0.0;
     // Set source bank as the eigenvalue source bank when kinetic simulation is
     // toggled off
     simulation::current_gen++;
