@@ -492,6 +492,9 @@ vector<int64_t> combined_work_index;
 int64_t precursor_work_per_rank {0};
 vector<int64_t> precursor_work_index;
 
+double average_neutron_weight;
+double average_precursor_weight;
+
 } // namespace simulation
 
 //==============================================================================
@@ -764,7 +767,7 @@ void finalize_generation()
       // Distribute fission bank across processors evenly
       synchronize_bank(simulation::fission_bank, simulation::source_bank,
         settings::n_particles, simulation::work_per_rank,
-        simulation::work_index);
+        simulation::work_index, simulation::average_neutron_weight);
     }
   }
 
@@ -783,7 +786,7 @@ void finalize_generation()
       // Distribute time census bank across processors evenly
       synchronize_bank(simulation::time_census_bank, simulation::source_bank,
         settings::n_particles, simulation::combined_work_per_rank,
-        simulation::work_index);
+        simulation::work_index, simulation::average_neutron_weight);
     }
 
     if (settings::forced_decay) {
@@ -795,7 +798,8 @@ void finalize_generation()
       // Distribute also precursors source sites
       synchronize_bank(simulation::precursor_shared_bank,
         simulation::precursor_source_bank, settings::n_precursor_particles,
-        simulation::combined_work_per_rank, simulation::precursor_work_index);
+        simulation::combined_work_per_rank, simulation::precursor_work_index,
+        simulation::average_precursor_weight);
       settings::weighted_comb = false;
     }
   }
@@ -1143,6 +1147,10 @@ void transport_history_based()
   if (settings::kinetic_simulation && settings::forced_decay &&
       !simulation::is_initial_condition &&
       !simulation::is_decorrelation_generation) {
+    // Set surival weight to average weight of neutrons
+    double old_weight_survive = settings::weight_survive;
+    if (simulation::current_gen > 1)
+      settings::weight_survive = simulation::average_neutron_weight;
 #pragma omp parallel for schedule(runtime)
     for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
          ++i_work) {
@@ -1151,6 +1159,7 @@ void transport_history_based()
       forced_precursor_decay(p, i_work);
       transport_history_based_single_particle(p);
     }
+    settings::weight_survive = old_weight_survive;
   }
 }
 

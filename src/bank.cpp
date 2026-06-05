@@ -148,11 +148,9 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank,
   }
 
   // Initialize and clear cumulative_weight
-  if (settings::weighted_comb) {
-    simulation::cumulative_weight.resize(census_bank.size());
-    std::fill(simulation::cumulative_weight.begin(),
-      simulation::cumulative_weight.end(), 0);
-  }
+  simulation::cumulative_weight.resize(census_bank.size());
+  std::fill(simulation::cumulative_weight.begin(),
+    simulation::cumulative_weight.end(), 0);
 
   // Use parent and progeny indices to sort census bank
   for (int64_t i = 0; i < census_bank.size(); i++) {
@@ -164,8 +162,7 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank,
                   "shared census bank size.");
     }
     sorted_bank[idx] = site;
-    if (settings::weighted_comb)
-      simulation::cumulative_weight[idx] = site.wgt;
+    simulation::cumulative_weight[idx] = site.wgt;
     // TODO: disable for time census bank?
     if (settings::ifp_on) {
       copy_ifp_data_from_fission_banks(
@@ -173,11 +170,8 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank,
     }
   }
 
-  if (settings::weighted_comb) {
-    std::inclusive_scan(simulation::cumulative_weight.begin(),
-      simulation::cumulative_weight.end(),
-      simulation::cumulative_weight.begin());
-  }
+  std::inclusive_scan(simulation::cumulative_weight.begin(),
+    simulation::cumulative_weight.end(), simulation::cumulative_weight.begin());
 
   // Copy sorted bank into the census bank
   std::copy(sorted_bank, sorted_bank + census_bank.size(), census_bank.data());
@@ -192,7 +186,7 @@ void sort_census_bank(SharedArray<SourceSite>& census_bank,
 // another vector...
 void synchronize_bank(SharedArray<SourceSite>& census_bank,
   vector<SourceSite>& source_bank, int64_t& n_particles, int64_t& work_per_rank,
-  vector<int64_t>& work_index)
+  vector<int64_t>& work_index, double& average_weight)
 {
   simulation::time_bank.start();
 
@@ -212,43 +206,33 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
   double w_start;
 
 #ifdef OPENMC_MPI
-  if (settings::weighted_comb) {
-    w_start = 0.0;
-    double w_bank = simulation::cumulative_weight[census_bank.size() - 1];
-    MPI_Exscan(&w_bank, &w_start, 1, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
-  } else {
-    start = 0;
-    int64_t n_bank = census_bank.size();
-    MPI_Exscan(&n_bank, &start, 1, MPI_INT64_T, MPI_SUM, mpi::intracomm);
-  }
+  w_start = 0.0;
+  double w_bank = simulation::cumulative_weight[census_bank.size() - 1];
+  MPI_Exscan(&w_bank, &w_start, 1, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
+
+  start = 0;
+  int64_t n_bank = census_bank.size();
+  MPI_Exscan(&n_bank, &start, 1, MPI_INT64_T, MPI_SUM, mpi::intracomm);
 
   // While we would expect the value of start on rank 0 to be 0, the MPI
   // standard says that the receive buffer on rank 0 is undefined and not
   // significant
   if (mpi::rank == 0) {
-    if (settings::weighted_comb)
-      w_start = 0.0;
-    else
-      start = 0;
+    w_start = 0.0;
+    start = 0;
   }
 
-  if (settings::weighted_comb) {
-    w_total = w_start + simulation::cumulative_weight[census_bank.size() - 1];
-    MPI_Bcast(&w_total, 1, MPI_DOUBLE, mpi::n_procs - 1, mpi::intracomm);
-  } else {
-    finish = start + census_bank.size();
-    total = finish;
-    MPI_Bcast(&total, 1, MPI_INT64_T, mpi::n_procs - 1, mpi::intracomm);
-  }
+  w_total = w_start + simulation::cumulative_weight[census_bank.size() - 1];
+  MPI_Bcast(&w_total, 1, MPI_DOUBLE, mpi::n_procs - 1, mpi::intracomm);
+  finish = start + census_bank.size();
+  total = finish;
+  MPI_Bcast(&total, 1, MPI_INT64_T, mpi::n_procs - 1, mpi::intracomm);
 #else
-  if (settings::weighted_comb) {
-    w_start = 0.0;
-    w_total = simulation::cumulative_weight[census_bank.size() - 1];
-  } else {
-    start = 0;
-    finish = census_bank.size();
-    total = finish;
-  }
+  w_start = 0.0;
+  w_total = simulation::cumulative_weight[census_bank.size() - 1];
+  start = 0;
+  finish = census_bank.size();
+  total = finish;
 #endif
 
   // If there are not that many particles per generation, it's possible that no
@@ -290,12 +274,11 @@ void synchronize_bank(SharedArray<SourceSite>& census_bank,
   uint64_t seed = init_seed(id, STREAM_TRACKING);
 
   // Comb specification
-  double teeth_distance;
-  if (settings::weighted_comb) {
-    teeth_distance = w_total / n_particles;
-  } else {
-    teeth_distance = static_cast<double>(total) / n_particles;
-  }
+  double w_teeth_distance = w_total / n_particles;
+  double teeth_distance = static_cast<double>(total) / n_particles;
+  average_weight = w_teeth_distance;
+  if (settings::weighted_comb)
+    teeth_distance = w_teeth_distance;
   double teeth_offset = prn(&seed) * teeth_distance;
 
   // First and last hitting tooth

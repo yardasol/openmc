@@ -67,7 +67,7 @@ void init_census_bank(SharedArray<SourceSite>& census_bank,
 //! Sample/redistribute source sites from accumulated fission sites
 void synchronize_bank(SharedArray<SourceSite>& census_bank,
   vector<SourceSite>& source_bank, int64_t& n_particles, int64_t& work_per_rank,
-  vector<int64_t>& work_index);
+  vector<int64_t>& work_index, double& average_weight);
 
 } // namespace openmc
 
