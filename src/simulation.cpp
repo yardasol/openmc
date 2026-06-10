@@ -194,8 +194,8 @@ int openmc_simulation_init()
     mat->init_nuclide_index();
   }
 
-  // Reset global variables -- this is done before loading state point (as that
-  // will potentially populate k_generation and entropy)
+  // Reset global variables and tallies -- this is done before loading state
+  // point (as that will potentially populate k_generation and entropy)
   openmc_reset_global_variables();
   openmc_reset();
 
@@ -364,6 +364,7 @@ int openmc_next_batch(int* status)
       // Decorrelate generations
       settings::gen_per_batch = settings::n_decorrelate_generations;
       decorrelate_kinetic_eigenvalue_batch();
+      // TODO: preserve tally datastructure for time tallies
     } else {
       simulation::source_bank = simulation::initial_source_bank;
       simulation::keff = simulation::initial_keff;
@@ -1329,8 +1330,12 @@ void set_bank_times_to_zero()
 #pragma omp parallel for schedule(runtime)
       for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
            ++i_work) {
+        double time = simulation::precursor_source_bank[i_work - 1].time;
+        double time_born =
+          simulation::precursor_source_bank[i_work - 1].time_born;
         simulation::precursor_source_bank[i_work - 1].time = 0.0;
-        simulation::precursor_source_bank[i_work - 1].time_born = 0.0;
+        simulation::precursor_source_bank[i_work - 1].time_born =
+          0.0 - time - time_born;
         simulation::precursor_source_bank[i_work - 1].time_bound_idx = 1;
       }
     }
