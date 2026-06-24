@@ -16,7 +16,9 @@
     <batches>7</batches>
     <inactive>3</inactive>
     <generations_per_batch>3</generations_per_batch>
-    <weighted_comb>true</weighted_comb>
+    <weighted_comb>
+      <neutron>true</neutron>
+    </weighted_comb>
     <source type="independent" strength="1.0" particle="neutron">
       <space type="box">
         <parameters>-4.0 -4.0 -4.0 4.0 4.0 4.0</parameters>

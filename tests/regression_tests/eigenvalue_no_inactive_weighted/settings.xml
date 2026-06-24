@@ -5,7 +5,9 @@
   <batches>10</batches>
   <inactive>0</inactive>
   <particles>1000</particles>
-  <weighted_comb>true</weighted_comb>
+  <weighted_comb>
+    <neutron>true</neutron>
+  </weighted_comb>
 
   <source>
     <space type="box">

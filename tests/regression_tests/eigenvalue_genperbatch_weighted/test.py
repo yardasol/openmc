@@ -21,7 +21,7 @@ def model():
     model.settings.inactive = 3
     model.settings.batches = 7
     model.settings.generations_per_batch = 3
-    model.settings.weighted_comb = True
+    model.settings.weighted_comb = {'neutron': True}
     space = openmc.stats.Box((-4.0, -4.0, -4.0), (4.0, 4.0, 4.))
     model.settings.source = openmc.IndependentSource(space=space)
 

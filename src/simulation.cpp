@@ -1155,36 +1155,43 @@ void transport_history_based_single_particle(Particle& p)
 
 void transport_history_based()
 {
-  // Zero out precursor_progeny_per_particle
-  if (settings::kinetic_simulation && settings::forced_decay &&
-      !simulation::is_initial_condition &&
+  double old_weight_survive;
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       !simulation::is_decorrelation_generation) {
-    std::fill(simulation::precursor_progeny_per_particle.begin(),
-      simulation::precursor_progeny_per_particle.end(), 0);
+    // Zero out precursor_progeny_per_particle
+    if (settings::forced_decay) {
+      std::fill(simulation::precursor_progeny_per_particle.begin(),
+        simulation::precursor_progeny_per_particle.end(), 0);
+    }
+    // Set surival weight to average weight of neutrons if using a weighted comb
+    if (settings::neutron_weighted_comb) {
+      old_weight_survive = settings::weight_survive;
+      if (simulation::current_gen > 1)
+        settings::weight_survive = simulation::average_neutron_weight;
+    }
   }
+
 #pragma omp parallel for schedule(runtime)
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     Particle p;
     initialize_history(p, i_work);
     transport_history_based_single_particle(p);
   }
-  // Only use forced decay for the transient part of a kinetic simulation
-  if (settings::kinetic_simulation && settings::forced_decay &&
-      !simulation::is_initial_condition &&
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       !simulation::is_decorrelation_generation) {
-    // Set surival weight to average weight of neutrons
-    double old_weight_survive = settings::weight_survive;
-    if (simulation::current_gen > 1)
-      settings::weight_survive = simulation::average_neutron_weight;
+    // Only use forced decay in the transient part of a kinetic simulation
+    if (settings::forced_decay) {
 #pragma omp parallel for schedule(runtime)
-    for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
-         ++i_work) {
-      Particle p;
-      initialize_history(p, i_work, true);
-      forced_precursor_decay(p, i_work);
-      transport_history_based_single_particle(p);
+      for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
+           ++i_work) {
+        Particle p;
+        initialize_history(p, i_work, true);
+        forced_precursor_decay(p, i_work);
+        transport_history_based_single_particle(p);
+      }
     }
-    settings::weight_survive = old_weight_survive;
+    if (settings::neutron_weighted_comb)
+      settings::weight_survive = old_weight_survive;
   }
 }
 
