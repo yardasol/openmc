@@ -76,6 +76,7 @@ double global_tally_absorption;
 double global_tally_collision;
 double global_tally_tracklength;
 double global_tally_leakage;
+double global_tally_production;
 
 //==============================================================================
 // Tally object implementation
@@ -874,6 +875,10 @@ void Tally::accumulate()
                                       : simulation::work_per_rank;
 
     // Account for number of source particles in normalization
+    // TODO: should gen_per_batch be changed/bypassed in kinetic simulation? It
+    // doesn't have the right
+    // TODO: also contributing particles should account for particle from
+    // precursors...
     double norm =
       total_source / (contributing_particles * settings::gen_per_batch);
 

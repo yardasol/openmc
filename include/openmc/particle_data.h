@@ -564,6 +564,7 @@ private:
   double keff_tally_collision_ {0.0};
   double keff_tally_tracklength_ {0.0};
   double keff_tally_leakage_ {0.0};
+  double keff_tally_production_ {0.0};
 
   bool trace_ {false};
 
@@ -749,6 +750,7 @@ public:
   double& keff_tally_collision() { return keff_tally_collision_; }
   double& keff_tally_tracklength() { return keff_tally_tracklength_; }
   double& keff_tally_leakage() { return keff_tally_leakage_; }
+  double& keff_tally_production() { return keff_tally_production_; }
 
   // Shows debug info
   bool& trace() { return trace_; }

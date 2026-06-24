@@ -763,13 +763,28 @@ void finalize_generation()
     gt(GlobalTally::K_TRACKLENGTH, TallyResult::VALUE) +=
       global_tally_tracklength;
   }
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    gt(GlobalTally::K_ABSORPTION, TallyResult::VALUE) +=
+      global_tally_absorption;
+    gt(GlobalTally::K_PRODUCTION, TallyResult::VALUE) +=
+      global_tally_production;
+  }
   gt(GlobalTally::LEAKAGE, TallyResult::VALUE) += global_tally_leakage;
 
   // reset tallies
-  if (settings::run_mode == RunMode::EIGENVALUE) {
+  if (settings::run_mode == RunMode::EIGENVALUE &&
+      (simulation::is_initial_condition ||
+        !simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
     global_tally_collision = 0.0;
     global_tally_absorption = 0.0;
     global_tally_tracklength = 0.0;
+  }
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    global_tally_production = 0.0;
+    global_tally_absorption = 0.0;
   }
   global_tally_leakage = 0.0;
 
@@ -1351,6 +1366,9 @@ void set_bank_times_to_zero()
 
 void forced_precursor_decay(Particle& p, int64_t i_work)
 {
+  // Set the stream to allow using random numbers
+  p.stream() = STREAM_TRACKING;
+
   SourceSite& precursor_site = simulation::precursor_source_bank[i_work - 1];
   uint64_t* seed = p.current_seed();
   const auto& nuc {data::nuclides[precursor_site.i_nuclide]};

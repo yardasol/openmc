@@ -588,12 +588,15 @@ void Particle::event_death()
   global_tally_tracklength += keff_tally_tracklength();
 #pragma omp atomic
   global_tally_leakage += keff_tally_leakage();
+#pragma omp atomic
+  global_tally_production += keff_tally_production();
 
   // Reset particle tallies once accumulated
   keff_tally_absorption() = 0.0;
   keff_tally_collision() = 0.0;
   keff_tally_tracklength() = 0.0;
   keff_tally_leakage() = 0.0;
+  keff_tally_production() = 0.0;
 
   if (!model::active_pulse_height_tallies.empty()) {
     score_pulse_height_tally(*this, model::active_pulse_height_tallies);

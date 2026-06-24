@@ -203,6 +203,7 @@ void sample_branchless_neutron_reaction(Particle& p)
   if (prob_fission > sampled_probability && nuc->fissionable_ &&
       p.neutron_xs(i_nuclide).fission > 0.0) {
     auto& rx = sample_fission(i_nuclide, p);
+    p.keff_tally_production() += wgt_branchless;
     if (settings::run_mode == RunMode::EIGENVALUE) {
       branchless_fission(p, i_nuclide, rx, wgt_branchless);
     } else if (settings::run_mode == RunMode::FIXED_SOURCE &&
@@ -215,6 +216,13 @@ void sample_branchless_neutron_reaction(Particle& p)
   // Create secondary photons
   if (settings::photon_transport) {
     sample_secondary_photons(p, i_nuclide);
+  }
+
+  // The following subroutine calculates the expected absorption
+  // weight of the particle, similar to survival biasing
+
+  if (p.neutron_xs(i_nuclide).absorption > 0.0) {
+    absorption(p, i_nuclide);
   }
 
   // Scattering
@@ -799,6 +807,15 @@ void absorption(Particle& p, int i_nuclide)
       p.keff_tally_absorption() += wgt_absorb *
                                    p.neutron_xs(i_nuclide).nu_fission /
                                    p.neutron_xs(i_nuclide).absorption;
+    }
+  } else if (settings::branchless_collision) {
+    // Determine weight absorbed in survival biasing
+    const double wgt_absorb = p.wgt() * p.neutron_xs(i_nuclide).absorption /
+                              p.neutron_xs(i_nuclide).total;
+
+    // Score implicit absorption estimate of keff
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      p.keff_tally_absorption() += wgt_absorb;
     }
   } else {
     // See if disappearance reaction happens
