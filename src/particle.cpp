@@ -349,6 +349,7 @@ void Particle::event_cross_time_boundary()
   site.time_bound_idx = time_bound_idx() + 1;
 
   int64_t idx = simulation::time_census_bank.thread_safe_append(site);
+  simulation::total_weight_end += wgt();
   wgt() = 0.0;
   if (idx == -1) {
     warning("The shared time census bank is full. Additional time boundary "

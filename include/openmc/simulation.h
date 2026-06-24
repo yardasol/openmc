@@ -42,6 +42,7 @@ extern "C" bool satisfy_triggers;  //!< have tally triggers been satisfied?
 extern int ssw_current_file;       //!< current surface source file
 extern "C" int total_gen;          //!< total number of generations simulated
 extern double total_weight;        //!< Total source weight in a batch
+extern double total_weight_end;    //!< Total source weight in a batch
 extern int64_t work_per_rank;      //!< number of particles per MPI rank
 
 extern const RegularMesh* entropy_mesh;

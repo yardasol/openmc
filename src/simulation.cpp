@@ -465,6 +465,7 @@ bool satisfy_triggers {false};
 int ssw_current_file;
 int total_gen {0};
 double total_weight;
+double total_weight_end;
 int64_t work_per_rank;
 
 const RegularMesh* entropy_mesh {nullptr};
@@ -578,6 +579,7 @@ void initialize_batch()
 
   // Reset total starting particle weight used for normalizing tallies
   simulation::total_weight = 0.0;
+  simulation::total_weight_end = 0.0;
 
   // Determine if this batch is the first inactive or active batch.
   bool first_inactive = false;
@@ -730,12 +732,11 @@ void initialize_generation()
 
   if (settings::kinetic_simulation &&
       settings::solver_type == SolverType::MONTE_CARLO &&
-      (simulation::is_decorrelation_generation ||
-        !simulation::is_decorrelation_generation &&
-          !simulation::is_initial_condition)) {
+      !simulation::is_initial_condition) {
     // Reset total starting particle weight used for normalizing tallies for
     // decorrleation generations AND for time census generations
     simulation::total_weight = 0.0;
+    simulation::total_weight_end = 0.0;
   }
 
   if (settings::kinetic_simulation &&
@@ -976,9 +977,12 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
     write_message("Simulating Particle {}", p.id());
   }
 
-// Add particle's starting weight to count for normalizing tallies later
+  // Add particle's starting weight to count for normalizing tallies later (skip
+  // for forced decay)
+  if (!from_precursor) {
 #pragma omp atomic
-  simulation::total_weight += p.wgt();
+    simulation::total_weight += p.wgt();
+  }
 
   // Force calculation of cross-sections by setting last energy to zero
   if (settings::run_CE) {
@@ -1376,6 +1380,10 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
   auto& rx = *nuc->fission_rx_[precursor_site.i_fission_rx];
 
   int group = sample_forced_decay(p, precursor_site);
+
+  // Add forced decay particle's starting weight to count for normalizing
+  // tallies later
+  simulation::total_weight += p.wgt();
 
   // Sample energy out
   // TODO: sample E_in?
