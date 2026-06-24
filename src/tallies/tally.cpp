@@ -877,11 +877,6 @@ void Tally::accumulate()
     double norm =
       total_source / (contributing_particles * settings::gen_per_batch);
 
-    if (!simulation::is_initial_condition &&
-        !simulation::is_decorrelation_generation) {
-      norm = total_source / (simulation::total_weight * simulation::dt);
-    }
-
     if (settings::solver_type == SolverType::RANDOM_RAY) {
       norm = 1.0;
     }
