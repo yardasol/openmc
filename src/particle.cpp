@@ -766,6 +766,7 @@ void Particle::cross_vacuum_bc(const Surface& surf)
   // Score to global leakage tally
   keff_tally_leakage() += wgt();
 
+  simulation::total_weight_end += wgt();
   // Kill the particle
   wgt() = 0.0;
 

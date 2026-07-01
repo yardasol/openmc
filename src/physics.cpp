@@ -828,6 +828,7 @@ void absorption(Particle& p, int i_nuclide)
                                      p.neutron_xs(i_nuclide).absorption;
       }
 
+      simulation::total_weight_end += p.wgt();
       p.wgt() = 0.0;
       p.event() = TallyEvent::ABSORB;
       if (!p.fission()) {
@@ -1270,6 +1271,7 @@ void sample_fission_neutron(
         //  Otherwise, bank delayed neutron
         bank_delayed_neutron(p, decay_time, site->E, p.wgt());
       }
+      simulation::total_weight_end += p.wgt();
       // Kill neutron
       p.wgt() = 0.0;
     }
@@ -1438,6 +1440,7 @@ void sample_branchless_fission(
     }
 
     // Kill neutron
+    simulation::total_weight_end += wgt_branchless;
     p.wgt() = 0.0;
   } else {
     p.time() -= decay_time;
