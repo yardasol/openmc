@@ -292,6 +292,12 @@ void Particle::event_advance()
   this->lifetime() += dt;
 
   // TODO: anything need to be done here?
+  double wgt_old;
+  if (settings::branchless_collision && !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    wgt_old = wgt();
+    wgt() /= simulation::total_weight;
+  }
   // Score timed track-length tallies
   if (!model::active_timed_tracklength_tallies.empty()) {
     score_timed_tracklength_tally(*this, distance);
@@ -313,8 +319,14 @@ void Particle::event_advance()
     score_track_derivative(*this, distance);
   }
 
+  if (settings::branchless_collision && !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    wgt() = wgt_old;
+  }
+
   // Set particle weight to zero if it hit the time boundary
   if (distance == distance_cutoff) {
+    simulation::total_weight_end += wgt();
     wgt() = 0.0;
   }
 

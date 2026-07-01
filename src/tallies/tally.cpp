@@ -874,23 +874,14 @@ void Tally::accumulate()
                                       ? settings::n_particles
                                       : simulation::work_per_rank;
 
-    // contributing particles should account for particle from
-    // precursors when applicable
-    if (settings::forced_decay) {
-      contributing_particles = settings::reduce_tallies
-                                 ? settings::n_precursor_particles
-                                 : simulation::precursor_work_per_rank;
-    }
-
     // Account for number of source particles in normalization
     double norm =
       total_source / (contributing_particles * settings::gen_per_batch);
 
-    // gen_per_batch normalization doesn't apply for time censusing, each time
-    // generation is treated as distinct
-    if (settings::kinetic_simulation && !simulation::is_initial_condition &&
-        !simulation::is_decorrelation_generation)
-      norm *= settings::gen_per_batch;
+    if (settings::branchless_collision && !simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation) {
+      norm = 1.0;
+    }
 
     if (settings::solver_type == SolverType::RANDOM_RAY) {
       norm = 1.0;
