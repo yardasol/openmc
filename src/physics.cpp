@@ -808,7 +808,9 @@ void absorption(Particle& p, int i_nuclide)
                                    p.neutron_xs(i_nuclide).nu_fission /
                                    p.neutron_xs(i_nuclide).absorption;
     }
-  } else if (settings::branchless_collision) {
+  } else if (settings::branchless_collision && settings::kinetic_simulation &&
+             !simulation::is_initial_condition &&
+             !simulation::is_decorrelation_generation) {
     // Determine weight absorbed in survival biasing
     const double wgt_absorb = p.wgt() * p.neutron_xs(i_nuclide).absorption /
                               p.neutron_xs(i_nuclide).total;
