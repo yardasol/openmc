@@ -1113,7 +1113,24 @@ void apply_weight_window(Particle& p, WeightWindow weight_window)
   // if particle's weight is above the weight window split until they are within
   // the window
   if (weight > weight_window.upper_weight) {
-    split(p, weight_window.upper_weight, weight_window.max_split);
+    // do not further split the particle if above the limit
+    if (p.n_split() >= settings::max_history_splits)
+      return;
+
+    double n_split = std::ceil(weight / weight_window.upper_weight);
+    double max_split = weight_window.max_split;
+    n_split = std::min(n_split, max_split);
+
+    p.n_split() += n_split;
+
+    // Create secondaries and divide weight among all particles
+    int i_split = std::round(n_split);
+    for (int l = 0; l < i_split - 1; l++) {
+      p.split(weight / n_split);
+    }
+    // remaining weight is applied to current particle
+    p.wgt() = weight / n_split;
+
   } else if (weight <= weight_window.lower_weight) {
     // if the particle weight is below the window, play Russian roulette
     double weight_survive =

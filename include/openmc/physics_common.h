@@ -13,12 +13,6 @@ namespace openmc {
 //! \param[in] weight_survive Weight assigned to particles that survive
 void russian_roulette(Particle& p, double weight_survive);
 
-//! \brief Performs the split operation for a particle
-//! \param[in,out] p  Particle object
-//! \param[in] target_weight Weight assigned to split particles
-//! \param[in] max_split Maximum possible particles produced with splitting
-void split(Particle& p, double target_weight, int max_split);
-
 //! \brief Performs the global russian roulette operation on a particle
 //! \param[in,out] p  Particle object
 void apply_russian_roulette(Particle& p);

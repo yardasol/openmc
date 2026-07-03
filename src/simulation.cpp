@@ -16,7 +16,6 @@
 #include "openmc/output.h"
 #include "openmc/particle.h"
 #include "openmc/photon.h"
-#include "openmc/physics_common.h"
 #include "openmc/random_lcg.h"
 #include "openmc/reaction.h"
 #include "openmc/settings.h"
@@ -355,7 +354,6 @@ int openmc_next_batch(int* status)
 
   // Run some criticality generations to decorrelate batches for eigenvalue
   // simulations
-  // TODO -> refactor to own function
   if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       settings::run_mode == RunMode::EIGENVALUE &&
       settings::solver_type == SolverType::MONTE_CARLO) {
@@ -363,20 +361,10 @@ int openmc_next_batch(int* status)
       if (mpi::master)
         write_message(
           fmt::format(" Batch {0} decorrelation", simulation::current_batch));
-
-      // Deactivate tallies for decorrelation batches
-      simulation::time_active.stop();
-      simulation::time_inactive.start();
-      for (auto& t : model::tallies) {
-        t->active_ = false;
-      }
-      setup_active_tallies();
-
       // Decorrelate generations
       settings::gen_per_batch = settings::n_decorrelate_generations;
       decorrelate_kinetic_eigenvalue_batch();
-      simulation::time_inactive.stop();
-      simulation::time_active.start();
+      // TODO: preserve tally datastructure for time tallies
     } else {
       simulation::source_bank = simulation::initial_source_bank;
       simulation::keff = simulation::initial_keff;
@@ -386,28 +374,45 @@ int openmc_next_batch(int* status)
           simulation::initial_precursor_source_bank;
     }
     // Force all particles to have a time of zero
-    set_bank_times_to_zero(false);
+    set_bank_times_to_zero();
 
-    if (mpi::master)
-      write_message(
-        fmt::format(" Batch {0} time steps", simulation::current_batch));
-
-    // Relax kinetic generation time domain
-    simulation::time_active.stop();
-    openmc_relax_kinetic_batch();
     // Prepare for loop over time census boundaries, generations are now time
     // steps. Subtract one to account for the infinity boundary at the zeroth
     // index
     settings::gen_per_batch = settings::time_census_boundaries.size() - 1;
-    // Force all particles to have a time of zero
-    set_bank_times_to_zero(true);
-    simulation::time_active.start();
+
+    if (mpi::master)
+      write_message(
+        fmt::format(" Batch {0} time steps", simulation::current_batch));
   }
 
   // =======================================================================
-  // LOOP OVER ACTIVE GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
-  for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen)
-    openmc_simulate_generation();
+  // LOOP OVER GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
+  for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
+
+    initialize_generation();
+
+    if (current_gen == 1)
+      simulation::dt = settings::time_census_boundaries[1];
+    else
+      simulation::dt = settings::time_census_boundaries[current_gen] -
+                       settings::time_census_boundaries[current_gen - 1];
+
+    // Start timer for transport
+    simulation::time_transport.start();
+
+    // Transport loop
+    if (settings::event_based) {
+      transport_event_based();
+    } else {
+      transport_history_based();
+    }
+
+    // Accumulate time for transport
+    simulation::time_transport.stop();
+
+    finalize_generation();
+  }
 
   finalize_batch();
 
@@ -422,53 +427,6 @@ int openmc_next_batch(int* status)
     }
   }
   return 0;
-}
-
-void openmc_simulate_generation()
-{
-  using namespace openmc;
-
-  initialize_generation();
-
-  // Start timer for transport
-  simulation::time_transport.start();
-
-  // Transport loop
-  if (settings::event_based) {
-    transport_event_based();
-  } else {
-    transport_history_based();
-  }
-
-  // Accumulate time for transport
-  simulation::time_transport.stop();
-
-  finalize_generation();
-}
-
-void openmc_relax_kinetic_batch()
-{
-  using namespace openmc;
-  using openmc::simulation::current_gen;
-
-  for (auto& t : model::tallies) {
-    t->active_ = false;
-  }
-  setup_active_tallies();
-
-  // Relaxation time steps
-  settings::gen_per_batch = settings::n_inactive_timesteps;
-  simulation::time_inactive.start();
-  if (mpi::master && settings::n_inactive_timesteps > 0)
-    write_message(fmt::format(" Kinetic relaxation generations"));
-  // =======================================================================
-  // LOOP OVER INACTIVE GENERATIONS (THESE ARE TIME STEPS FOR KINETIC
-  // SIMULATION)
-  for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen)
-    openmc_simulate_generation();
-  simulation::time_inactive.stop();
-  if (mpi::master && settings::n_inactive_timesteps > 0)
-    write_message(fmt::format(" Kinetic active generations"));
 }
 
 bool openmc_is_statepoint_batch()
@@ -1242,9 +1200,6 @@ void transport_history_based()
       !simulation::is_decorrelation_generation) {
     // Only use forced decay in the transient part of a kinetic simulation
     if (settings::forced_decay) {
-      if (simulation::current_gen == 1)
-        simulation::average_neutron_weight =
-          simulation::total_weight / settings::n_particles;
 #pragma omp parallel for schedule(runtime)
       for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
            ++i_work) {
@@ -1391,27 +1346,24 @@ void set_initial_k_eigenvalue_quantities()
 
 // EDGE CASE TODO: This will affect generation of precursor particles
 // during the decorrelation generations.. will the effect matter?
-void set_bank_times_to_zero(bool relaxed)
+void set_bank_times_to_zero()
 {
 #pragma omp parallel for schedule(runtime)
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
-    simulation::source_bank[i_work - 1].time = 0;
+    simulation::source_bank[i_work - 1].time = 0.0;
     simulation::source_bank[i_work - 1].time_bound_idx = 1;
-  }
-  if (settings::forced_decay) {
+    if (settings::forced_decay) {
 #pragma omp parallel for schedule(runtime)
-    for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
-         ++i_work) {
-      SourceSite& precursor_site =
-        simulation::precursor_source_bank[i_work - 1];
-      precursor_site.time = 0.0;
-      //      if (relaxed)
-      // May need a -1 here...
-      //       precursor_site.time_born -=
-      //       settings::time_census_boundaries[source_site.time_bound_idx];
-      //    else
-      precursor_site.time_born = 0.0;
-      precursor_site.time_bound_idx = 1;
+      for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
+           ++i_work) {
+        double time = simulation::precursor_source_bank[i_work - 1].time;
+        double time_born =
+          simulation::precursor_source_bank[i_work - 1].time_born;
+        simulation::precursor_source_bank[i_work - 1].time = 0.0;
+        simulation::precursor_source_bank[i_work - 1].time_born =
+          0.0 - time - time_born;
+        simulation::precursor_source_bank[i_work - 1].time_bound_idx = 1;
+      }
     }
   }
 }
@@ -1431,8 +1383,7 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
 
   // Add forced decay particle's starting weight to count for normalizing
   // tallies later
-  double wgt = p.wgt();
-  simulation::total_weight += wgt;
+  simulation::total_weight += p.wgt();
 
   // Sample energy out
   // TODO: sample E_in?
@@ -1444,17 +1395,6 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
 
   // Apply angle out
   p.u() = rotate_angle(p.u(), mu, nullptr, seed);
-
-  // Split or russian roulette precursor particle
-  if (p.wgt() > 2 * simulation::average_neutron_weight) {
-    split(p, simulation::average_neutron_weight, 100);
-  } else {
-    apply_russian_roulette(p);
-  }
-
-  // Subtract weight from total if eliminated by russian roulette
-  if (p.wgt() == 0.0)
-    simulation::total_weight -= wgt;
 
   // Progeny vector adjustment to allow sorting algorithm to function properly
   // This happens after all banked neutrons have already been transported, so
@@ -1583,7 +1523,7 @@ int sample_precursor_delay_group(const Reaction& rx, SourceSite& precursor_site,
     double exp = std::exp(-1.0 * dt * decay_rate);
     double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
     double gamma_i = nu_d / nu_d_tot;
-    if (precursor_site.time_born == 0.0) {
+    if (precursor_site.time_born = 0.0) {
       gamma_i *= lambda_b / decay_rate;
     }
     prob += gamma_i * decay_rate * exp;

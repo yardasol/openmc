@@ -163,11 +163,9 @@ int n_timesteps {1};
 double dt {0};
 std::deque<double> time_census_boundaries {INFTY};
 int n_decorrelate_generations {3};
-int n_inactive_timesteps {5};
 bool forced_decay {false};
 bool combined_precursor {false};
 int64_t n_precursor_particles {0};
-double mean_generation_time {1e-5};
 
 } // namespace settings
 
@@ -292,10 +290,6 @@ void get_run_parameters(pugi::xml_node node_base)
         get_node_array<double>(node_base, "time_census_boundaries");
       std::move(
         begin(t_bounds), end(t_bounds), back_inserter(time_census_boundaries));
-      if (check_for_node(node_base, "n_inactive_timesteps")) {
-        n_inactive_timesteps =
-          std::stoi(get_node_value(node_base, "n_inactive_timesteps"));
-      }
     }
     // Forced decay is only checked for if kinetic_simulation is on
     if (check_for_node(node_base, "forced_decay")) {
@@ -305,13 +299,6 @@ void get_run_parameters(pugi::xml_node node_base)
       if (n_precursor_particles <= 0)
         fatal_error(
           "Number of precursors for forced decay must be greater than zero.");
-      if (check_for_node(node_base, "mean_generation_time")) {
-        mean_generation_time =
-          std::stod(get_node_value(node_base, "mean_generation_time"));
-      } else {
-        fatal_error("Must provide a mean generation time for forced decay");
-      }
-
       if (check_for_node(node_base, "combined_precursor"))
         combined_precursor =
           get_node_value_bool(node_base, "combined_precursor");
