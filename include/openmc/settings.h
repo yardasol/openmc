@@ -222,12 +222,16 @@ extern std::deque<double>
                           //!< Monte Carlo solver, and used as time grid points
                           //!< in the Random Ray solver
 extern int
+  n_inactive_timesteps; //!< Number of timesteps run at the beginning of each
+                        //!< batch to relax the time distribution of particles
+extern int
   n_decorrelate_generations; //!< Number of generations to run to decorrelate
                              //!< consecutive batches for TDMC
 extern bool forced_decay; //!< Toggle for forced precursor decay.
 extern bool combined_precursor;       //!< Toggle for using combined precursors
 extern int64_t n_precursor_particles; //!< Number of precursor particles to
                                       //!< simulate in forced decay
+extern double mean_generation_time;
 
 } // namespace settings
 

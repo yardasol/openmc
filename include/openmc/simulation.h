@@ -93,7 +93,6 @@ extern double average_neutron_weight;
 extern double average_precursor_weight;
 
 extern bool weighted_comb;
-extern double dt;
 
 } // namespace simulation
 
@@ -154,7 +153,7 @@ void decorrelate_kinetic_eigenvalue_batch();
 void store_initial_k_eigenvalue_quantities();
 void set_initial_k_eigenvalue_quantities();
 
-void set_bank_times_to_zero();
+void set_bank_times_to_zero(bool relaxed);
 
 void forced_precursor_decay(Particle& p, int64_t i_work);
 int sample_forced_decay(Particle& p, SourceSite& precursor_site);
