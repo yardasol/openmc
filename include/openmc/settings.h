@@ -185,7 +185,7 @@ extern bool
                            //!< when syncrhonizing precursor particle bank
 
 extern int
-  max_history_splits; //!< maximum number of particle splits for weight windows
+  max_history_splits; //!< Total maximum number of particle histroy splits
 extern int max_secondaries;       //!< maximum number of secondaries in the bank
 extern int64_t ssw_max_particles; //!< maximum number of particles to be
                                   //!< banked on surfaces per process
@@ -211,8 +211,12 @@ extern vector<array<int, 3>>
   track_identifiers;               //!< Particle numbers for writing tracks
 extern int trigger_batch_interval; //!< Batch interval for triggers
 extern "C" int verbosity;          //!< How verbose to make output
-extern double weight_cutoff;       //!< Weight cutoff for Russian roulette
+extern double roulette_weight_cutoff; //!< Weight cutoff for Russian roulette
 extern double weight_survive;      //!< Survival weight after Russian roulette
+extern double splitting_weight_cutoff; //!< Weight cutoff for splitting
+extern double weight_split; //!< Survival weight after Russian roulette
+extern int
+  max_split; //!< Maximum number of allowed particle splits per splitting eent
 
 // Timestep variables for kinetic simulation
 extern int n_timesteps; //!< Number of timesteps

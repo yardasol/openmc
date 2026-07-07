@@ -16,6 +16,7 @@
 #include "openmc/output.h"
 #include "openmc/particle.h"
 #include "openmc/photon.h"
+#include "openmc/physics_common.h"
 #include "openmc/random_lcg.h"
 #include "openmc/reaction.h"
 #include "openmc/settings.h"
@@ -1383,7 +1384,8 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
 
   // Add forced decay particle's starting weight to count for normalizing
   // tallies later
-  simulation::total_weight += p.wgt();
+  double wgt = p.wgt();
+  simulation::total_weight += wgt;
 
   // Sample energy out
   // TODO: sample E_in?
@@ -1395,6 +1397,15 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
 
   // Apply angle out
   p.u() = rotate_angle(p.u(), mu, nullptr, seed);
+
+  // Split or russian roulette precursor particle
+  // TODO: add control flow to prevent pathological spliting rouletting?
+  apply_russian_roulette(p);
+  apply_splitting(p);
+
+  // Subtract weight from total if eliminated by russian roulette
+  if (p.wgt() == 0.0)
+    simulation::total_weight -= wgt;
 
   // Progeny vector adjustment to allow sorting algorithm to function properly
   // This happens after all banked neutrons have already been transported, so
@@ -1490,7 +1501,7 @@ void compute_forced_decay_weight_factors(const Reaction& rx,
       double exp = std::exp(-1.0 * dt * decay_rate);
       double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
       double gamma_i = nu_d / nu_d_tot;
-      if (precursor_site.time_born = 0.0) {
+      if (precursor_site.time_born == 0.0) {
         gamma_i *= lambda_b / decay_rate;
       }
       // LSH Approach

@@ -4,7 +4,7 @@
   <survival_biasing>true</survival_biasing>
 
   <cutoff>
-    <weight>0.50</weight>
+    <roulette_weight>0.50</roulette_weight>
     <weight_avg>1.2</weight_avg>
   </cutoff>
 

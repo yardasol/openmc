@@ -155,8 +155,11 @@ int64_t trace_particle;
 vector<array<int, 3>> track_identifiers;
 int trigger_batch_interval {1};
 int verbosity {-1};
-double weight_cutoff {0.25};
+double roulette_weight_cutoff {0.25};
 double weight_survive {1.0};
+double splitting_weight_cutoff {3.0};
+double weight_split {1.0};
+int max_split {100};
 
 // Timestep variables for kinetic simulation
 int n_timesteps {1};
@@ -861,8 +864,9 @@ void read_settings_xml(pugi::xml_node root)
   // Cutoffs
   if (check_for_node(root, "cutoff")) {
     xml_node node_cutoff = root.child("cutoff");
-    if (check_for_node(node_cutoff, "weight")) {
-      weight_cutoff = std::stod(get_node_value(node_cutoff, "weight"));
+    if (check_for_node(node_cutoff, "roulette_weight")) {
+      roulette_weight_cutoff =
+        std::stod(get_node_value(node_cutoff, "roulette_weight"));
     }
     if (check_for_node(node_cutoff, "weight_avg")) {
       weight_survive = std::stod(get_node_value(node_cutoff, "weight_avg"));
@@ -870,6 +874,16 @@ void read_settings_xml(pugi::xml_node root)
     if (check_for_node(node_cutoff, "survival_normalization")) {
       survival_normalization =
         get_node_value_bool(node_cutoff, "survival_normalization");
+    }
+    if (check_for_node(node_cutoff, "splitting_weight")) {
+      splitting_weight_cutoff =
+        std::stod(get_node_value(node_cutoff, "spliting_weight"));
+    }
+    if (check_for_node(node_cutoff, "weight_split")) {
+      weight_split = std::stod(get_node_value(node_cutoff, "weight_split"));
+    }
+    if (check_for_node(node_cutoff, "max_split")) {
+      max_split = std::stoi(get_node_value(node_cutoff, "max_split"));
     }
     if (check_for_node(node_cutoff, "energy_neutron")) {
       energy_cutoff[0] =

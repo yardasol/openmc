@@ -17,5 +17,15 @@ void russian_roulette(Particle& p, double weight_survive);
 //! \param[in,out] p  Particle object
 void apply_russian_roulette(Particle& p);
 
+//! \brief Performs the split operation for a particle
+//! \param[in,out] p  Particle object
+//! \param[in] target_weight Weight assigned to split particles
+//! \param[in] max_split Maximum possible particles produced with splitting
+void split(Particle& p, double target_weight, int max_split);
+
+//! \brief Performs the global splitting operation on a particle
+//! \param[in,out] p  Particle object
+void apply_splitting(Particle& p);
+
 } // namespace openmc
 #endif // OPENMC_PHYSICS_COMMON_H
