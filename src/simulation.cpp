@@ -411,8 +411,8 @@ void openmc_relax_kinetic_batch()
   settings::gen_per_batch = settings::n_inactive_timesteps;
 
   if (mpi::master)
-    write_message(
-      fmt::format(" Batch {0} relaxation", simulation::current_batch));
+    write_message(fmt::format(
+      " Batch {0} relaxation generations", simulation::current_batch));
   for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
     openmc_simulate_generation();
   }
@@ -651,8 +651,8 @@ void initialize_kinetic_batch()
     // index
     settings::gen_per_batch = settings::time_census_boundaries.size() - 1;
     if (mpi::master)
-      write_message(
-        fmt::format(" Batch {0} time steps", simulation::current_batch));
+      write_message(fmt::format(
+        " Batch {0} active time step generations", simulation::current_batch));
   }
   return;
 }
@@ -1343,8 +1343,8 @@ void decorrelate_kinetic_eigenvalue_batch()
 
   simulation::is_decorrelation_generation = true;
   if (mpi::master)
-    write_message(
-      fmt::format(" Batch {0} decorrelation", simulation::current_batch));
+    write_message(fmt::format(
+      " Batch {0} decorrelation generations", simulation::current_batch));
   for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
     openmc_simulate_generation();
   }
