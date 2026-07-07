@@ -71,10 +71,9 @@ void collision(Particle& p)
   if (settings::weight_windows_on) {
     auto [ww_found, ww] = search_weight_window(p);
     if (!ww_found && p.type() == ParticleType::neutron()) {
-      // if the weight window is not valid, apply russian roulette and splitting
-      // for neutrons (regardless of weight window collision checkpoint setting)
+      // if the weight window is not valid, apply russian roulette for neutrons
+      // (regardless of weight window collision checkpoint setting)
       apply_russian_roulette(p);
-      apply_splitting(p);
     } else if (settings::weight_window_checkpoint_collision) {
       // if collision checkpointing is on, apply weight window
       apply_weight_window(p, ww);
@@ -170,11 +169,9 @@ void sample_neutron_reaction(Particle& p)
     advance_prn_seed(data::nuclides.size(), &p.seeds(STREAM_URR_PTABLE));
   }
 
-  // Play russian roulette and spliting if there are no weight windows
-  if (!settings::weight_windows_on) {
+  // Play russian roulette if there are no weight windows
+  if (!settings::weight_windows_on)
     apply_russian_roulette(p);
-    apply_splitting(p);
-  }
 }
 
 void sample_branchless_neutron_reaction(Particle& p)
@@ -250,10 +247,8 @@ void sample_branchless_neutron_reaction(Particle& p)
     p.wgt() = wgt_branchless;
 
   // Play russian roulette if there are no weight windows
-  if (!settings::weight_windows_on) {
+  if (!settings::weight_windows_on)
     apply_russian_roulette(p);
-    apply_splitting(p);
-  }
 }
 
 void branchless_fission(

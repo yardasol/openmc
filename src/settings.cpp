@@ -136,7 +136,7 @@ std::unordered_set<int> statepoint_batch;
 double source_rejection_fraction {0.05};
 double free_gas_threshold {400.0};
 bool neutron_weighted_comb {false};
-bool precursor_weighted_comb {false};
+bool precursor_weighted_comb {true};
 std::unordered_set<int> source_write_surf_id;
 CollisionTrackConfig collision_track_config {};
 int64_t ssw_max_particles;

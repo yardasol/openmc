@@ -1224,12 +1224,20 @@ void transport_history_based_single_particle(Particle& p)
 
 void transport_history_based()
 {
+  double old_weight_survive;
   if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       !simulation::is_decorrelation_generation) {
     // Zero out precursor_progeny_per_particle
     if (settings::forced_decay) {
       std::fill(simulation::precursor_progeny_per_particle.begin(),
         simulation::precursor_progeny_per_particle.end(), 0);
+    }
+    // Set surival weight to average weight of neutrons if using a weighted comb
+    // TODO: remove?
+    if (settings::neutron_weighted_comb) {
+      old_weight_survive = settings::weight_survive;
+      if (simulation::current_gen > 1)
+        settings::weight_survive = simulation::average_neutron_weight;
     }
   }
 
@@ -1243,6 +1251,10 @@ void transport_history_based()
       !simulation::is_decorrelation_generation) {
     // Only use forced decay in the transient part of a kinetic simulation
     if (settings::forced_decay) {
+      if (simulation::current_gen == 1)
+        // TODO: remove?
+        simulation::average_neutron_weight =
+          simulation::total_weight / settings::n_particles;
 #pragma omp parallel for schedule(runtime)
       for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
            ++i_work) {
@@ -1252,6 +1264,9 @@ void transport_history_based()
         transport_history_based_single_particle(p);
       }
     }
+    // TODO: remove?
+    if (settings::neutron_weighted_comb)
+      settings::weight_survive = old_weight_survive;
   }
 }
 
