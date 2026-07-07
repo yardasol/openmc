@@ -228,6 +228,9 @@ extern std::deque<double>
 extern int
   n_decorrelate_generations; //!< Number of generations to run to decorrelate
                              //!< consecutive batches for TDMC
+extern int
+  n_inactive_timesteps;   //!< Number of timesteps run at the beginning of each
+                          //!< batch to relax the time distribution of particles
 extern bool forced_decay; //!< Toggle for forced precursor decay.
 extern bool combined_precursor;       //!< Toggle for using combined precursors
 extern int64_t n_precursor_particles; //!< Number of precursor particles to

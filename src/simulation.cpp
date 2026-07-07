@@ -399,6 +399,27 @@ void openmc_simulate_generation()
   finalize_generation();
 }
 
+void openmc_relax_kinetic_batch()
+{
+  using namespace openmc;
+  using openmc::simulation::current_gen;
+
+  // Deactivate tallies for relaxation generations
+  deactivate_tallies();
+
+  // Set number of relaxation generations to run
+  settings::gen_per_batch = settings::n_inactive_timesteps;
+
+  if (mpi::master)
+    write_message(
+      fmt::format(" Batch {0} relaxation", simulation::current_batch));
+  for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
+    openmc_simulate_generation();
+  }
+
+  activate_tallies();
+}
+
 bool openmc_is_statepoint_batch()
 {
   using namespace openmc;
@@ -604,19 +625,8 @@ void initialize_kinetic_batch()
     // Run some criticality generations to decorrelate batches for eigenvalue
     // simulations
     if (settings::n_decorrelate_generations > 0) {
-      if (mpi::master)
-        write_message(
-          fmt::format(" Batch {0} decorrelation", simulation::current_batch));
-
-      // Deactivate tallies for decorrelation generations
-      deactivate_tallies();
-
-      // Run decorrelation generations
-      settings::gen_per_batch = settings::n_decorrelate_generations;
+      // Run decorrelation generatiosn
       decorrelate_kinetic_eigenvalue_batch();
-
-      // Reactivate tallies for the kinetic simulation
-      activate_tallies();
     } else {
       simulation::source_bank = simulation::initial_source_bank;
       simulation::keff = simulation::initial_keff;
@@ -628,14 +638,21 @@ void initialize_kinetic_batch()
     // Force all particles to have a time of zero
     set_bank_times_to_zero();
 
-    if (mpi::master)
-      write_message(
-        fmt::format(" Batch {0} time steps", simulation::current_batch));
+    if (settings::n_inactive_timesteps > 0) {
+      // Relax kinetic generation time domain
+      openmc_relax_kinetic_batch();
+
+      // Reset bank times
+      set_bank_times_to_zero();
+    }
 
     // Prepare for loop over time census boundaries, generations are now time
     // steps. Subtract one to account for the infinity boundary at the zeroth
     // index
     settings::gen_per_batch = settings::time_census_boundaries.size() - 1;
+    if (mpi::master)
+      write_message(
+        fmt::format(" Batch {0} time steps", simulation::current_batch));
   }
   return;
 }
@@ -1310,23 +1327,28 @@ void transport_event_based()
 // al. (2018)
 void decorrelate_kinetic_eigenvalue_batch()
 {
-  int gen_counter = 0;
-  simulation::current_gen = 0;
+  using openmc::simulation::current_gen;
+
+  // Deactivate tallies for decorrelation generations
+  deactivate_tallies();
+
+  // Set number of decorrelation generations to run
+  settings::gen_per_batch = settings::n_decorrelate_generations;
+
+  // Set source banks to steady state copies
   simulation::source_bank = simulation::initial_source_bank;
   if (settings::forced_decay)
     simulation::precursor_source_bank =
       simulation::initial_precursor_source_bank;
+
   simulation::is_decorrelation_generation = true;
-
-  while (gen_counter < settings::n_decorrelate_generations) {
-    // Set source bank as the eigenvalue source bank when kinetic simulation is
-    // toggled off
-    simulation::current_gen++;
-
+  if (mpi::master)
+    write_message(
+      fmt::format(" Batch {0} decorrelation", simulation::current_batch));
+  for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
     openmc_simulate_generation();
-
-    gen_counter++;
   }
+  simulation::is_decorrelation_generation = false;
 
   // Save the decorrelated source banks
   simulation::initial_source_bank = simulation::source_bank;
@@ -1334,7 +1356,8 @@ void decorrelate_kinetic_eigenvalue_batch()
     simulation::initial_precursor_source_bank =
       simulation::precursor_source_bank;
 
-  simulation::is_decorrelation_generation = false;
+  // Reactivate tallies for the kinetic simulation
+  activate_tallies();
 }
 
 void store_initial_k_eigenvalue_quantities()
@@ -1375,18 +1398,16 @@ void set_bank_times_to_zero()
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     simulation::source_bank[i_work - 1].time = 0.0;
     simulation::source_bank[i_work - 1].time_bound_idx = 1;
-    if (settings::forced_decay) {
+  }
+  if (settings::forced_decay) {
 #pragma omp parallel for schedule(runtime)
-      for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
-           ++i_work) {
-        double time = simulation::precursor_source_bank[i_work - 1].time;
-        double time_born =
-          simulation::precursor_source_bank[i_work - 1].time_born;
-        simulation::precursor_source_bank[i_work - 1].time = 0.0;
-        simulation::precursor_source_bank[i_work - 1].time_born =
-          0.0 - time - time_born;
-        simulation::precursor_source_bank[i_work - 1].time_bound_idx = 1;
-      }
+    for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
+         ++i_work) {
+      SourceSite& precursor_site =
+        simulation::precursor_source_bank[i_work - 1];
+      precursor_site.time = 0.0;
+      precursor_site.time_born = 0.0;
+      precursor_site.time_bound_idx = 1;
     }
   }
 }
