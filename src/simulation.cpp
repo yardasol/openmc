@@ -353,39 +353,8 @@ int openmc_next_batch(int* status)
 
   initialize_batch();
 
-  // Run some criticality generations to decorrelate batches for eigenvalue
-  // simulations
-  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
-      settings::run_mode == RunMode::EIGENVALUE &&
-      settings::solver_type == SolverType::MONTE_CARLO) {
-    if (settings::n_decorrelate_generations > 0) {
-      if (mpi::master)
-        write_message(
-          fmt::format(" Batch {0} decorrelation", simulation::current_batch));
-      // Decorrelate generations
-      settings::gen_per_batch = settings::n_decorrelate_generations;
-      decorrelate_kinetic_eigenvalue_batch();
-      // TODO: preserve tally datastructure for time tallies
-    } else {
-      simulation::source_bank = simulation::initial_source_bank;
-      simulation::keff = simulation::initial_keff;
-
-      if (settings::forced_decay)
-        simulation::precursor_source_bank =
-          simulation::initial_precursor_source_bank;
-    }
-    // Force all particles to have a time of zero
-    set_bank_times_to_zero();
-
-    // Prepare for loop over time census boundaries, generations are now time
-    // steps. Subtract one to account for the infinity boundary at the zeroth
-    // index
-    settings::gen_per_batch = settings::time_census_boundaries.size() - 1;
-
-    if (mpi::master)
-      write_message(
-        fmt::format(" Batch {0} time steps", simulation::current_batch));
-  }
+  // Initialize kinetic batch for a kinetic MC simulation
+  initialize_kinetic_batch();
 
   // =======================================================================
   // LOOP OVER GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
@@ -605,6 +574,54 @@ void initialize_batch()
 
   // Add user tallies to active tallies list
   setup_active_tallies();
+}
+
+void initialize_kinetic_batch()
+{
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+      settings::run_mode == RunMode::EIGENVALUE &&
+      settings::solver_type == SolverType::MONTE_CARLO) {
+    // Run some criticality generations to decorrelate batches for eigenvalue
+    // simulations
+    if (settings::n_decorrelate_generations > 0) {
+      if (mpi::master)
+        write_message(
+          fmt::format(" Batch {0} decorrelation", simulation::current_batch));
+
+      // Deactivate tallies for decorrelation generations
+      simulation::time_active.stop();
+      simulation::time_inactive.start();
+      for (auto& t : model::tallies) {
+        t->active_ = false;
+      }
+      setup_active_tallies();
+
+      // Run decorrelation generations
+      settings::gen_per_batch = settings::n_decorrelate_generations;
+      decorrelate_kinetic_eigenvalue_batch();
+      simulation::time_inactive.stop();
+      simulation::time_active.start();
+    } else {
+      simulation::source_bank = simulation::initial_source_bank;
+      simulation::keff = simulation::initial_keff;
+
+      if (settings::forced_decay)
+        simulation::precursor_source_bank =
+          simulation::initial_precursor_source_bank;
+    }
+    // Force all particles to have a time of zero
+    set_bank_times_to_zero();
+
+    if (mpi::master)
+      write_message(
+        fmt::format(" Batch {0} time steps", simulation::current_batch));
+
+    // Prepare for loop over time census boundaries, generations are now time
+    // steps. Subtract one to account for the infinity boundary at the zeroth
+    // index
+    settings::gen_per_batch = settings::time_census_boundaries.size() - 1;
+  }
+  return;
 }
 
 void finalize_batch()
@@ -1183,6 +1200,7 @@ void transport_history_based()
         simulation::precursor_progeny_per_particle.end(), 0);
     }
     // Set surival weight to average weight of neutrons if using a weighted comb
+    // TODO: remove?
     if (settings::neutron_weighted_comb) {
       old_weight_survive = settings::weight_survive;
       if (simulation::current_gen > 1)
@@ -1200,6 +1218,10 @@ void transport_history_based()
       !simulation::is_decorrelation_generation) {
     // Only use forced decay in the transient part of a kinetic simulation
     if (settings::forced_decay) {
+      if (simulation::current_gen == 1)
+        // TODO: remove?
+        simulation::average_neutron_weight =
+          simulation::total_weight / settings::n_particles;
 #pragma omp parallel for schedule(runtime)
       for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
            ++i_work) {
@@ -1209,6 +1231,7 @@ void transport_history_based()
         transport_history_based_single_particle(p);
       }
     }
+    // TODO: remove?
     if (settings::neutron_weighted_comb)
       settings::weight_survive = old_weight_survive;
   }
@@ -1284,28 +1307,12 @@ void decorrelate_kinetic_eigenvalue_batch()
     // toggled off
     simulation::current_gen++;
 
-    initialize_generation();
-
-    // Start timer for transport
-    simulation::time_transport.start();
-
-    // Transport loop
-    if (settings::event_based) {
-      // TODO: add control flow to prevent this
-      transport_event_based();
-    } else {
-      transport_history_based();
-    }
-
-    // Accumulate time for transport
-    simulation::time_transport.stop();
-
-    finalize_generation();
+    openmc_simulate_generation();
 
     gen_counter++;
   }
 
-  // Save the decorrelated source bank
+  // Save the decorrelated source banks
   simulation::initial_source_bank = simulation::source_bank;
   if (settings::forced_decay)
     simulation::initial_precursor_source_bank =

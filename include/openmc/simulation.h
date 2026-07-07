@@ -149,6 +149,7 @@ void transport_history_based();
 //! Simulate all particle histories using event-based parallelism
 void transport_event_based();
 
+void initialize_kinetic_batch();
 void decorrelate_kinetic_eigenvalue_batch();
 void store_initial_k_eigenvalue_quantities();
 void set_initial_k_eigenvalue_quantities();
