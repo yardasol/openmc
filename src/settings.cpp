@@ -166,6 +166,7 @@ int n_decorrelate_generations {3};
 bool forced_decay {false};
 bool combined_precursor {false};
 int64_t n_precursor_particles {0};
+double mean_generation_time {1e-5};
 
 } // namespace settings
 
@@ -299,6 +300,13 @@ void get_run_parameters(pugi::xml_node node_base)
       if (n_precursor_particles <= 0)
         fatal_error(
           "Number of precursors for forced decay must be greater than zero.");
+      if (check_for_node(node_base, "mean_generation_time")) {
+        mean_generation_time =
+          std::stod(get_node_value(node_base, "mean_generation_time"));
+      } else {
+        fatal_error("Must provide a mean generation time for initializing "
+                    "precursor particle weights.");
+      }
       if (check_for_node(node_base, "combined_precursor"))
         combined_precursor =
           get_node_value_bool(node_base, "combined_precursor");

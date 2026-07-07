@@ -1347,9 +1347,10 @@ const double compute_precursor_eq_weight(
   uint64_t* seed = p.current_seed();
   double E_in = p.E();
 
-  // Eigenvalue equilibrium weight from "A time-dependent Monte Carlo
-  // simulation for nuclear reactor dynamics using GPUs", B. Molnar (2019)
+  // Equilibrium weight based on point kinetics equilibrium precursor to neutron
+  // ratio
   double sum = 0.0;
+  double nu_t = nuc->nu(E_in, Nuclide::EmissionMode::total);
   if (settings::combined_precursor) {
     double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
 
@@ -1364,20 +1365,20 @@ const double compute_precursor_eq_weight(
       double decay_rate = rx.products_[group].decay_rate_;
       double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
       double gamma_i = nu_d / nu_d_tot;
+      double beta_i = nu_d / nu_t;
       gamma_i *= lambda_b / decay_rate;
-      sum += gamma_i * nu_d / decay_rate;
+      sum += gamma_i * beta_i / decay_rate;
+      sum /= settings::mean_generation_time;
     }
   } else {
     int group = sample_delay_group(i_nuclide, rx, E_in, seed);
     double decay_rate = rx.products_[group].decay_rate_;
     double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
-    sum = nu_d / decay_rate;
+    double beta_i = nu_d / nu_t;
+    sum = nu_d / (settings::mean_generation_time * decay_rate);
     p.delayed_group() = group;
   }
-  // We need a macro xs, so multiply by the density
-  double N = model::materials[p.material()]->density();
-  double sigma_f = p.neutron_xs(i_nuclide).fission * N;
-  const double eq_wgt = p.wgt() * sum * sigma_f / simulation::keff * p.speed();
+  const double eq_wgt = p.wgt() * sum / simulation::keff;
 
   return eq_wgt;
 }

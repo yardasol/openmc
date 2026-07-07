@@ -228,6 +228,9 @@ extern bool forced_decay; //!< Toggle for forced precursor decay.
 extern bool combined_precursor;       //!< Toggle for using combined precursors
 extern int64_t n_precursor_particles; //!< Number of precursor particles to
                                       //!< simulate in forced decay
+extern double mean_generation_time; //!< steady state mean generation time used
+                                    //!< to compute precursor to neutron ratio
+                                    //!< for initial weighting of precursors
 
 } // namespace settings
 
