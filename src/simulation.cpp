@@ -532,6 +532,26 @@ void allocate_banks()
   }
 }
 
+void activate_tallies()
+{
+  simulation::time_inactive.stop();
+  simulation::time_active.start();
+  for (auto& t : model::tallies) {
+    t->active_ = true;
+  }
+  setup_active_tallies();
+}
+
+void deactivate_tallies()
+{
+  simulation::time_active.stop();
+  simulation::time_inactive.start();
+  for (auto& t : model::tallies) {
+    t->active_ = false;
+  }
+  setup_active_tallies();
+}
+
 void initialize_batch()
 {
   // Increment current batch
@@ -589,18 +609,14 @@ void initialize_kinetic_batch()
           fmt::format(" Batch {0} decorrelation", simulation::current_batch));
 
       // Deactivate tallies for decorrelation generations
-      simulation::time_active.stop();
-      simulation::time_inactive.start();
-      for (auto& t : model::tallies) {
-        t->active_ = false;
-      }
-      setup_active_tallies();
+      deactivate_tallies();
 
       // Run decorrelation generations
       settings::gen_per_batch = settings::n_decorrelate_generations;
       decorrelate_kinetic_eigenvalue_batch();
-      simulation::time_inactive.stop();
-      simulation::time_active.start();
+
+      // Reactivate tallies for the kinetic simulation
+      activate_tallies();
     } else {
       simulation::source_bank = simulation::initial_source_bank;
       simulation::keff = simulation::initial_keff;
