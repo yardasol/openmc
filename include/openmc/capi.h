@@ -130,6 +130,7 @@ int openmc_property_map(const void* slice, double* data_out);
 int openmc_get_plot_index(int32_t id, int32_t* index);
 int openmc_plot_get_id(int32_t index, int32_t* id);
 int openmc_plot_set_id(int32_t index, int32_t id);
+void openmc_simulate_generation();
 int openmc_solidraytrace_plot_create(int32_t* index);
 int openmc_solidraytrace_plot_get_pixels(
   int32_t index, int32_t* width, int32_t* height);

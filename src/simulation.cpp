@@ -390,29 +390,7 @@ int openmc_next_batch(int* status)
   // =======================================================================
   // LOOP OVER GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
   for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
-
-    initialize_generation();
-
-    if (current_gen == 1)
-      simulation::dt = settings::time_census_boundaries[1];
-    else
-      simulation::dt = settings::time_census_boundaries[current_gen] -
-                       settings::time_census_boundaries[current_gen - 1];
-
-    // Start timer for transport
-    simulation::time_transport.start();
-
-    // Transport loop
-    if (settings::event_based) {
-      transport_event_based();
-    } else {
-      transport_history_based();
-    }
-
-    // Accumulate time for transport
-    simulation::time_transport.stop();
-
-    finalize_generation();
+    openmc_simulate_generation();
   }
 
   finalize_batch();
@@ -428,6 +406,28 @@ int openmc_next_batch(int* status)
     }
   }
   return 0;
+}
+
+void openmc_simulate_generation()
+{
+  using namespace openmc;
+
+  initialize_generation();
+
+  // Start timer for transport
+  simulation::time_transport.start();
+
+  // Transport loop
+  if (settings::event_based) {
+    transport_event_based();
+  } else {
+    transport_history_based();
+  }
+
+  // Accumulate time for transport
+  simulation::time_transport.stop();
+
+  finalize_generation();
 }
 
 bool openmc_is_statepoint_batch()
@@ -506,7 +506,6 @@ double average_neutron_weight;
 double average_precursor_weight;
 
 bool weighted_comb {false};
-double dt;
 
 } // namespace simulation
 
