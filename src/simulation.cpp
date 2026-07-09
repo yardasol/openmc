@@ -492,8 +492,6 @@ vector<int64_t> combined_work_index;
 int64_t precursor_work_per_rank {0};
 vector<int64_t> precursor_work_index;
 
-PrecursorFormalism precursor_formalism {PrecursorFormalism::MOLNAR};
-
 double average_neutron_weight;
 double average_precursor_weight;
 
@@ -1493,22 +1491,17 @@ int sample_forced_decay(Particle& p, SourceSite& precursor_site)
     group = precursor_site.delayed_group;
   }
 
-  p.wgt() = neutron_sum;
-  if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER) {
-    double dt = settings::time_census_boundaries[p.time_bound_idx()] -
-                settings::time_census_boundaries[p.time_bound_idx() - 1];
-    p.wgt() *= dt * precursor_site.base_wgt;
-  } else {
-    p.wgt() *= precursor_site.wgt;
-  }
+  p.wgt() = precursor_site.wgt * neutron_sum;
+  // LSH Approach
+  // if (settings::combined_precursor) {
+  //  double dt = settings::time_census_boundaries[p.time_bound_idx()] -
+  //              settings::time_census_boundaries[p.time_bound_idx() - 1];
+  //  p.wgt() *= dt;
+  //}
 
   p.wgt_last() = p.wgt();
 
-  if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER)
-    precursor_site.wgt = precursor_sum * precursor_site.base_wgt;
-  else
-    precursor_site.wgt *= precursor_sum;
-
+  precursor_site.wgt *= precursor_sum;
   precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
   precursor_site.time_bound_idx += 1;
 
@@ -1554,19 +1547,16 @@ void compute_forced_decay_weight_factors(const Reaction& rx,
       if (precursor_site.time_born == 0.0) {
         gamma_i *= lambda_b / decay_rate;
       }
-      if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER)
-        neutron_sum += gamma_i * decay_rate * exp;
-      else
-        neutron_sum += gamma_i * (1.0 - exp);
+      // LSH Approach
+      // neutron_sum += gamma_i * decay_rate * exp;
+      // precursor_sum += gamma_i * exp;
+      neutron_sum += gamma_i * (1.0 - exp);
       precursor_sum += gamma_i * exp;
     }
   } else {
     double decay_rate = rx.products_[precursor_site.delayed_group].decay_rate_;
     double exp = std::exp(-1.0 * dt * decay_rate);
-    if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER)
-      neutron_sum = decay_rate * exp;
-    else
-      neutron_sum = 1.0 - exp;
+    neutron_sum = 1.0 - exp;
     precursor_sum = exp;
   }
 }

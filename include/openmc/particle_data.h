@@ -59,7 +59,6 @@ struct SourceSite {
   double time_born {0.0};
   int i_fission_rx;
   int i_nuclide;
-  double base_wgt {1.0};
 };
 
 struct CollisionTrackSite {

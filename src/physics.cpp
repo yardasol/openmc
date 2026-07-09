@@ -1375,7 +1375,6 @@ const double compute_precursor_eq_weight(
     double decay_rate = rx.products_[group].decay_rate_;
     double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
     double beta_i = nu_d / nu_t;
-    // TODO: fix to beta_i
     sum = nu_d / (settings::mean_generation_time * decay_rate);
     p.delayed_group() = group;
   }
@@ -1470,13 +1469,7 @@ void create_precursor_site(
     precursor_site.time = 0.0;
     precursor_site.time_born = 0.0;
   }
-  if (simulation::precursor_formalism == PrecursorFormalism::SJENITZER) {
-    // Precursor weight will be set during forced decay
-    precursor_site.wgt = 1.0;
-    precursor_site.base_wgt = banked_wgt;
-  } else {
-    precursor_site.wgt = banked_wgt;
-  }
+  precursor_site.wgt = banked_wgt;
   precursor_site.surf_id = 0;
 
   precursor_site.E = p.E();

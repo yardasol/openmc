@@ -319,17 +319,6 @@ void get_run_parameters(pugi::xml_node node_base)
       if (check_for_node(node_base, "combined_precursor"))
         combined_precursor =
           get_node_value_bool(node_base, "combined_precursor");
-      if (check_for_node(node_base, "precursor_formalism")) {
-        std::string temp_str =
-          get_node_value(node_base, "precursor_formalism", true, true);
-        if (temp_str == "molnar") {
-          simulation::precursor_formalism = PrecursorFormalism::MOLNAR;
-        } else if (temp_str == "sjenitzer") {
-          simulation::precursor_formalism = PrecursorFormalism::SJENITZER;
-        } else {
-          fatal_error("Unrecognized precursor formalism: " + temp_str);
-        }
-      }
     }
     if (check_for_node(node_base, "n_decorrelate_generations")) {
       n_decorrelate_generations =
