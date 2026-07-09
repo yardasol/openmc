@@ -89,6 +89,10 @@ extern vector<int64_t> precursor_work_index;
 extern int64_t combined_work_per_rank;
 extern vector<int64_t> combined_work_index;
 
+extern PrecursorFormalism
+  precursor_formalism; // What mathematical formalism to use for treating forced
+                       // precursor decay
+
 extern double average_neutron_weight;
 extern double average_precursor_weight;
 

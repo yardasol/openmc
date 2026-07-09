@@ -35,7 +35,8 @@ class _SourceSite(Structure):
                 ('time_bound_idx', c_int),
                 ('time_born', c_double),
                 ('i_fission_idx', c_int),
-                ('i_nuclide', c_int)]
+                ('i_nuclide', c_int),
+                ('base_wgt', c_double)]
 
 # Define input type for numpy arrays that will be passed into C++ functions
 # Must be an int or double array, with single dimension that is contiguous

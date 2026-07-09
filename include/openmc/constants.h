@@ -379,6 +379,7 @@ enum class RandomRayVolumeEstimator { NAIVE, SIMULATION_AVERAGED, HYBRID };
 enum class RandomRaySourceShape { FLAT, LINEAR, LINEAR_XY };
 enum class RandomRaySampleMethod { PRNG, HALTON, S2 };
 enum class RandomRayTimeMethod { ISOTROPIC, PROPAGATION };
+enum class PrecursorFormalism { MOLNAR, SJENITZER };
 
 //==============================================================================
 // Geometry Constants
