@@ -1038,6 +1038,15 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
     simulation::total_weight += p.wgt();
   }
 
+  if (openmc::settings::kinetic_simulation &&
+      !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    if (simulation::current_gen == 1) {
+      double sigma_t = p.macro_xs().total;
+      p.wgt() /= p.speed() * sigma_t;
+    }
+  }
+
   // Force calculation of cross-sections by setting last energy to zero
   if (settings::run_CE) {
     p.invalidate_neutron_xs();

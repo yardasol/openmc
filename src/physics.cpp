@@ -1347,10 +1347,10 @@ const double compute_precursor_eq_weight(
   uint64_t* seed = p.current_seed();
   double E_in = p.E();
 
-  // Equilibrium weight based on point kinetics equilibrium precursor to neutron
-  // ratio
-  double sum = 0.0;
-  double nu_t = nuc->nu(E_in, Nuclide::EmissionMode::total);
+  // Equilibrium weight based on Faucher PhD Thesis (2019)
+  double sigma_f = p.macro_xs().fission;
+  double sigma_t = p.macro_xs().total;
+  double sum = sigma_f / sigma_t;
   if (settings::combined_precursor) {
     double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
 
@@ -1361,21 +1361,12 @@ const double compute_precursor_eq_weight(
       lambda_b += nu_d / decay_rate;
     }
     lambda_b = nu_d_tot / lambda_b;
-    for (int group = 1; group < nuc->n_precursor_; ++group) {
-      double decay_rate = rx.products_[group].decay_rate_;
-      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
-      double gamma_i = nu_d / nu_d_tot;
-      double beta_i = nu_d / nu_t;
-      gamma_i *= lambda_b / decay_rate;
-      sum += gamma_i * beta_i / decay_rate;
-      sum /= settings::mean_generation_time;
-    }
+    sum = nu_d_tot / lambda_b * sigma_f / sigma_t
   } else {
     int group = sample_delay_group(i_nuclide, rx, E_in, seed);
     double decay_rate = rx.products_[group].decay_rate_;
     double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
-    double beta_i = nu_d / nu_t;
-    sum = nu_d / (settings::mean_generation_time * decay_rate);
+    sum = nu_d / lambda * sigma_f / sigma_t;
     p.delayed_group() = group;
   }
   const double eq_wgt = p.wgt() * sum / simulation::keff;
