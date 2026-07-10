@@ -882,7 +882,9 @@ void finalize_generation()
     }
 
     if (settings::forced_decay) {
-      if (settings::precursor_weighted_comb)
+      if (settings::precursor_weighted_comb &&
+          !simulation::is_initial_condition &&
+          !simulation::is_decorrelation_generation)
         simulation::weighted_comb = true;
       // The precursor bank should also be sorted
       sort_census_bank(simulation::precursor_shared_bank,
@@ -893,7 +895,9 @@ void finalize_generation()
         simulation::precursor_source_bank, settings::n_precursor_particles,
         simulation::combined_work_per_rank, simulation::precursor_work_index,
         simulation::average_precursor_weight);
-      if (settings::precursor_weighted_comb)
+      if (settings::precursor_weighted_comb &&
+          !simulation::is_initial_condition &&
+          !simulation::is_decorrelation_generation)
         simulation::weighted_comb = false;
     }
   }
