@@ -94,11 +94,6 @@ extern double average_precursor_weight;
 
 extern bool weighted_comb;
 
-extern double neutron_importance;
-extern double neutron_importance_old;
-extern double precursor_importance;
-extern double precursor_importance_old;
-
 } // namespace simulation
 
 //==============================================================================
@@ -172,14 +167,6 @@ void compute_forced_decay_weight_factors(const Reaction& rx,
   double& precursor_sum);
 int sample_precursor_delay_group(const Reaction& rx, SourceSite& precursor_site,
   Particle& p, double lambda_b, double neutron_sum, uint64_t* seed);
-
-double get_total_neutron_weight();
-double get_total_precursor_weight();
-
-void estimate_neutron_importance(
-  double n_tot_weight, double p_tot_weight, int t_idx);
-void estimate_precursor_importance(
-  double n_tot_weight, double p_tot_weight, int t_idx);
 
 } // namespace openmc
 

@@ -1337,8 +1337,7 @@ void sample_equilibrium_precursor_site(
   int i_nuclide, const Reaction& rx, Particle& p)
 {
   const double eq_weight = compute_precursor_eq_weight(i_nuclide, rx, p);
-  const double e_weight = 1.0;
-  create_precursor_site(rx, i_nuclide, p, e_weight);
+  create_precursor_site(rx, i_nuclide, p, eq_weight);
 }
 
 const double compute_precursor_eq_weight(
@@ -1471,11 +1470,6 @@ void create_precursor_site(
     precursor_site.time_born = 0.0;
   }
   precursor_site.wgt = banked_wgt;
-  if (!simulation::is_initial_condition &&
-      !simulation::is_decorrelation_generation)
-    precursor_site.wgt *=
-      simulation::precursor_importance / simulation::neutron_importance;
-
   precursor_site.surf_id = 0;
 
   precursor_site.E = p.E();
