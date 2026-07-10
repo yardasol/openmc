@@ -238,6 +238,7 @@ extern int64_t n_precursor_particles; //!< Number of precursor particles to
 extern double mean_generation_time; //!< steady state mean generation time used
                                     //!< to compute precursor to neutron ratio
                                     //!< for initial weighting of precursors
+extern vector<double> n_p_importance_ratio;
 
 } // namespace settings
 

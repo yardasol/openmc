@@ -2529,6 +2529,10 @@ void score_timed_tracklength_tally(Particle& p, double total_distance)
 
     // Determine the tracklength estimate of the flux
     double flux = p.wgt() * distance;
+    if (openmc::settings::kinetic_simulation &&
+        !simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation)
+      flux /= simulation::neutron_importance;
 
     score_tracklength_tally_general(
       p, flux, model::active_timed_tracklength_tallies);
@@ -2544,6 +2548,10 @@ void score_tracklength_tally(Particle& p, double distance)
 
   // Determine the tracklength estimate of the flux
   double flux = p.wgt() * distance;
+  if (openmc::settings::kinetic_simulation &&
+      !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation)
+    flux /= simulation::neutron_importance;
 
   score_tracklength_tally_general(p, flux, model::active_tracklength_tallies);
 }

@@ -497,6 +497,11 @@ double average_precursor_weight;
 
 bool weighted_comb {false};
 
+double neutron_importance;
+double neutron_importance_old {1.0};
+double precursor_importance;
+double precursor_importance_old {1.0};
+
 } // namespace simulation
 
 //==============================================================================
@@ -790,6 +795,27 @@ void initialize_generation()
   }
 
   if (settings::kinetic_simulation &&
+      settings::solver_type == SolverType::MONTE_CARLO &&
+      !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    double total_neutron_weight = get_total_neutron_weight();
+    double total_precursor_weight = get_total_precursor_weight();
+
+    if (simulation::current_gen == 1) {
+      simulation::neutron_importance_old = 1.0;
+      simulation::precursor_importance_old = 1.0;
+    } else {
+      simulation::neutron_importance_old = simulation::neutron_importance;
+      simulation::precursor_importance_old = simulation::precursor_importance;
+    }
+
+    estimate_neutron_importance(total_neutron_weight, total_precursor_weight,
+      simulation::current_gen - 1);
+    estimate_precursor_importance(total_neutron_weight, total_precursor_weight,
+      simulation::current_gen - 1);
+  }
+
+  if (settings::kinetic_simulation &&
       settings::solver_type == SolverType::MONTE_CARLO) {
     // Clear out the time census bank
     simulation::time_census_bank.resize(0);
@@ -1016,6 +1042,9 @@ void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
       !simulation::is_initial_condition &&
       !simulation::is_decorrelation_generation) {
     expected_tb_idx = openmc::simulation::current_gen;
+    if (!from_precursor)
+      p.wgt() *=
+        simulation::neutron_importance / simulation::neutron_importance_old;
   } else {
     expected_tb_idx = 0;
   }
@@ -1427,7 +1456,11 @@ void forced_precursor_decay(Particle& p, int64_t i_work)
 
   auto& rx = *nuc->fission_rx_[precursor_site.i_fission_rx];
 
+  precursor_site.wgt *=
+    simulation::precursor_importance / simulation::precursor_importance_old;
   int group = sample_forced_decay(p, precursor_site);
+
+  p.wgt() *= simulation::neutron_importance / simulation::precursor_importance;
 
   // Add forced decay particle's starting weight to count for normalizing
   // tallies later
@@ -1589,6 +1622,45 @@ int sample_precursor_delay_group(const Reaction& rx, SourceSite& precursor_site,
       break;
   }
   return group;
+}
+
+double get_total_neutron_weight()
+{
+  double total_wgt = 0.0;
+  // #pragma omp parallel for schedule(runtime)
+  for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
+    total_wgt += simulation::source_bank[i_work - 1].wgt;
+  }
+  return total_wgt;
+}
+
+double get_total_precursor_weight()
+{
+  double total_wgt = 0.0;
+  // #pragma omp parallel for schedule(runtime)
+  for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
+       ++i_work) {
+    total_wgt += simulation::precursor_source_bank[i_work - 1].wgt;
+  }
+  return total_wgt;
+}
+
+void estimate_neutron_importance(
+  double n_tot_weight, double p_tot_weight, int t_idx)
+{
+  double R = settings::n_p_importance_ratio[t_idx];
+  double numerator = R * (n_tot_weight + p_tot_weight);
+  double denominator = R * n_tot_weight + p_tot_weight;
+  simulation::neutron_importance = numerator / denominator;
+}
+
+void estimate_precursor_importance(
+  double n_tot_weight, double p_tot_weight, int t_idx)
+{
+  double R = settings::n_p_importance_ratio[t_idx];
+  double numerator = n_tot_weight + p_tot_weight;
+  double denominator = R * n_tot_weight + p_tot_weight;
+  simulation::precursor_importance = numerator / denominator;
 }
 
 } // namespace openmc

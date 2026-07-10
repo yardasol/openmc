@@ -171,6 +171,7 @@ bool forced_decay {false};
 bool combined_precursor {false};
 int64_t n_precursor_particles {0};
 double mean_generation_time {1e-5};
+vector<double> n_p_importance_ratio;
 
 } // namespace settings
 
@@ -319,6 +320,10 @@ void get_run_parameters(pugi::xml_node node_base)
       if (check_for_node(node_base, "combined_precursor"))
         combined_precursor =
           get_node_value_bool(node_base, "combined_precursor");
+      if (check_for_node(node_base, "n_p_importance_ratio")) {
+        vector<double> n_p_importance_ratio =
+          get_node_array<double>(node_base, "n_p_importance_ratio");
+      }
     }
     if (check_for_node(node_base, "n_decorrelate_generations")) {
       n_decorrelate_generations =
