@@ -381,15 +381,6 @@ void openmc_simulate_generation()
 {
   using namespace openmc;
 
-  if (simulation::is_initial_condition &&
-      simulation::current_batch == settings::n_max_batches &&
-      simulation::current_gen == settings::gen_per_batch)
-    simulation::is_last_ss_generation = true;
-
-  if (simulation::is_decorrelation_generation &&
-      simulation::current_gen == settings::gen_per_batch)
-    simulation::is_last_ss_generation = true;
-
   initialize_generation();
 
   // Start timer for transport
@@ -406,8 +397,6 @@ void openmc_simulate_generation()
   simulation::time_transport.stop();
 
   finalize_generation();
-  if (simulation::is_last_ss_generation)
-    simulation::is_last_ss_generation = false;
 }
 
 void openmc_relax_kinetic_batch()
@@ -482,7 +471,6 @@ bool is_initial_condition {true};
 
 bool is_decorrelation_generation {false};
 bool is_relaxation_generation {false};
-bool is_last_ss_generation {false};
 int initial_overall_generation {0};
 int32_t initial_n_realizations {0};
 int32_t initial_gen_per_batch {1};

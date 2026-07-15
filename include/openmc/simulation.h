@@ -63,7 +63,6 @@ extern bool
 // Decorrelation generation variables
 extern bool is_decorrelation_generation;
 extern bool is_relaxation_generation;
-extern bool is_last_ss_generation;
 extern int initial_overall_generation;
 extern int32_t initial_n_realizations;
 extern int32_t initial_gen_per_batch;

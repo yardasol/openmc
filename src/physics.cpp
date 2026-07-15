@@ -50,15 +50,10 @@ void collision(Particle& p)
   switch (p.type().pdg_number()) {
   case PDG_NEUTRON:
     if (settings::branchless_collision && !simulation::is_initial_condition &&
-        !simulation::is_decorrelation_generation) {
+        !simulation::is_decorrelation_generation)
       sample_branchless_neutron_reaction(p);
-    } else {
-      if (simulation::is_last_ss_generation)
-        bank_steady_state_neutron(p);
-      if (settings::forced_decay)
-        sample_steady_state_precursor(p);
+    else
       sample_neutron_reaction(p);
-    }
     break;
   case PDG_PHOTON:
     sample_photon_reaction(p);
@@ -433,6 +428,12 @@ void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx)
     p.event() = TallyEvent::ABSORB;
     if (!p.fission()) {
       p.event_mt() = N_DISAPPEAR;
+    }
+  } else {
+    // Sample equilibrium precursor particle if forced decay is on (which can
+    // only be the case for a kinetic simulation)
+    if (settings::forced_decay) {
+      sample_equilibrium_precursor_site(i_nuclide, rx, p);
     }
   }
 }
@@ -1346,12 +1347,11 @@ const double compute_precursor_eq_weight(
   uint64_t* seed = p.current_seed();
   double E_in = p.E();
 
-  // From Eq. 2.3.8 in DOI: 10.70675/9832d956z2f0bz480bz8042z0d5ef24d76f4
-  double sigma_f = p.macro_xs().fission;
-  double sigma_t = p.macro_xs().total;
-  double sum = sigma_f / sigma_t;
+  // Equilibrium weight based on point kinetics equilibrium precursor to neutron
+  // ratio
+  double sum = 0.0;
+  double nu_t = nuc->nu(E_in, Nuclide::EmissionMode::total);
   if (settings::combined_precursor) {
-    // TODO: sample E_out and compute nu over E_out
     double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
 
     double lambda_b;
@@ -1361,13 +1361,21 @@ const double compute_precursor_eq_weight(
       lambda_b += nu_d / decay_rate;
     }
     lambda_b = nu_d_tot / lambda_b;
-    sum = nu_d_tot / lambda_b * sigma_f / sigma_t;
+    for (int group = 1; group < nuc->n_precursor_; ++group) {
+      double decay_rate = rx.products_[group].decay_rate_;
+      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+      double gamma_i = nu_d / nu_d_tot;
+      double beta_i = nu_d / nu_t;
+      gamma_i *= lambda_b / decay_rate;
+      sum += gamma_i * beta_i / decay_rate;
+      sum /= settings::mean_generation_time;
+    }
   } else {
     int group = sample_delay_group(i_nuclide, rx, E_in, seed);
     double decay_rate = rx.products_[group].decay_rate_;
-    // TODO: sample E_out and compute nu over E_out
     double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
-    sum = nu_d / decay_rate * sigma_f / sigma_t;
+    double beta_i = nu_d / nu_t;
+    sum = nu_d / (settings::mean_generation_time * decay_rate);
     p.delayed_group() = group;
   }
   const double eq_wgt = p.wgt() * sum / simulation::keff;
@@ -1545,48 +1553,6 @@ void bank_delayed_neutron(
             "in this generation will not be banked. Results may be "
             "non-deterministic.");
     p.n_progeny()--;
-  }
-}
-
-void bank_steady_state_neutron(Particle& p)
-{
-  // Create delayed neutron and Put in time census bank
-  SourceSite site;
-  site.r = p.r();
-  site.particle = ParticleType::neutron();
-  site.time = 0.0;
-  // From Eq. 2.3.2 in DOI: 10.70675/9832d956z2f0bz480bz8042z0d5ef24d76f4
-  double sigma_t = p.macro_xs().total;
-  site.wgt = p.wgt() / (p.speed() * sigma_t);
-  site.surf_id = 0;
-
-  site.E = p.E();
-  site.u = p.u();
-
-  site.parent_id = p.id();
-  site.progeny_id = ++p.n_progeny();
-  site.time_bound_idx = 1;
-
-  int64_t idx = simulation::time_census_bank.thread_safe_append(site);
-  if (idx == -1) {
-    warning("The shared time census bank is full. Additional time boundary "
-            "crossing "
-            "in this generation will not be banked. Results may be "
-            "non-deterministic.");
-    p.n_progeny()--;
-  }
-}
-
-void sample_steady_state_precursor(Particle& p)
-{
-  // Sample a nuclide within the material
-  int i_nuclide = sample_nuclide(p);
-
-  const auto& nuc {data::nuclides[i_nuclide]};
-
-  if (nuc->fissionable_ && p.neutron_xs(i_nuclide).fission > 0.0) {
-    auto& rx = sample_fission(i_nuclide, p);
-    sample_equilibrium_precursor_site(i_nuclide, rx, p);
   }
 }
 

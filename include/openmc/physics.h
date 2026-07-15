@@ -69,10 +69,6 @@ void create_precursor_site(
 void bank_delayed_neutron(
   Particle& p, double decay_time, double E_out, const double& banked_wgt);
 
-void bank_steady_state_neutron(Particle& p);
-
-void sample_steady_state_precursor(Particle& p);
-
 int sample_element(Particle& p);
 
 Reaction& sample_fission(int i_nuclide, Particle& p);
