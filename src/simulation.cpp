@@ -408,7 +408,7 @@ void openmc_relax_kinetic_batch()
   deactivate_tallies();
 
   // Set number of relaxation generations to run
-  settings::gen_per_batch = settings::n_inactive_timesteps;
+  settings::gen_per_batch = settings::n_relaxation_timesteps;
 
   if (mpi::master)
     write_message(fmt::format(
@@ -638,7 +638,7 @@ void initialize_kinetic_batch()
     // Force all particles to have a time of zero
     set_bank_times_to_zero();
 
-    if (settings::n_inactive_timesteps > 0) {
+    if (settings::n_relaxation_timesteps > 0) {
       // Relax kinetic generation time domain
       openmc_relax_kinetic_batch();
 

@@ -23,6 +23,7 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     s.kinetic_simulation = kinetic_simulation
     if kinetic_simulation:
         s.n_decorrelate_generations = 3
+        s.n_relaxation_timesteps = 11
         s.forced_decay = True
         s.combined_precursor = True
         s.precursor_particles = 100
@@ -131,6 +132,7 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     assert s.kinetic_simulation == kinetic_simulation
     if kinetic_simulation:
         assert s.n_decorrelate_generations == 3
+        assert s.n_relaxation_timesteps == 11
         assert s.forced_decay == True
         assert s.combined_precursor == True
         assert s.precursor_particles == 100

@@ -190,6 +190,10 @@ class Settings:
     n_decorrelate_generations : int
         Number of generations to run to decorrelate consecutive batches
         in kinetic Monte Carlo simulations.
+    n_relaxation_timesteps : int
+        Number of time generations to run at steady state to relax the fission
+        source into a steady state time source in kinetic Monte Carlo
+        simulations.
     output : dict
         Dictionary indicating what files to output. Acceptable keys are:
 
@@ -456,6 +460,7 @@ class Settings:
         self._keff_trigger = None
         self._kinetic_simulation = None
         self._n_decorrelate_generations = None
+        self._n_relaxation_timesteps = None
         self._forced_decay = None
         self._combined_precursor = None
         self._precursor_particles = None
@@ -704,6 +709,16 @@ class Settings:
         cv.check_type('n_decorrelate_generations', n_decorrelate_generations, Integral)
         cv.check_greater_than('n_decorrelate_generations', n_decorrelate_generations, 0, True)
         self._n_decorrelate_generations = n_decorrelate_generations
+
+    @property
+    def n_relaxation_timesteps(self) -> int:
+        return self._n_relaxation_timesteps
+
+    @n_relaxation_timesteps.setter
+    def n_relaxation_timesteps(self, n_relaxation_timesteps: int):
+        cv.check_type('n_relaxation_timesteps', n_relaxation_timesteps, Integral)
+        cv.check_greater_than('n_relaxation_timesteps', n_relaxation_timesteps, 0, True)
+        self._n_relaxation_timesteps = n_relaxation_timesteps
 
     @property
     def forced_decay(self) -> bool:
@@ -1713,6 +1728,11 @@ class Settings:
             element = ET.SubElement(root, "n_decorrelate_generations")
             element.text = str(self._n_decorrelate_generations)
 
+    def _create_n_relaxation_timesteps_subelement(self, root):
+        if self._n_relaxation_timesteps is not None:
+            element = ET.SubElement(root, "n_relaxation_timesteps")
+            element.text = str(self._n_relaxation_timesteps)
+
     def _create_forced_decay_subelement(self, root):
         if self._forced_decay is not None:
             elem = ET.SubElement(root, "forced_decay")
@@ -2330,6 +2350,11 @@ class Settings:
         if text is not None:
             self.n_decorrelate_generations = int(text)
 
+    def _n_relaxation_timesteps_from_xml_element(self, root):
+        text = get_text(root, 'n_relaxation_timesteps')
+        if text is not None:
+            self.n_relaxation_timesteps = int(text)
+
     def _forced_decay_from_xml_element(self, root):
         text = get_text(root, 'forced_decay')
         if text is not None:
@@ -2834,6 +2859,7 @@ class Settings:
         self._create_keff_trigger_subelement(element)
         self._create_kinetic_simulation_subelement(element)
         self._create_n_decorrelate_generations_subelement(element)
+        self._create_n_relaxation_timesteps_subelement(element)
         self._create_precursor_particles_subelement(element)
         self._create_weighted_comb_subelement(element)
         self._create_forced_decay_subelement(element)
@@ -2960,6 +2986,7 @@ class Settings:
         settings._keff_trigger_from_xml_element(elem)
         settings._kinetic_simulation_from_xml_element(elem)
         settings._n_decorrelate_generations_from_xml_element(elem)
+        settings._n_relaxation_timesteps_from_xml_element(elem)
         settings._forced_decay_from_xml_element(elem)
         settings._precursor_particles_from_xml_element(elem)
         settings._weighted_comb_from_xml_element(elem)
