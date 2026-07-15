@@ -421,12 +421,14 @@ void openmc_relax_kinetic_batch()
   // Set number of relaxation generations to run
   settings::gen_per_batch = settings::n_relaxation_timesteps;
 
+  simulation::is_relaxation_generation = true;
   if (mpi::master)
     write_message(fmt::format(
       " Batch {0} relaxation generations", simulation::current_batch));
   for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
     openmc_simulate_generation();
   }
+  simulation::is_relaxation_generation = false;
 
   activate_tallies();
 }
@@ -479,6 +481,7 @@ vector<int64_t> work_index;
 bool is_initial_condition {true};
 
 bool is_decorrelation_generation {false};
+bool is_relaxation_generation {false};
 bool is_last_ss_generation {false};
 int initial_overall_generation {0};
 int32_t initial_n_realizations {0};
@@ -508,6 +511,12 @@ double average_neutron_weight;
 double average_precursor_weight;
 
 bool weighted_comb {false};
+
+vector<double> k_dynamic;
+vector<double> k_dynamic_mean;
+vector<double> k_dynamic_std;
+vector<double> k_dynamic_sum;
+vector<double> k_dynamic_sum_sq;
 
 } // namespace simulation
 
@@ -828,10 +837,9 @@ void finalize_generation()
   }
   if (settings::kinetic_simulation && !simulation::is_initial_condition &&
       !simulation::is_decorrelation_generation) {
-    gt(GlobalTally::K_ABSORPTION, TallyResult::VALUE) +=
-      global_tally_absorption;
-    gt(GlobalTally::K_PRODUCTION, TallyResult::VALUE) +=
-      global_tally_production;
+    double k_dynamic = global_tally_production /
+                       (global_tally_absorption + global_tally_leakage);
+    simulation::k_dynamic[simulation::current_gen - 1] = k_dynamic;
   }
   gt(GlobalTally::LEAKAGE, TallyResult::VALUE) += global_tally_leakage;
 
@@ -929,6 +937,12 @@ void finalize_generation()
           simulation::is_decorrelation_generation)) {
       calculate_generation_keff();
       calculate_average_keff();
+    }
+
+    if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation &
+          !simulation::is_relaxation_generation) {
+      calculate_average_k_dynamic(simulation::current_gen - 1);
     }
 
     // Write generation output
@@ -1601,6 +1615,46 @@ int sample_precursor_delay_group(const Reaction& rx, SourceSite& precursor_site,
       break;
   }
   return group;
+}
+
+void calculate_average_k_dynamic(int t_idx)
+{
+  int n = simulation::current_batch;
+
+  // Sample mean of keff
+  simulation::k_dynamic_sum[t_idx] += simulation::k_dynamic[t_idx];
+  simulation::k_dynamic_sum_sq[t_idx] +=
+    std::pow(simulation::k_dynamic[t_idx], 2);
+
+  // Determine mean
+  simulation::k_dynamic_mean[t_idx] = simulation::k_dynamic_sum[t_idx] / n;
+
+  if (n > 1) {
+    double t_value;
+    if (settings::confidence_intervals) {
+      // Calculate t-value for confidence intervals
+      double alpha = 1.0 - CONFIDENCE_LEVEL;
+      t_value = t_percentile(1.0 - alpha / 2.0, n - 1);
+    } else {
+      t_value = 1.0;
+    }
+
+    // Standard deviation of the sample mean of k
+    simulation::k_dynamic_std[t_idx] =
+      t_value * std::sqrt((simulation::k_dynamic_sum_sq[t_idx] / n -
+                            std::pow(simulation::k_dynamic_mean[t_idx], 2)) /
+                          (n - 1));
+
+    // In some cases (such as an infinite medium problem), random ray
+    // may estimate k exactly and in an unvarying manner between iterations.
+    // In this case, the floating point roundoff between the division and the
+    // power operations may cause an extremely small negative value to occur
+    // inside the sqrt operation, leading to NaN. If this occurs, we check for
+    // it and set the std dev to zero.
+    if (!std::isfinite(simulation::keff_std)) {
+      simulation::k_dynamic_std[t_idx] = 0.0;
+    }
+  }
 }
 
 } // namespace openmc

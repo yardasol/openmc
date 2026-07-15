@@ -62,6 +62,7 @@ extern bool
 
 // Decorrelation generation variables
 extern bool is_decorrelation_generation;
+extern bool is_relaxation_generation;
 extern bool is_last_ss_generation;
 extern int initial_overall_generation;
 extern int32_t initial_n_realizations;
@@ -94,6 +95,12 @@ extern double average_neutron_weight;
 extern double average_precursor_weight;
 
 extern bool weighted_comb;
+
+extern vector<double> k_dynamic;
+extern vector<double> k_dynamic_mean;
+extern vector<double> k_dynamic_std;
+extern vector<double> k_dynamic_sum;
+extern vector<double> k_dynamic_sum_sq;
 
 } // namespace simulation
 
@@ -168,6 +175,8 @@ void compute_forced_decay_weight_factors(const Reaction& rx,
   double& precursor_sum);
 int sample_precursor_delay_group(const Reaction& rx, SourceSite& precursor_site,
   Particle& p, double lambda_b, double neutron_sum, uint64_t* seed);
+//! Compute dynamic multiplication factor
+void calculate_average_k_dynamic(int t_idx);
 
 } // namespace openmc
 

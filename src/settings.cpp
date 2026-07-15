@@ -300,6 +300,11 @@ void get_run_parameters(pugi::xml_node node_base)
           std::stoi(get_node_value(node_base, "n_relaxation_timesteps"));
       }
       n_timesteps = time_census_boundaries.size() - 1;
+      simulation::k_dynamic.resize(n_timesteps);
+      simulation::k_dynamic_mean.resize(n_timesteps);
+      simulation::k_dynamic_std.resize(n_timesteps);
+      simulation::k_dynamic_sum.resize(n_timesteps);
+      simulation::k_dynamic_sum_sq.resize(n_timesteps);
     }
     // Forced decay is only checked for if kinetic_simulation is on
     if (check_for_node(node_base, "forced_decay")) {

@@ -147,6 +147,13 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
     if (settings::run_mode == RunMode::EIGENVALUE)
       write_eigenvalue_hdf5(file_id);
 
+    if (settings::kinetic_simulation && !simulation::is_initial_condition) {
+      write_dataset(file_id, "k_dynamic_mean", simulation::k_dynamic_mean);
+      write_dataset(file_id, "k_dynamic_std", simulation::k_dynamic_std);
+      write_dataset(file_id, "k_dynamic_sum", simulation::k_dynamic_sum);
+      write_dataset(file_id, "k_dynamic_sum_sq", simulation::k_dynamic_sum_sq);
+    }
+
     hid_t tallies_group = create_group(file_id, "tallies");
 
     // Write meshes

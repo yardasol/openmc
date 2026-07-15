@@ -411,7 +411,8 @@ void print_generation()
   if (!simulation::is_initial_condition &&
       !simulation::is_decorrelation_generation)
     // Don't print k_generation during time steps
-    fmt::print("  {:>9}           ", batch_and_gen);
+    fmt::print("  {:>9}   {8.5f}", batch_and_gen,
+      simulation::k_dynamic[simulation::current_gen - 1]);
   else
     fmt::print(
       "  {:>9}   {:8.5f}", batch_and_gen, simulation::k_generation[idx]);
@@ -426,6 +427,14 @@ void print_generation()
   if (n > 1 && simulation::is_initial_condition ||
       (n > 0 && simulation::is_decorrelation_generation)) {
     fmt::print("   {:8.5f} +/-{:8.5f}", simulation::keff, simulation::keff_std);
+  }
+
+  if (simulation::current_batch > 1 && !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation &&
+      !simulation::is_relaxation_generation) {
+    int i = simulation::current_gen - 1;
+    fmt::print("   {:8.5f} +/-{:8.5f}", simulation::k_dynamic_mean[i],
+      simulation::k_dynamic_std[i]);
   }
   fmt::print("\n");
   std::fflush(stdout);
