@@ -409,13 +409,14 @@ void print_generation()
   auto batch_and_gen = std::to_string(simulation::current_batch) + "/" +
                        std::to_string(simulation::current_gen);
   if (!simulation::is_initial_condition &&
-      !simulation::is_decorrelation_generation)
-    // Don't print k_generation during time steps
-    fmt::print("  {:>9}   {8.5f}", batch_and_gen,
-      simulation::k_dynamic[simulation::current_gen - 1]);
-  else
+      !simulation::is_decorrelation_generation) {
+    // Print k_dynamic during time steps
+    int i = simulation::current_gen - 1;
+    fmt::print("  {:>9}   {:8.5f}", batch_and_gen, simulation::k_dynamic[i]);
+  } else {
     fmt::print(
       "  {:>9}   {:8.5f}", batch_and_gen, simulation::k_generation[idx]);
+  }
 
   // write out entropy info
   if (settings::entropy_on) {
