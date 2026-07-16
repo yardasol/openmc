@@ -10,12 +10,15 @@
 #include "openmc/geometry_aux.h"
 #include "openmc/ifp.h"
 #include "openmc/material.h"
+#include "openmc/math_functions.h"
 #include "openmc/message_passing.h"
 #include "openmc/nuclide.h"
 #include "openmc/output.h"
 #include "openmc/particle.h"
 #include "openmc/photon.h"
+#include "openmc/physics_common.h"
 #include "openmc/random_lcg.h"
+#include "openmc/reaction.h"
 #include "openmc/settings.h"
 #include "openmc/source.h"
 #include "openmc/state_point.h"
@@ -69,6 +72,60 @@ int openmc_run()
 
   openmc_simulation_finalize();
   openmc::simulation::time_total.stop();
+
+  // Kinetic batches for eigenvalue simulations
+  if (openmc::settings::kinetic_simulation &&
+      openmc::settings::run_mode == openmc::RunMode::EIGENVALUE) {
+
+    // No longer in initial condition
+    openmc::simulation::is_initial_condition = false;
+
+    // Store steady state k-eff
+    openmc::simulation::initial_keff = openmc::simulation::keff;
+    // Store various eigenvalues quatnties, as well as overall_generation and
+    // n_realizations. These are needed to properly compute k_eff if using
+    // decorrelating generations for TDMC simulations
+    if (openmc::settings::n_decorrelate_generations > 0) {
+      using namespace openmc;
+      using namespace simulation;
+
+      // Used for consistent eigenvalue calculations and particle IDs + seeds
+      initial_overall_generation =
+        overall_generation() - 1; // off by one correction
+      // Used for consistent eigenvalue calculations
+      initial_n_realizations = n_realizations;
+      initial_gen_per_batch = settings::gen_per_batch;
+      store_initial_k_eigenvalue_quantities();
+    }
+
+    // Copy the criticality source bank. We will want to run
+    // some criticality generations to decorrelate the batches.
+    openmc::simulation::initial_source_bank = openmc::simulation::source_bank;
+    if (openmc::settings::forced_decay)
+      openmc::simulation::initial_precursor_source_bank =
+        openmc::simulation::precursor_source_bank;
+
+    // No need to reinitialize every data structure. We can just reset global
+    // vars and set the initialized flag back to true
+    openmc_reset_global_variables();
+    openmc_hard_reset();
+    openmc::simulation::initialized = true;
+    openmc::simulation::current_batch = 0;
+    openmc::settings::n_inactive = 0;
+    if (openmc::settings::n_decorrelate_generations > 0) {
+      openmc::set_initial_k_eigenvalue_quantities();
+    }
+    status = 0;
+    openmc_display_header();
+
+    // Run the kinetic simulation
+    openmc::simulation::time_total.start();
+    while (status == 0 && err == 0) {
+      err = openmc_next_batch(&status);
+    }
+    openmc_simulation_finalize();
+    openmc::simulation::time_total.stop();
+  }
   return err;
 }
 
@@ -86,7 +143,30 @@ int openmc_simulation_init()
   }
 
   // Determine how much work each process should do
-  calculate_work();
+  calculate_work(
+    settings::n_particles, simulation::work_per_rank, simulation::work_index);
+
+  if (settings::kinetic_simulation) {
+    // Precursor + neutron work per rank
+    simulation::combined_work_per_rank = simulation::work_per_rank;
+
+    // Create precursor work
+    if (settings::forced_decay) {
+      calculate_work(settings::n_precursor_particles,
+        simulation::precursor_work_per_rank, simulation::precursor_work_index);
+      simulation::combined_work_per_rank += simulation::precursor_work_per_rank;
+    }
+
+    // Create precursor + neutron work_index
+    simulation::combined_work_index.resize(mpi::n_procs + 1);
+    for (int i = 0; i < mpi::n_procs; ++i) {
+      simulation::combined_work_index[i + 1] = simulation::work_index[i + 1];
+      if (settings::forced_decay)
+        simulation::combined_work_index[i + 1] +=
+          simulation::precursor_work_index[i + 1] -
+          simulation::precursor_work_index[i];
+    }
+  }
 
   // Allocate source, fission and surface source banks.
   allocate_banks();
@@ -115,14 +195,9 @@ int openmc_simulation_init()
     mat->init_nuclide_index();
   }
 
-  // Reset global variables -- this is done before loading state point (as that
-  // will potentially populate k_generation and entropy)
-  simulation::current_batch = 0;
-  simulation::ct_current_file = 1;
-  simulation::ssw_current_file = 1;
-  simulation::k_generation.clear();
-  simulation::entropy.clear();
-  reset_source_rejection_counters();
+  // Reset global variables and tallies -- this is done before loading state
+  // point (as that will potentially populate k_generation and entropy)
+  openmc_reset_global_variables();
   openmc_reset();
 
   // If this is a restart run, load the state point data and binary source
@@ -139,6 +214,34 @@ int openmc_simulation_init()
   }
 
   // Display header
+  openmc_display_header();
+
+  // load weight windows from file
+  if (!settings::weight_windows_file.empty()) {
+    openmc_weight_windows_import(settings::weight_windows_file.c_str());
+  }
+
+  // Set flag indicating initialization is done
+  simulation::initialized = true;
+  return 0;
+}
+
+void openmc_reset_global_variables()
+{
+  using namespace openmc;
+
+  simulation::current_batch = 0;
+  simulation::ct_current_file = 1;
+  simulation::ssw_current_file = 1;
+  simulation::k_generation.clear();
+  simulation::entropy.clear();
+  reset_source_rejection_counters();
+}
+
+void openmc_display_header()
+{
+  using namespace openmc;
+
   if (mpi::master) {
     if (settings::kinetic_simulation) {
       if (simulation::is_initial_condition) {
@@ -147,8 +250,11 @@ int openmc_simulation_init()
         else
           header("KINETIC SIMULATION INITIAL CONDITION", 3);
       } else {
-        std::string message = fmt::format(
-          "KINETIC SIMULATION TIME STEP {0}", simulation::current_timestep);
+        std::string message = "KINETIC SIMULATION";
+        if (settings::solver_type == SolverType::RANDOM_RAY) {
+          message = fmt::format(
+            "{0} TIME STEP {1}", message, simulation::current_timestep);
+        }
         const char* msg = message.c_str();
         header(msg, 3);
       }
@@ -169,15 +275,6 @@ int openmc_simulation_init()
         print_columns();
     }
   }
-
-  // load weight windows from file
-  if (!settings::weight_windows_file.empty()) {
-    openmc_weight_windows_import(settings::weight_windows_file.c_str());
-  }
-
-  // Set flag indicating initialization is done
-  simulation::initialized = true;
-  return 0;
 }
 
 int openmc_simulation_finalize()
@@ -256,26 +353,13 @@ int openmc_next_batch(int* status)
 
   initialize_batch();
 
+  // Initialize kinetic batch for a kinetic MC simulation
+  initialize_kinetic_batch();
+
   // =======================================================================
-  // LOOP OVER GENERATIONS
+  // LOOP OVER GENERATIONS (THESE ARE TIME STEPS FOR KINETIC SIMULATION)
   for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
-
-    initialize_generation();
-
-    // Start timer for transport
-    simulation::time_transport.start();
-
-    // Transport loop
-    if (settings::event_based) {
-      transport_event_based();
-    } else {
-      transport_history_based();
-    }
-
-    // Accumulate time for transport
-    simulation::time_transport.stop();
-
-    finalize_generation();
+    openmc_simulate_generation();
   }
 
   finalize_batch();
@@ -291,6 +375,51 @@ int openmc_next_batch(int* status)
     }
   }
   return 0;
+}
+
+void openmc_simulate_generation()
+{
+  using namespace openmc;
+
+  initialize_generation();
+
+  // Start timer for transport
+  simulation::time_transport.start();
+
+  // Transport loop
+  if (settings::event_based) {
+    transport_event_based();
+  } else {
+    transport_history_based();
+  }
+
+  // Accumulate time for transport
+  simulation::time_transport.stop();
+
+  finalize_generation();
+}
+
+void openmc_relax_kinetic_batch()
+{
+  using namespace openmc;
+  using openmc::simulation::current_gen;
+
+  // Deactivate tallies for relaxation generations
+  deactivate_tallies();
+
+  // Set number of relaxation generations to run
+  settings::gen_per_batch = settings::n_relaxation_timesteps;
+
+  simulation::is_relaxation_generation = true;
+  if (mpi::master)
+    write_message(fmt::format(
+      " Batch {0} relaxation generations", simulation::current_batch));
+  for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
+    openmc_simulate_generation();
+  }
+  simulation::is_relaxation_generation = false;
+
+  activate_tallies();
 }
 
 bool openmc_is_statepoint_batch()
@@ -329,6 +458,7 @@ bool satisfy_triggers {false};
 int ssw_current_file;
 int total_gen {0};
 double total_weight;
+double total_weight_end;
 int64_t work_per_rank;
 
 const RegularMesh* entropy_mesh {nullptr};
@@ -338,9 +468,43 @@ vector<double> k_generation;
 vector<int64_t> work_index;
 
 bool is_initial_condition {true};
+
+bool is_decorrelation_generation {false};
+bool is_relaxation_generation {false};
+int initial_overall_generation {0};
+int32_t initial_n_realizations {0};
+int32_t initial_gen_per_batch {1};
+vector<double> initial_k_generation;
+array<double, 2> initial_k_sum {0.0, 0.0};
+double initial_k_col {0.0};
+double initial_k_abs {0.0};
+double initial_k_tra {0.0};
+double initial_k_col_abs {0.0};
+double initial_k_col_tra {0.0};
+double initial_k_abs_tra {0.0};
+
 int current_timestep;
 double current_time {0.0};
 bool source_correction {false};
+double initial_keff;
+
+int64_t combined_work_per_rank;
+vector<int64_t> combined_work_index;
+
+// Precursor Particle Variables
+int64_t precursor_work_per_rank {0};
+vector<int64_t> precursor_work_index;
+
+double average_neutron_weight;
+double average_precursor_weight;
+
+bool weighted_comb {false};
+
+vector<double> k_dynamic;
+vector<double> k_dynamic_mean;
+vector<double> k_dynamic_std;
+vector<double> k_dynamic_sum;
+vector<double> k_dynamic_sum_sq;
 
 } // namespace simulation
 
@@ -355,12 +519,35 @@ void allocate_banks()
     // Allocate source bank
     simulation::source_bank.resize(simulation::work_per_rank);
 
-    // Allocate fission bank
-    init_fission_bank(3 * simulation::work_per_rank);
+    // Allocate bank for fission census
+    init_census_bank(simulation::fission_bank, simulation::progeny_per_particle,
+      simulation::work_per_rank);
 
     // Allocate IFP bank
-    if (settings::ifp_on) {
+    if (settings::ifp_on)
       resize_simulation_ifp_banks();
+
+    if (settings::kinetic_simulation) {
+      // Allocate source bank copy
+      simulation::initial_source_bank.resize(simulation::work_per_rank);
+
+      // Allocate bank for time census
+      init_census_bank(simulation::time_census_bank,
+        simulation::time_progeny_per_particle,
+        simulation::combined_work_per_rank);
+
+      if (settings::forced_decay) {
+        simulation::precursor_source_bank.resize(
+          simulation::precursor_work_per_rank);
+        simulation::initial_precursor_source_bank.resize(
+          simulation::precursor_work_per_rank);
+        // We use work_per_rank here because each simulated particle can
+        // potentially create a precursor and the shared bank needs the size to
+        // reflect that
+        init_census_bank(simulation::precursor_shared_bank,
+          simulation::precursor_progeny_per_particle,
+          simulation::combined_work_per_rank);
+      }
     }
   }
 
@@ -373,6 +560,26 @@ void allocate_banks()
     // Allocate collision track bank
     collision_track_reserve_bank();
   }
+}
+
+void activate_tallies()
+{
+  simulation::time_inactive.stop();
+  simulation::time_active.start();
+  for (auto& t : model::tallies) {
+    t->active_ = true;
+  }
+  setup_active_tallies();
+}
+
+void deactivate_tallies()
+{
+  simulation::time_active.stop();
+  simulation::time_inactive.start();
+  for (auto& t : model::tallies) {
+    t->active_ = false;
+  }
+  setup_active_tallies();
 }
 
 void initialize_batch()
@@ -391,6 +598,7 @@ void initialize_batch()
 
   // Reset total starting particle weight used for normalizing tallies
   simulation::total_weight = 0.0;
+  simulation::total_weight_end = 0.0;
 
   // Determine if this batch is the first inactive or active batch.
   bool first_inactive = false;
@@ -416,6 +624,46 @@ void initialize_batch()
 
   // Add user tallies to active tallies list
   setup_active_tallies();
+}
+
+void initialize_kinetic_batch()
+{
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+      settings::run_mode == RunMode::EIGENVALUE &&
+      settings::solver_type == SolverType::MONTE_CARLO) {
+    // Run some criticality generations to decorrelate batches for eigenvalue
+    // simulations
+    if (settings::n_decorrelate_generations > 0) {
+      // Run decorrelation generatiosn
+      decorrelate_kinetic_eigenvalue_batch();
+    } else {
+      simulation::source_bank = simulation::initial_source_bank;
+      simulation::keff = simulation::initial_keff;
+
+      if (settings::forced_decay)
+        simulation::precursor_source_bank =
+          simulation::initial_precursor_source_bank;
+    }
+    // Force all particles to have a time of zero
+    set_bank_times_to_zero();
+
+    if (settings::n_relaxation_timesteps > 0) {
+      // Relax kinetic generation time domain
+      openmc_relax_kinetic_batch();
+
+      // Reset bank times
+      set_bank_times_to_zero();
+    }
+
+    // Prepare for loop over time census boundaries, generations are now time
+    // steps. Subtract one to account for the infinity boundary at the zeroth
+    // index
+    settings::gen_per_batch = settings::time_census_boundaries.size() - 1;
+    if (mpi::master)
+      write_message(fmt::format(
+        " Batch {0} active time step generations", simulation::current_batch));
+  }
+  return;
 }
 
 void finalize_batch()
@@ -524,8 +772,12 @@ void finalize_batch()
 
 void initialize_generation()
 {
-  if (settings::run_mode == RunMode::EIGENVALUE) {
-    // Clear out the fission bank
+  if (settings::run_mode == RunMode::EIGENVALUE &&
+      (simulation::is_initial_condition ||
+        !simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
+    // Only clear out the fission bank if running a steady state simulation, the
+    // IC of a kinetic simulation, or decorrelateing a kinetic simulation batch
     simulation::fission_bank.resize(0);
 
     // Count source sites if using uniform fission source weighting
@@ -536,6 +788,24 @@ void initialize_generation()
     simulation::keff_generation = simulation::global_tallies(
       GlobalTally::K_TRACKLENGTH, TallyResult::VALUE);
   }
+
+  if (settings::kinetic_simulation &&
+      settings::solver_type == SolverType::MONTE_CARLO &&
+      !simulation::is_initial_condition) {
+    // Reset total starting particle weight used for normalizing tallies for
+    // decorrleation generations AND for time census generations
+    simulation::total_weight = 0.0;
+    simulation::total_weight_end = 0.0;
+  }
+
+  if (settings::kinetic_simulation &&
+      settings::solver_type == SolverType::MONTE_CARLO) {
+    // Clear out the time census bank
+    simulation::time_census_bank.resize(0);
+    if (settings::forced_decay) {
+      simulation::precursor_shared_bank.resize(0);
+    }
+  }
 }
 
 void finalize_generation()
@@ -543,20 +813,37 @@ void finalize_generation()
   auto& gt = simulation::global_tallies;
 
   // Update global tallies with the accumulation variables
-  if (settings::run_mode == RunMode::EIGENVALUE) {
+  if (settings::run_mode == RunMode::EIGENVALUE &&
+      (simulation::is_initial_condition ||
+        !simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
     gt(GlobalTally::K_COLLISION, TallyResult::VALUE) += global_tally_collision;
     gt(GlobalTally::K_ABSORPTION, TallyResult::VALUE) +=
       global_tally_absorption;
     gt(GlobalTally::K_TRACKLENGTH, TallyResult::VALUE) +=
       global_tally_tracklength;
   }
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    double k_dynamic = global_tally_production /
+                       (global_tally_absorption + global_tally_leakage);
+    simulation::k_dynamic[simulation::current_gen - 1] = k_dynamic;
+  }
   gt(GlobalTally::LEAKAGE, TallyResult::VALUE) += global_tally_leakage;
 
   // reset tallies
-  if (settings::run_mode == RunMode::EIGENVALUE) {
+  if (settings::run_mode == RunMode::EIGENVALUE &&
+      (simulation::is_initial_condition ||
+        !simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
     global_tally_collision = 0.0;
     global_tally_absorption = 0.0;
     global_tally_tracklength = 0.0;
+  }
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    global_tally_production = 0.0;
+    global_tally_absorption = 0.0;
   }
   global_tally_leakage = 0.0;
 
@@ -565,12 +852,65 @@ void finalize_generation()
     // If using shared memory, stable sort the fission bank (by parent IDs)
     // so as to allow for reproducibility regardless of which order particles
     // are run in.
-    sort_fission_bank();
+    if (simulation::is_initial_condition ||
+        (!simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
+      // Only sort fission bank if running a steady state simulation, the IC
+      // of a kinetic simulation, or decorrelateing a kinetic simulation batch
+      sort_census_bank(simulation::fission_bank,
+        simulation::progeny_per_particle, simulation::work_index);
 
-    // Distribute fission bank across processors evenly
-    synchronize_bank();
+      // Distribute fission bank across processors evenly
+      synchronize_bank(simulation::fission_bank, simulation::source_bank,
+        settings::n_particles, simulation::work_per_rank,
+        simulation::work_index, simulation::average_neutron_weight);
+    }
   }
 
+  if (settings::solver_type == SolverType::MONTE_CARLO &&
+      settings::kinetic_simulation) {
+
+    // Time census only after the initial condition
+    if (!simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation) {
+      if (settings::neutron_weighted_comb)
+        simulation::weighted_comb = true;
+      // If using shared memory, stable sort the time census bank (by parent
+      // IDs) so as to allow for reproducibility regardless of which order
+      // particles are run in.
+      sort_census_bank(simulation::time_census_bank,
+        simulation::time_progeny_per_particle, simulation::combined_work_index);
+
+      // Distribute time census bank across processors evenly
+      synchronize_bank(simulation::time_census_bank, simulation::source_bank,
+        settings::n_particles, simulation::combined_work_per_rank,
+        simulation::work_index, simulation::average_neutron_weight);
+      if (settings::neutron_weighted_comb)
+        simulation::weighted_comb = false;
+    }
+
+    if (settings::forced_decay) {
+      if (settings::precursor_weighted_comb &&
+          !simulation::is_initial_condition &&
+          !simulation::is_decorrelation_generation)
+        simulation::weighted_comb = true;
+      // The precursor bank should also be sorted
+      sort_census_bank(simulation::precursor_shared_bank,
+        simulation::precursor_progeny_per_particle,
+        simulation::combined_work_index);
+      // Distribute also precursors source sites
+      synchronize_bank(simulation::precursor_shared_bank,
+        simulation::precursor_source_bank, settings::n_precursor_particles,
+        simulation::combined_work_per_rank, simulation::precursor_work_index,
+        simulation::average_precursor_weight);
+      if (settings::precursor_weighted_comb &&
+          !simulation::is_initial_condition &&
+          !simulation::is_decorrelation_generation)
+        simulation::weighted_comb = false;
+    }
+  }
+
+  // TODO: will this prevent dynamic keff?
   if (settings::run_mode == RunMode::EIGENVALUE) {
 
     // Calculate shannon entropy
@@ -579,8 +919,19 @@ void finalize_generation()
       shannon_entropy();
 
     // Collect results and statistics
-    calculate_generation_keff();
-    calculate_average_keff();
+    // Don't calculate k during kinetic simulations
+    if (simulation::is_initial_condition ||
+        (!simulation::is_initial_condition &&
+          simulation::is_decorrelation_generation)) {
+      calculate_generation_keff();
+      calculate_average_keff();
+    }
+
+    if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation &
+          !simulation::is_relaxation_generation) {
+      calculate_average_k_dynamic(simulation::current_gen - 1);
+    }
 
     // Write generation output
     if (mpi::master && settings::verbosity >= 7) {
@@ -589,26 +940,42 @@ void finalize_generation()
   }
 }
 
-void initialize_history(Particle& p, int64_t index_source)
+void initialize_history(Particle& p, int64_t index_source, bool from_precursor)
 {
   // set defaults
-  if (settings::run_mode == RunMode::EIGENVALUE) {
-    // set defaults for eigenvalue simulations from primary bank
-    p.from_source(&simulation::source_bank[index_source - 1]);
-  } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
-    // initialize random number seed
-    int64_t id = (simulation::total_gen + overall_generation() - 1) *
-                   settings::n_particles +
-                 simulation::work_index[mpi::rank] + index_source;
-    uint64_t seed = init_seed(id, STREAM_SOURCE);
-    // sample from external source distribution or custom library then set
-    auto site = sample_external_source(&seed);
-    p.from_source(&site);
+  if (!from_precursor) {
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      // set defaults for eigenvalue simulations from primary bank
+      p.from_source(&simulation::source_bank[index_source - 1]);
+    } else if (settings::run_mode == RunMode::FIXED_SOURCE) {
+      // TODO: support fixed source sims with forced decay (required overhauling
+      // the particle indexing) initialize random number seed
+      int64_t id = (simulation::total_gen + overall_generation() - 1) *
+                     settings::n_particles +
+                   simulation::work_index[mpi::rank] + index_source;
+      uint64_t seed = init_seed(id, STREAM_SOURCE);
+      // sample from external source distribution or custom library then set
+      auto site = sample_external_source(&seed);
+      p.from_source(&site);
+    }
+  } else {
+    SourceSite precursor_site =
+      simulation::precursor_source_bank[index_source - 1];
+    p.from_source(&precursor_site);
   }
+  // TODO: this is for IFP, disable for kinetic simulations
   p.current_work() = index_source;
 
   // set identifier for particle
-  p.id() = simulation::work_index[mpi::rank] + index_source;
+  if (!simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    p.id() = simulation::combined_work_index[mpi::rank] + index_source;
+    if (from_precursor)
+      // Adjust precursor ID by work_per_rank to prevent duplicate particle IDs
+      p.id() += simulation::work_per_rank;
+  } else {
+    p.id() = simulation::work_index[mpi::rank] + index_source;
+  }
 
   // set progeny count to zero
   p.n_progeny() = 0;
@@ -632,9 +999,18 @@ void initialize_history(Particle& p, int64_t index_source)
   int64_t particle_seed =
     (simulation::total_gen + overall_generation() - 1) * settings::n_particles +
     p.id();
+  if (!simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    // Adjust the particle seed by the number of precursor particles simulated
+    // to prevent duplicate seeds
+    particle_seed += (simulation::total_gen + overall_generation() - 1) *
+                     settings::n_precursor_particles;
+  }
+
   init_particle_seeds(particle_seed, p.seeds());
 
   // set particle trace
+  // TODO: Will this mess up for TD sims?
   p.trace() = false;
   if (simulation::current_batch == settings::trace_batch &&
       simulation::current_gen == settings::trace_gen &&
@@ -648,14 +1024,33 @@ void initialize_history(Particle& p, int64_t index_source)
   p.wgt_ww_born() = -1.0;
   apply_weight_windows(p);
 
+  // Check particle time index
+  int expected_tb_idx;
+  if (openmc::settings::kinetic_simulation &&
+      !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    expected_tb_idx = openmc::simulation::current_gen;
+  } else {
+    expected_tb_idx = 0;
+  }
+  if (p.time_bound_idx() != expected_tb_idx) {
+    std::string err = fmt::format("Expected time bound index was {0} but "
+                                  " particle time bound was {1}",
+      expected_tb_idx, p.time_bound_idx());
+    fatal_error(err);
+  }
+
   // Display message if high verbosity or trace is on
   if (settings::verbosity >= 9 || p.trace()) {
     write_message("Simulating Particle {}", p.id());
   }
 
-// Add particle's starting weight to count for normalizing tallies later
+  // Add particle's starting weight to count for normalizing tallies later (skip
+  // for forced decay)
+  if (!from_precursor) {
 #pragma omp atomic
-  simulation::total_weight += p.wgt();
+    simulation::total_weight += p.wgt();
+  }
 
   // Force calculation of cross-sections by setting last energy to zero
   if (settings::run_CE) {
@@ -670,31 +1065,37 @@ void initialize_history(Particle& p, int64_t index_source)
 int overall_generation()
 {
   using namespace simulation;
-  return settings::gen_per_batch * (current_batch - 1) + current_gen;
+  int overall_gen = settings::gen_per_batch * (current_batch - 1) + current_gen;
+  if (is_decorrelation_generation)
+    // Increment the overall generation when decorrelating TD batches
+    overall_gen += initial_overall_generation;
+  return overall_gen;
 }
 
-void calculate_work()
+void calculate_work(
+  int64_t n_particles, int64_t& work_per_rank, vector<int64_t>& work_index)
 {
   // Determine minimum amount of particles to simulate on each processor
-  int64_t min_work = settings::n_particles / mpi::n_procs;
+  int64_t min_work = n_particles / mpi::n_procs;
 
-  // Determine number of processors that have one extra particle
-  int64_t remainder = settings::n_particles % mpi::n_procs;
+  // Determine number of processors that have one extra particle (or precursor
+  // particle)
+  int64_t remainder = n_particles % mpi::n_procs;
 
   int64_t i_bank = 0;
-  simulation::work_index.resize(mpi::n_procs + 1);
-  simulation::work_index[0] = 0;
+  work_index.resize(mpi::n_procs + 1);
+  work_index[0] = 0;
   for (int i = 0; i < mpi::n_procs; ++i) {
     // Number of particles for rank i
     int64_t work_i = i < remainder ? min_work + 1 : min_work;
 
     // Set number of particles
     if (mpi::rank == i)
-      simulation::work_per_rank = work_i;
+      work_per_rank = work_i;
 
     // Set index into source bank for rank i
     i_bank += work_i;
-    simulation::work_index[i + 1] = i_bank;
+    work_index[i + 1] = i_bank;
   }
 }
 
@@ -841,11 +1242,47 @@ void transport_history_based_single_particle(Particle& p)
 
 void transport_history_based()
 {
+  double old_weight_survive;
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    // Zero out precursor_progeny_per_particle
+    if (settings::forced_decay) {
+      std::fill(simulation::precursor_progeny_per_particle.begin(),
+        simulation::precursor_progeny_per_particle.end(), 0);
+    }
+    // Set surival weight to average weight of neutrons if using branchless
+    // collisions, as the average weight will change over time.
+    if (settings::branchless_collision) {
+      old_weight_survive = settings::weight_survive;
+      if (simulation::current_gen > 1)
+        settings::weight_survive = simulation::average_neutron_weight;
+    }
+  }
+
 #pragma omp parallel for schedule(runtime)
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     Particle p;
     initialize_history(p, i_work);
     transport_history_based_single_particle(p);
+  }
+  if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation) {
+    // Only use forced decay in the transient part of a kinetic simulation
+    if (settings::forced_decay) {
+      if (simulation::current_gen == 1)
+        simulation::average_neutron_weight =
+          simulation::total_weight / settings::n_particles;
+#pragma omp parallel for schedule(runtime)
+      for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
+           ++i_work) {
+        Particle p;
+        initialize_history(p, i_work, true);
+        forced_precursor_decay(p, i_work);
+        transport_history_based_single_particle(p);
+      }
+    }
+    if (settings::branchless_collision)
+      settings::weight_survive = old_weight_survive;
   }
 }
 
@@ -898,6 +1335,313 @@ void transport_event_based()
     // Adjust remaining work and source offset variables
     remaining_work -= n_particles;
     source_offset += n_particles;
+  }
+}
+
+// Consecutive batch decorrelation scheme from "New kinetic simulation
+// capabilites for Tripoli-4: Methods and applications", M. Faucher et
+// al. (2018)
+void decorrelate_kinetic_eigenvalue_batch()
+{
+  using openmc::simulation::current_gen;
+
+  // Deactivate tallies for decorrelation generations
+  deactivate_tallies();
+
+  // Set number of decorrelation generations to run
+  settings::gen_per_batch = settings::n_decorrelate_generations;
+
+  // Set source banks to steady state copies
+  simulation::source_bank = simulation::initial_source_bank;
+  if (settings::forced_decay)
+    simulation::precursor_source_bank =
+      simulation::initial_precursor_source_bank;
+
+  simulation::is_decorrelation_generation = true;
+  if (mpi::master)
+    write_message(fmt::format(
+      " Batch {0} decorrelation generations", simulation::current_batch));
+  for (current_gen = 1; current_gen <= settings::gen_per_batch; ++current_gen) {
+    openmc_simulate_generation();
+  }
+  simulation::is_decorrelation_generation = false;
+
+  // Save the decorrelated source banks
+  simulation::initial_source_bank = simulation::source_bank;
+  if (settings::forced_decay)
+    simulation::initial_precursor_source_bank =
+      simulation::precursor_source_bank;
+
+  // Reactivate tallies for the kinetic simulation
+  activate_tallies();
+}
+
+void store_initial_k_eigenvalue_quantities()
+{
+  using namespace simulation;
+  auto& gt = simulation::global_tallies;
+
+  initial_k_generation = k_generation;
+  initial_k_col = gt(GlobalTally::K_COLLISION, TallyResult::VALUE);
+  initial_k_abs = gt(GlobalTally::K_ABSORPTION, TallyResult::VALUE);
+  initial_k_tra = gt(GlobalTally::K_TRACKLENGTH, TallyResult::VALUE);
+  initial_k_sum = k_sum;
+  initial_k_col_abs = k_col_abs;
+  initial_k_col_tra = k_col_tra;
+  initial_k_abs_tra = k_abs_tra;
+}
+
+void set_initial_k_eigenvalue_quantities()
+{
+  using namespace simulation;
+  auto& gt = simulation::global_tallies;
+
+  k_generation = initial_k_generation;
+  gt(GlobalTally::K_COLLISION, TallyResult::VALUE) = initial_k_col;
+  gt(GlobalTally::K_ABSORPTION, TallyResult::VALUE) = initial_k_abs;
+  gt(GlobalTally::K_TRACKLENGTH, TallyResult::VALUE) = initial_k_tra;
+  k_sum = initial_k_sum;
+  k_col_abs = initial_k_col_abs;
+  k_col_tra = initial_k_col_tra;
+  k_abs_tra = initial_k_abs_tra;
+}
+
+// EDGE CASE TODO: This will affect generation of precursor particles
+// during the decorrelation generations.. will the effect matter?
+void set_bank_times_to_zero()
+{
+#pragma omp parallel for schedule(runtime)
+  for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
+    simulation::source_bank[i_work - 1].time = 0.0;
+    simulation::source_bank[i_work - 1].time_bound_idx = 1;
+    simulation::source_bank[i_work - 1].wgt = 1.0;
+  }
+  if (settings::forced_decay) {
+#pragma omp parallel for schedule(runtime)
+    for (int64_t i_work = 1; i_work <= simulation::precursor_work_per_rank;
+         ++i_work) {
+      SourceSite& precursor_site =
+        simulation::precursor_source_bank[i_work - 1];
+      precursor_site.time = 0.0;
+      precursor_site.time_born = 0.0;
+      precursor_site.time_bound_idx = 1;
+      precursor_site.wgt = 1.0;
+    }
+  }
+}
+
+void forced_precursor_decay(Particle& p, int64_t i_work)
+{
+  // Set the stream to allow using random numbers
+  p.stream() = STREAM_TRACKING;
+
+  SourceSite& precursor_site = simulation::precursor_source_bank[i_work - 1];
+  uint64_t* seed = p.current_seed();
+  const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+
+  auto& rx = *nuc->fission_rx_[precursor_site.i_fission_rx];
+
+  int group = sample_forced_decay(p, precursor_site);
+
+  // Add forced decay particle's starting weight to count for normalizing
+  // tallies later
+  double wgt = p.wgt();
+  simulation::total_weight += wgt;
+
+  // Sample energy out
+  // TODO: sample E_in?
+  double E_in =
+    precursor_site.E; // Banked energy of incoming fissioning neutron
+  double E_out;
+  double mu;
+  rx.products_[group].sample(E_in, E_out, mu, seed);
+
+  // Apply angle out
+  p.u() = rotate_angle(p.u(), mu, nullptr, seed);
+
+  // Split or russian roulette precursor particle
+  // TODO: add control flow to prevent pathological spliting rouletting?
+  apply_russian_roulette(p);
+  apply_splitting(p);
+
+  // Subtract weight from total if eliminated by russian roulette
+  if (p.wgt() == 0.0)
+    simulation::total_weight -= wgt;
+
+  // Progeny vector adjustment to allow sorting algorithm to function properly
+  // This happens after all banked neutrons have already been transported, so
+  // we need to adjust the precursor_progeny_per_particle when adding the
+  // precursor site to the shared bank.
+  int64_t offset =
+    precursor_site.parent_id - 1 - simulation::work_index[mpi::rank];
+  precursor_site.progeny_id =
+    simulation::precursor_progeny_per_particle[offset];
+  simulation::precursor_progeny_per_particle[offset] += 1;
+
+  // Add this precursor site to the shared precursor bank
+  simulation::precursor_shared_bank.thread_safe_append(precursor_site);
+}
+
+int sample_forced_decay(Particle& p, SourceSite& precursor_site)
+{
+  uint64_t* seed = p.current_seed();
+  const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+  auto& rx = *nuc->fission_rx_[precursor_site.i_fission_rx];
+
+  // Sample decay time
+  double dt = settings::time_census_boundaries[p.time_bound_idx()] - p.time();
+  p.time() += dt * prn(seed);
+
+  double lambda_b = compute_lambda_b(precursor_site, rx);
+
+  double neutron_sum;
+  double precursor_sum;
+  // Compute weight factors for forced decay neutron and precursor
+  compute_forced_decay_weight_factors(
+    rx, precursor_site, p, lambda_b, neutron_sum, precursor_sum);
+
+  int group;
+  if (settings::combined_precursor) {
+    // Sample delay group of combined precursor particle
+    group = sample_precursor_delay_group(
+      rx, precursor_site, p, lambda_b, neutron_sum, seed);
+  } else {
+    group = precursor_site.delayed_group;
+  }
+
+  p.wgt() = precursor_site.wgt * neutron_sum;
+  // LSH Approach
+  // if (settings::combined_precursor) {
+  //  double dt = settings::time_census_boundaries[p.time_bound_idx()] -
+  //              settings::time_census_boundaries[p.time_bound_idx() - 1];
+  //  p.wgt() *= dt;
+  //}
+
+  p.wgt_last() = p.wgt();
+
+  precursor_site.wgt *= precursor_sum;
+  precursor_site.time = settings::time_census_boundaries[p.time_bound_idx()];
+  precursor_site.time_bound_idx += 1;
+
+  return group;
+}
+
+double compute_lambda_b(SourceSite& precursor_site, const Reaction& rx)
+{
+  const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+  double nu_d_tot = nuc->nu(precursor_site.E, Nuclide::EmissionMode::delayed);
+  double& E_in = precursor_site.E;
+
+  // compute lambda_b if needed (precursor site is from equilibrium calculation)
+  double lambda_b;
+  if (precursor_site.time_born == 0.0 && settings::combined_precursor) {
+    for (int group = 1; group < nuc->n_precursor_; ++group) {
+      double decay_rate = rx.products_[group].decay_rate_;
+      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+      lambda_b += nu_d / decay_rate;
+    }
+    return nu_d_tot / lambda_b;
+  } else {
+    return 1.0;
+  }
+}
+
+void compute_forced_decay_weight_factors(const Reaction& rx,
+  SourceSite& precursor_site, Particle& p, double lambda_b, double& neutron_sum,
+  double& precursor_sum)
+{
+  double dt = p.time() - precursor_site.time_born;
+  double& E_in = precursor_site.E;
+
+  // Compute weight factors for forced decay neutron and precursor
+  if (settings::combined_precursor) {
+    const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+    double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+    for (int group = 1; group < nuc->n_precursor_; ++group) {
+      double decay_rate = rx.products_[group].decay_rate_;
+      double exp = std::exp(-1.0 * dt * decay_rate);
+      double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+      double gamma_i = nu_d / nu_d_tot;
+      if (precursor_site.time_born == 0.0) {
+        gamma_i *= lambda_b / decay_rate;
+      }
+      // LSH Approach
+      // neutron_sum += gamma_i * decay_rate * exp;
+      // precursor_sum += gamma_i * exp;
+      neutron_sum += gamma_i * (1.0 - exp);
+      precursor_sum += gamma_i * exp;
+    }
+  } else {
+    double decay_rate = rx.products_[precursor_site.delayed_group].decay_rate_;
+    double exp = std::exp(-1.0 * dt * decay_rate);
+    neutron_sum = 1.0 - exp;
+    precursor_sum = exp;
+  }
+}
+
+int sample_precursor_delay_group(const Reaction& rx, SourceSite& precursor_site,
+  Particle& p, double lambda_b, double neutron_sum, uint64_t* seed)
+{
+  double& E_in = precursor_site.E;
+  const auto& nuc {data::nuclides[precursor_site.i_nuclide]};
+  double nu_d_tot = nuc->nu(E_in, Nuclide::EmissionMode::delayed);
+
+  double dt = p.time() - precursor_site.time_born;
+  double xi = prn(seed) * neutron_sum;
+  double prob = 0.0;
+  int group;
+  for (group = 1; group < nuc->n_precursor_; ++group) {
+    double decay_rate = rx.products_[group].decay_rate_;
+    double exp = std::exp(-1.0 * dt * decay_rate);
+    double nu_d = nuc->nu(E_in, Nuclide::EmissionMode::delayed, group);
+    double gamma_i = nu_d / nu_d_tot;
+    if (precursor_site.time_born = 0.0) {
+      gamma_i *= lambda_b / decay_rate;
+    }
+    prob += gamma_i * decay_rate * exp;
+    if (xi < prob)
+      break;
+  }
+  return group;
+}
+
+void calculate_average_k_dynamic(int t_idx)
+{
+  int n = simulation::current_batch;
+
+  // Sample mean of keff
+  simulation::k_dynamic_sum[t_idx] += simulation::k_dynamic[t_idx];
+  simulation::k_dynamic_sum_sq[t_idx] +=
+    std::pow(simulation::k_dynamic[t_idx], 2);
+
+  // Determine mean
+  simulation::k_dynamic_mean[t_idx] = simulation::k_dynamic_sum[t_idx] / n;
+
+  if (n > 1) {
+    double t_value;
+    if (settings::confidence_intervals) {
+      // Calculate t-value for confidence intervals
+      double alpha = 1.0 - CONFIDENCE_LEVEL;
+      t_value = t_percentile(1.0 - alpha / 2.0, n - 1);
+    } else {
+      t_value = 1.0;
+    }
+
+    // Standard deviation of the sample mean of k
+    simulation::k_dynamic_std[t_idx] =
+      t_value * std::sqrt((simulation::k_dynamic_sum_sq[t_idx] / n -
+                            std::pow(simulation::k_dynamic_mean[t_idx], 2)) /
+                          (n - 1));
+
+    // In some cases (such as an infinite medium problem), random ray
+    // may estimate k exactly and in an unvarying manner between iterations.
+    // In this case, the floating point roundoff between the division and the
+    // power operations may cause an extremely small negative value to occur
+    // inside the sqrt operation, leading to NaN. If this occurs, we check for
+    // it and set the std dev to zero.
+    if (!std::isfinite(simulation::keff_std)) {
+      simulation::k_dynamic_std[t_idx] = 0.0;
+    }
   }
 }
 

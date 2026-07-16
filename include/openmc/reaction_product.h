@@ -28,8 +28,8 @@ public:
   //! Emission mode for product
   enum class EmissionMode {
     prompt,  // Prompt emission of secondary particle
-    delayed, // Yield represents total emission (prompt + delayed)
-    total    // Delayed emission of secondary particle
+    delayed, // Delayed emission of secondary particle
+    total    // Yield represents total emission (prompt + delayed)
   };
 
   using Secondary = unique_ptr<AngleEnergy>;

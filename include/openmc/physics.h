@@ -20,6 +20,10 @@ void collision(Particle& p);
 //! Samples an incident neutron reaction
 void sample_neutron_reaction(Particle& p);
 
+//! Samples an incident neutron reaction using the branchless collision biased
+//! sampling method
+void sample_branchless_neutron_reaction(Particle& p);
+
 //! Samples an element based on the macroscopic cross sections for each nuclide
 //! within a material and then samples a reaction for that element and calls the
 //! appropriate routine to process the physics.
@@ -49,6 +53,21 @@ int sample_nuclide(Particle& p);
 //! Determine the average total, prompt, and delayed neutrons produced from
 //! fission and creates appropriate bank sites.
 void create_fission_sites(Particle& p, int i_nuclide, const Reaction& rx);
+
+void branchless_fission(
+  Particle& p, int i_nuclide, const Reaction& rx, const double& wgt_branchless);
+
+//! Sample brancheless fission event, and return true if a fission neutron
+//! is sampled. Otherwise, return false (indicating a precursor particle has
+//! been created that kills)
+void sample_branchless_fission(
+  int i_nuclide, const Reaction& rx, Particle& p, const double& wgt_branchless);
+
+void create_precursor_site(
+  const Reaction& rx, int i_nuclide, Particle& p, const double& banked_wgt);
+
+void bank_delayed_neutron(
+  Particle& p, double decay_time, double E_out, const double& banked_wgt);
 
 int sample_element(Particle& p);
 
@@ -82,6 +101,18 @@ Direction sample_cxs_target_velocity(
 
 void sample_fission_neutron(
   int i_nuclide, const Reaction& rx, SourceSite* site, Particle& p);
+
+int sample_delay_group(
+  int i_nuclide, const Reaction& rx, double E_in, uint64_t* seed);
+
+double sample_fission_neutron_energy(int i_nuclide, const Reaction& rx,
+  int delayed_group, double E_in, double& E_out, uint64_t* seed);
+
+void sample_equilibrium_precursor_site(
+  int i_nuclide, const Reaction& rx, Particle& p);
+
+const double compute_precursor_eq_weight(
+  int i_nuclide, const Reaction& rx, Particle& p);
 
 //! handles all reactions with a single secondary neutron (other than fission),
 //! i.e. level scattering, (n,np), (n,na), etc.

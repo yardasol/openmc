@@ -5,6 +5,7 @@
 //! \brief Settings for OpenMC
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <unordered_set>
 
@@ -91,6 +92,7 @@ extern bool source_mcpl_write;       //!< write source in mcpl files?
 extern bool surf_source_write;       //!< write surface source file?
 extern bool surf_mcpl_write;         //!< write surface mcpl file?
 extern bool surf_source_read;        //!< read surface source file?
+extern bool branchless_collision;    //!< use branchless collision?
 extern bool survival_biasing;        //!< use survival biasing?
 extern bool survival_normalization;  //!< use survival normalization?
 extern bool temperature_multipole;   //!< use multipole data?
@@ -175,8 +177,15 @@ extern double source_rejection_fraction; //!< Minimum fraction of source sites
 extern double free_gas_threshold;        //!< Threshold multiplier for free gas
                                          //!< scattering treatment
 
+extern bool
+  neutron_weighted_comb; //!< whether or not to use a weight-based comb
+                         //!< when syncrhonizing neutron particle bank
+extern bool
+  precursor_weighted_comb; //!< whether or not to use a weight-based comb
+                           //!< when syncrhonizing precursor particle bank
+
 extern int
-  max_history_splits; //!< maximum number of particle splits for weight windows
+  max_history_splits; //!< Total maximum number of particle histroy splits
 extern int max_secondaries;       //!< maximum number of secondaries in the bank
 extern int64_t ssw_max_particles; //!< maximum number of particles to be
                                   //!< banked on surfaces per process
@@ -202,12 +211,34 @@ extern vector<array<int, 3>>
   track_identifiers;               //!< Particle numbers for writing tracks
 extern int trigger_batch_interval; //!< Batch interval for triggers
 extern "C" int verbosity;          //!< How verbose to make output
-extern double weight_cutoff;       //!< Weight cutoff for Russian roulette
+extern double roulette_weight_cutoff; //!< Weight cutoff for Russian roulette
 extern double weight_survive;      //!< Survival weight after Russian roulette
+extern double splitting_weight_cutoff; //!< Weight cutoff for splitting
+extern double weight_split; //!< Survival weight after Russian roulette
+extern int
+  max_split; //!< Maximum number of allowed particle splits per splitting eent
 
 // Timestep variables for kinetic simulation
-extern int n_timesteps; //!< number of timesteps
+extern int n_timesteps; //!< Number of timesteps
 extern double dt;       //!< fixed timestep size
+extern std::deque<double>
+  time_census_boundaries; //!< Time grid boundaries. Used for time census in the
+                          //!< Monte Carlo solver, and used as time grid points
+                          //!< in the Random Ray solver
+extern int
+  n_decorrelate_generations; //!< Number of generations to run to decorrelate
+                             //!< consecutive batches for TDMC
+extern int
+  n_relaxation_timesteps; //!< Number of timesteps run at the beginning of each
+                          //!< batch to relax the time distribution of particles
+extern bool forced_decay; //!< Toggle for forced precursor decay.
+extern bool combined_precursor;       //!< Toggle for using combined precursors
+extern int64_t n_precursor_particles; //!< Number of precursor particles to
+                                      //!< simulate in forced decay
+extern double mean_generation_time; //!< steady state mean generation time used
+                                    //!< to compute precursor to neutron ratio
+                                    //!< for initial weighting of precursors
+
 } // namespace settings
 
 //==============================================================================

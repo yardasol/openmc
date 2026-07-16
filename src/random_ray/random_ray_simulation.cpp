@@ -75,14 +75,16 @@ void validate_random_ray_inputs()
       case FilterType::MESH:
       case FilterType::UNIVERSE:
       case FilterType::PARTICLE:
+      case FilterType::TIME: // TODO: add control flow somehwere to prevent time
+                             //
         break;
       case FilterType::DELAYED_GROUP:
         if (settings::kinetic_simulation) {
           break;
         } else {
-          fatal_error("Invalid filter specified in tallies.xml. Kinetic "
-                      "simulations is required "
-                      "to tally with a delayed_group filter.");
+          fatal_error("Invalid filter specified in tallies.xml. Tallying with "
+                      "a delayed_group filter requires a kinetic "
+                      "simulation.");
         }
       default:
         fatal_error("Invalid filter specified. Only cell, cell_instance, "
@@ -649,7 +651,8 @@ void RandomRaySimulation::simulate()
 
 void RandomRaySimulation::initialize_time_step(int i)
 {
-  // Reset tally and volume tasks
+  // Reset tally and volume tasks so the particle time can be incremented the
+  // time step
 #pragma omp parallel for
   for (int64_t sr = 0; sr < domain_->source_regions_.n_source_regions(); sr++) {
     domain_->source_regions_.volume_task(sr).clear();

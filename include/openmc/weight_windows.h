@@ -96,6 +96,8 @@ public:
 
   void set_energy_bounds(span<const double> bounds);
 
+  void set_time_bounds(span<const double> bounds);
+
   void set_mesh(const std::unique_ptr<Mesh>& mesh);
 
   void set_mesh(const Mesh* mesh);
@@ -128,9 +130,11 @@ public:
   //! \param[in] p  Particle to get weight window for
   std::pair<bool, WeightWindow> get_weight_window(const Particle& p) const;
 
-  std::array<int, 2> bounds_size() const;
+  std::array<int, 3> bounds_size() const;
 
   const vector<double>& energy_bounds() const { return energy_bounds_; }
+
+  const vector<double>& time_bounds() const { return time_bounds_; }
 
   void set_bounds(const tensor::Tensor<double>& lower_ww_bounds,
     const tensor::Tensor<double>& upper_bounds);
@@ -186,10 +190,12 @@ private:
   int64_t index_;                //!< Index into weight windows vector
   ParticleType particle_type_;   //!< Particle type to apply weight windows to
   vector<double> energy_bounds_; //!< Energy boundaries [eV]
-  tensor::Tensor<double> lower_ww_; //!< Lower weight window bounds (shape:
-                                    //!< energy_bins, mesh_bins (k, j, i))
+  vector<double> time_bounds_;   //!< Time boundaries [s]
+  tensor::Tensor<double>
+    lower_ww_; //!< Lower weight window bounds (shape:
+               //!< energy_bins, mesh_bins (k, j, i), time_bins)
   tensor::Tensor<double> upper_ww_; //!< Upper weight window bounds (shape:
-                                    //!< energy_bins, mesh_bins)
+                                    //!< energy_bins, mesh_bins, time_bins)
   double survival_ratio_ {3.0}; //!< Survival weight ratio
   double max_lb_ratio_ {1.0}; //!< Maximum lower bound to particle weight ratio
   double weight_cutoff_ {DEFAULT_WEIGHT_CUTOFF}; //!< Weight cutoff

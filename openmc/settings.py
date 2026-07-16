@@ -71,19 +71,25 @@ class Settings:
         Indicate whether fission neutrons should be created or not.
     cutoff : dict
         Dictionary defining weight cutoff, energy cutoff and time cutoff. The
-        dictionary may have the following keys, 'weight', 'weight_avg',
-        'survival_normalization', 'energy_neutron', 'energy_photon',
-        'energy_electron', 'energy_positron', 'time_neutron', 'time_photon',
-        'time_electron', and 'time_positron'. Value for 'weight' should be a
-        float indicating weight cutoff below which particle undergo Russian
-        roulette. Value for 'weight_avg' should be a float indicating weight
-        assigned to particles that are not killed after Russian roulette. Value
-        of energy should be a float indicating energy in eV below which particle
-        type will be killed. Value of time should be a float in seconds.
-        Particles will be killed exactly at the specified time. Value for
-        'survival_normalization' is a bool indicating whether or not the weight
-        cutoff parameters will be applied relative to the particle's starting
-        weight or to its current weight.
+        dictionary may have the following keys, 'roulette_weight', 'weight_avg',
+        'survival_normalization', 'splitting_weight', 'weight_split', 'max_split',
+        'energy_neutron', 'energy_photon', 'energy_electron', 'energy_positron',
+        'time_neutron', 'time_photon','time_electron', and 'time_positron'. Value
+        for 'roulette_weight' should be a float indicating weight cutoff below
+        which particle undergo Russian roulette. Value for 'weight_avg' should
+        be a float indicating weight assigned to particles that are not killed
+        after Russian roulette. Value for 'splitting_weight' should be a float
+        indicating weight cutoff above which particle undergo splitting. Value
+        for 'weight_split' should be a float indicating target weight assigned
+        to particles that are split. Value for 'max_split' should be an int
+        indicating the maximum number of split histories a splitting event can
+        produce. The weight of split particles will be p.wgt() / max_split if
+        p.wgt() / weight_split > max_split. Value of energy should be a float
+        indicating energy in eV below which particle type will be killed. Value
+        of time should be a float in seconds. Particles will be killed exactly
+        at the specified time. Value for 'survival_normalization' is a bool
+        indicating whether or not the weight cutoff parameters will be applied
+        relative to the particle's starting weight or to its current weight.
     delayed_photon_scaling : bool
         Indicate whether to scale the fission photon yield by (EGP + EGD)/EGP
         where EGP is the energy release of prompt photons and EGD is the energy
@@ -108,6 +114,13 @@ class Settings:
         Energy multiplier (in units of :math:`kT`) below which the free gas
         scattering treatment is applied for elastic scattering. If not
         specified, a value of 400.0 is used.
+    forced_decay : bool
+        Indicate whether to use forced precursor decay for kinetic
+        Monte Carlo simulations.
+    combined_precursor : bool
+        Indicate whether to use individual precursor particles or combined
+        precursor particles. Only used for kinetic Monte Carlo simulations if
+        'forced_decay' is True.
     generations_per_batch : int
         Number of generations per batch
     ifp_n_generation : int
@@ -124,6 +137,10 @@ class Settings:
         .. versionadded:: 0.12
     inactive : int
         Number of inactive batches
+    branchless_collition : bool
+        Indicate whether branchless collision shoud be used.
+
+        .. versionadded:: 0.16
     keff_trigger : dict
         Dictionary defining a trigger on eigenvalue. The dictionary must have
         two keys, 'type' and 'threshold'. Acceptable values corresponding to
@@ -170,6 +187,13 @@ class Settings:
     no_reduce : bool
         Indicate that all user-defined and global tallies should not be reduced
         across processes in a parallel calculation.
+    n_decorrelate_generations : int
+        Number of generations to run to decorrelate consecutive batches
+        in kinetic Monte Carlo simulations.
+    n_relaxation_timesteps : int
+        Number of time generations to run at steady state to relax the fission
+        source into a steady state time source in kinetic Monte Carlo
+        simulations.
     output : dict
         Dictionary indicating what files to output. Acceptable keys are:
 
@@ -185,6 +209,9 @@ class Settings:
        Initial seed for randomly generated plot colors.
     ptables : bool
         Determine whether probability tables are used.
+    precursor_particles : int
+        Number of precursor particles per generation. Only used
+        for kinetic Monte Carlo simulations if 'forced_decay' is True.
     properties_file : PathLike
         Location of the properties file to load cell temperatures/densities
         and material densities
@@ -354,6 +381,8 @@ class Settings:
 
         .. versionadded:: 0.16
 
+    time_census_boundaries : tuple or list of float
+        Time grid boundaries for time censusing.
     trace : tuple or list
         Show detailed information about a single particle, indicated by three
         integers: the batch number, generation number, and particle number
@@ -396,6 +425,12 @@ class Settings:
 
         .. versionadded:: 0.14.0
 
+    weighted_comb : dict
+        Dictionary defining if a weighted comb should be used instead of a uniform comb
+        when making synchronizing particle source banks. The dictionary may have
+        the following keys, 'neutron', 'precursor'. Value for both of these should
+        be a boolean.
+
     create_delayed_neutrons : bool
         Whether delayed neutrons are created in fission.
 
@@ -424,6 +459,12 @@ class Settings:
         self._particles = None
         self._keff_trigger = None
         self._kinetic_simulation = None
+        self._n_decorrelate_generations = None
+        self._n_relaxation_timesteps = None
+        self._forced_decay = None
+        self._combined_precursor = None
+        self._precursor_particles = None
+        self._weighted_comb = None
         self._timestep_parameters = {}
 
         # Energy mode subelement
@@ -434,6 +475,7 @@ class Settings:
         self._source = cv.CheckedList(SourceBase, 'source distributions')
         self._source_rejection_fraction = None
 
+        self._branchless_collision = None
         self._confidence_intervals = None
         self._electron_treatment = None
         self._photon_transport = None
@@ -448,6 +490,7 @@ class Settings:
         self._surface_grazing_ratio = None
         self._survival_biasing = None
         self._free_gas_threshold = None
+        self._time_census_boundaries = None
 
         # Shannon entropy mesh
         self._entropy_mesh = None
@@ -658,6 +701,73 @@ class Settings:
         self._kinetic_simulation = value
 
     @property
+    def n_decorrelate_generations(self) -> int:
+        return self._n_decorrelate_generations
+
+    @n_decorrelate_generations.setter
+    def n_decorrelate_generations(self, n_decorrelate_generations: int):
+        cv.check_type('n_decorrelate_generations', n_decorrelate_generations, Integral)
+        cv.check_greater_than('n_decorrelate_generations', n_decorrelate_generations, 0, True)
+        self._n_decorrelate_generations = n_decorrelate_generations
+
+    @property
+    def n_relaxation_timesteps(self) -> int:
+        return self._n_relaxation_timesteps
+
+    @n_relaxation_timesteps.setter
+    def n_relaxation_timesteps(self, n_relaxation_timesteps: int):
+        cv.check_type('n_relaxation_timesteps', n_relaxation_timesteps, Integral)
+        cv.check_greater_than('n_relaxation_timesteps', n_relaxation_timesteps, 0, True)
+        self._n_relaxation_timesteps = n_relaxation_timesteps
+
+    @property
+    def forced_decay(self) -> bool:
+        return self._forced_decay
+
+    @forced_decay.setter
+    def forced_decay(self, value: bool):
+        cv.check_type('kinetic simulation', value, bool)
+        self._forced_decay = value
+
+    @property
+    def combined_precursor(self) -> bool:
+        return self._combined_precursor
+
+    @combined_precursor.setter
+    def combined_precursor(self, value: bool):
+        cv.check_type('kinetic simulation', value, bool)
+        self._combined_precursor = value
+
+    @property
+    def precursor_particles(self) -> int:
+        return self._precursor_particles
+
+    @precursor_particles.setter
+    def precursor_particles(self, precursor_particles: int):
+        cv.check_type('precursor_particles', precursor_particles, Integral)
+        cv.check_greater_than('precursor_particles', precursor_particles, 0)
+        self._precursor_particles = precursor_particles
+
+    @property
+    def weighted_comb(self) -> dict:
+        return self._weighted_comb
+
+    @weighted_comb.setter
+    def weighted_comb(self, weighted_comb: dict):
+        if not isinstance(weighted_comb, Mapping):
+            msg = f'Unable to set weighted_comb from "{weighted_comb}" which is not a '\
+                'Python dictionary'
+            raise ValueError(msg)
+        for key in weighted_comb:
+            if key in ['neutron', 'precursor']:
+                cv.check_type('particle type', weighted_comb[key], bool)
+            else:
+                msg = f'Unable to set weighted_comb to "{key}" which is unsupported ' \
+                    'by OpenMC'
+
+        self._weighted_comb = weighted_comb
+
+    @property
     def timestep_parameters(self) -> dict:
         return self._timestep_parameters
 
@@ -819,6 +929,15 @@ class Settings:
         cv.check_type('surface grazing ratio', surface_grazing_ratio, float)
         cv.check_greater_than('surface grazing ratio', surface_grazing_ratio, 0.0)
         self._surface_grazing_ratio = surface_grazing_ratio
+
+    @property
+    def branchless_collision(self) -> bool:
+        return self._branchless_collision
+
+    @branchless_collision.setter
+    def branchless_collision(self, branchless_collision: bool):
+        cv.check_type('survival biasing', branchless_collision, bool)
+        self._branchless_collision = branchless_collision
 
     @property
     def survival_biasing(self) -> bool:
@@ -1187,15 +1306,24 @@ class Settings:
                 'Python dictionary'
             raise ValueError(msg)
         for key in cutoff:
-            if key == 'weight':
-                cv.check_type('weight cutoff', cutoff[key], Real)
-                cv.check_greater_than('weight cutoff', cutoff[key], 0.0)
+            if key == 'roulette_weight':
+                cv.check_type('roulette weight cutoff', cutoff[key], Real)
+                cv.check_greater_than('roulette weight cutoff', cutoff[key], 0.0)
             elif key == 'weight_avg':
                 cv.check_type('average survival weight', cutoff[key], Real)
                 cv.check_greater_than('average survival weight',
                                       cutoff[key], 0.0)
             elif key == 'survival_normalization':
                 cv.check_type('survival normalization', cutoff[key], bool)
+            elif key == 'splitting_weight':
+                cv.check_type('splitting weight cutoff', cutoff[key], Real)
+                cv.check_greater_than('splitting weight cutoff', cutoff[key], 0.0)
+            elif key == 'weight_split':
+                cv.check_type('split neutron weight', cutoff[key], Real)
+                cv.check_greater_than('split neutron weight', cutoff[key], 0.0)
+            elif key == 'max_split':
+                cv.check_type('maximum split particles', cutoff[key], Integral)
+                cv.check_greater_than('maximum split particles', cutoff[key], 0)
             elif key in ['energy_neutron', 'energy_photon', 'energy_electron',
                          'energy_positron']:
                 cv.check_type('energy cutoff', cutoff[key], Real)
@@ -1533,6 +1661,17 @@ class Settings:
                                   free_gas_threshold, 0.0)
         self._free_gas_threshold = free_gas_threshold
 
+    @property
+    def time_census_boundaries(self) -> Iterable[float]:
+        return self._time_census_boundaries
+
+    @time_census_boundaries.setter
+    def time_census_boundaries(self, time_census_boundaries: Iterable[float]):
+        cv.check_type('time_census_boundaries', time_census_boundaries,
+                      Iterable, float)
+        # TODO: ensure the list is sorted?
+        self._time_census_boundaries = time_census_boundaries
+
     def _create_run_mode_subelement(self, root):
         elem = ET.SubElement(root, "run_mode")
         elem.text = self._run_mode.value
@@ -1583,6 +1722,38 @@ class Settings:
         if self._kinetic_simulation is not None:
             elem = ET.SubElement(root, "kinetic_simulation")
             elem.text = str(self._kinetic_simulation).lower()
+
+    def _create_n_decorrelate_generations_subelement(self, root):
+        if self._n_decorrelate_generations is not None:
+            element = ET.SubElement(root, "n_decorrelate_generations")
+            element.text = str(self._n_decorrelate_generations)
+
+    def _create_n_relaxation_timesteps_subelement(self, root):
+        if self._n_relaxation_timesteps is not None:
+            element = ET.SubElement(root, "n_relaxation_timesteps")
+            element.text = str(self._n_relaxation_timesteps)
+
+    def _create_forced_decay_subelement(self, root):
+        if self._forced_decay is not None:
+            elem = ET.SubElement(root, "forced_decay")
+            elem.text = str(self._forced_decay).lower()
+
+    def _create_combined_precursor_subelement(self, root):
+        if self._combined_precursor is not None:
+            elem = ET.SubElement(root, "combined_precursor")
+            elem.text = str(self._combined_precursor).lower()
+
+    def _create_precursor_particles_subelement(self, root):
+        if self._precursor_particles is not None:
+            element = ET.SubElement(root, "precursor_particles")
+            element.text = str(self._precursor_particles)
+
+    def _create_weighted_comb_subelement(self, root):
+        if self._weighted_comb is not None:
+            element = ET.SubElement(root, "weighted_comb")
+            for key, value in self._weighted_comb.items():
+                subelement = ET.SubElement(element, key)
+                subelement.text = str(value).lower()
 
     def _create_timestep_parameters_subelement(self, root):
         if self._timestep_parameters:
@@ -1784,6 +1955,11 @@ class Settings:
         if self._surface_grazing_ratio is not None:
             element = ET.SubElement(root, "surface_grazing_ratio")
             element.text = str(self._surface_grazing_ratio)
+
+    def _create_branchless_collision_subelement(self, root):
+        if self._branchless_collision is not None:
+            element = ET.SubElement(root, "branchless_collision")
+            element.text = str(self._branchless_collision).lower()
 
     def _create_survival_biasing_subelement(self, root):
         if self._survival_biasing is not None:
@@ -2099,6 +2275,12 @@ class Settings:
             element = ET.SubElement(root, "free_gas_threshold")
             element.text = str(self._free_gas_threshold)
 
+    def _create_time_census_boundaries_subelement(self, root):
+        if self._time_census_boundaries is not None:
+            element = ET.SubElement(root, "time_census_boundaries")
+            element.text = ' '.join(map(str, self._time_census_boundaries))
+
+
     def _eigenvalue_from_xml_element(self, root):
         elem = root.find('eigenvalue')
         if elem is not None:
@@ -2162,6 +2344,40 @@ class Settings:
         text = get_text(root, 'kinetic_simulation')
         if text is not None:
             self.kinetic_simulation = text in ('true', '1')
+
+    def _n_decorrelate_generations_from_xml_element(self, root):
+        text = get_text(root, 'n_decorrelate_generations')
+        if text is not None:
+            self.n_decorrelate_generations = int(text)
+
+    def _n_relaxation_timesteps_from_xml_element(self, root):
+        text = get_text(root, 'n_relaxation_timesteps')
+        if text is not None:
+            self.n_relaxation_timesteps = int(text)
+
+    def _forced_decay_from_xml_element(self, root):
+        text = get_text(root, 'forced_decay')
+        if text is not None:
+            self.forced_decay = text in ('true', '1')
+
+    def _combined_precursor_from_xml_element(self, root):
+        text = get_text(root, 'combined_precursor')
+        if text is not None:
+            self.combined_precursor = text in ('true', '1')
+
+    def _precursor_particles_from_xml_element(self, root):
+        text = get_text(root, 'precursor_particles')
+        if text is not None:
+            self.precursor_particles = int(text)
+
+    def _weighted_comb_from_xml_element(self, root):
+        elem = root.find('weighted_comb')
+        if elem is not None:
+            self.weighted_comb = {}
+            for key in ('neutron', 'precursor'):
+                value = get_text(elem, key)
+                if value is not None:
+                    self.weighted_comb[key] = value in ('true', '1')
 
     def _timestep_parameters_from_xml_element(self, root):
         elem = root.find('timestep_parameters')
@@ -2327,6 +2543,11 @@ class Settings:
         if text is not None:
             self.surface_grazing_ratio = float(text)
 
+    def _branchless_collision_from_xml_element(self, root):
+        text = get_text(root, 'branchless_collision')
+        if text is not None:
+            self.branchless_collision = text in ('true', '1')
+
     def _survival_biasing_from_xml_element(self, root):
         text = get_text(root, 'survival_biasing')
         if text is not None:
@@ -2337,9 +2558,10 @@ class Settings:
         if elem is not None:
             self.cutoff = {}
             for key in ('energy_neutron', 'energy_photon', 'energy_electron',
-                        'energy_positron', 'weight', 'weight_avg', 'time_neutron',
-                        'time_photon', 'time_electron', 'time_positron',
-                        'survival_normalization'):
+                        'energy_positron', 'roulette_weight', 'weight_avg',
+                        'splitting_weight', 'max_split', 'weight_split',
+                        'time_neutron', 'time_photon', 'time_electron',
+                        'time_positron', 'survival_normalization'):
                 value = get_text(elem, key)
                 if value is not None:
                     if key == 'survival_normalization':
@@ -2610,6 +2832,11 @@ class Settings:
         if text is not None:
             self.free_gas_threshold = float(text)
 
+    def _time_census_boundaries_from_xml_element(self, root):
+        text = get_elem_list(root, "time_census_boundaries", float)
+        if text is not None:
+            self.time_census_boundaries = text
+
     def to_xml_element(self, mesh_memo=None):
         """Create a 'settings' element to be written to an XML file.
 
@@ -2631,6 +2858,12 @@ class Settings:
         self._create_generations_per_batch_subelement(element)
         self._create_keff_trigger_subelement(element)
         self._create_kinetic_simulation_subelement(element)
+        self._create_n_decorrelate_generations_subelement(element)
+        self._create_n_relaxation_timesteps_subelement(element)
+        self._create_precursor_particles_subelement(element)
+        self._create_weighted_comb_subelement(element)
+        self._create_forced_decay_subelement(element)
+        self._create_combined_precursor_subelement(element)
         self._create_timestep_parameters_subelement(element)
         self._create_source_subelement(element, mesh_memo)
         self._create_output_subelement(element)
@@ -2652,6 +2885,7 @@ class Settings:
         self._create_stride_subelement(element)
         self._create_surface_grazing_cutoff_subelement(element)
         self._create_surface_grazing_ratio_subelement(element)
+        self._create_branchless_collision_subelement(element)
         self._create_survival_biasing_subelement(element)
         self._create_cutoff_subelement(element)
         self._create_entropy_mesh_subelement(element, mesh_memo)
@@ -2688,6 +2922,7 @@ class Settings:
         self._create_use_decay_photons_subelement(element)
         self._create_source_rejection_fraction_subelement(element)
         self._create_free_gas_threshold_subelement(element)
+        self._create_time_census_boundaries_subelement(element)
 
         # Clean the indentation in the file to be user-readable
         clean_indentation(element)
@@ -2750,6 +2985,12 @@ class Settings:
         settings._generations_per_batch_from_xml_element(elem)
         settings._keff_trigger_from_xml_element(elem)
         settings._kinetic_simulation_from_xml_element(elem)
+        settings._n_decorrelate_generations_from_xml_element(elem)
+        settings._n_relaxation_timesteps_from_xml_element(elem)
+        settings._forced_decay_from_xml_element(elem)
+        settings._precursor_particles_from_xml_element(elem)
+        settings._weighted_comb_from_xml_element(elem)
+        settings._combined_precursor_from_xml_element(elem)
         settings._timestep_parameters_from_xml_element(elem)
         settings._source_from_xml_element(elem, meshes)
         settings._volume_calcs_from_xml_element(elem)
@@ -2772,6 +3013,7 @@ class Settings:
         settings._stride_from_xml_element(elem)
         settings._surface_grazing_cutoff_from_xml_element(elem)
         settings._surface_grazing_ratio_from_xml_element(elem)
+        settings._branchless_collision_from_xml_element(elem)
         settings._survival_biasing_from_xml_element(elem)
         settings._cutoff_from_xml_element(elem)
         settings._entropy_mesh_from_xml_element(elem, meshes)
@@ -2807,6 +3049,7 @@ class Settings:
         settings._use_decay_photons_from_xml_element(elem)
         settings._source_rejection_fraction_from_xml_element(elem)
         settings._free_gas_threshold_from_xml_element(elem)
+        settings._time_census_boundaries_from_xml_element(elem)
 
         return settings
 

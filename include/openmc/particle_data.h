@@ -6,6 +6,7 @@
 #include "openmc/particle_type.h"
 #include "openmc/position.h"
 #include "openmc/random_lcg.h"
+#include "openmc/reaction_product.h"
 #include "openmc/tallies/filter_match.h"
 #include "openmc/vector.h"
 
@@ -52,6 +53,12 @@ struct SourceSite {
   int parent_nuclide {-1};
   int64_t parent_id;
   int64_t progeny_id;
+
+  // Forced decay / time census fields
+  int time_bound_idx {0};
+  double time_born {0.0};
+  int i_fission_rx;
+  int i_nuclide;
 };
 
 struct CollisionTrackSite {
@@ -506,6 +513,7 @@ private:
   double wgt_ww_born_ {-1.0};
   double mu_;
   double time_ {0.0};
+  int time_bound_idx_ {0};
   double time_last_ {0.0};
   double wgt_last_ {1.0};
 
@@ -556,6 +564,7 @@ private:
   double keff_tally_collision_ {0.0};
   double keff_tally_tracklength_ {0.0};
   double keff_tally_leakage_ {0.0};
+  double keff_tally_production_ {0.0};
 
   bool trace_ {false};
 
@@ -567,6 +576,7 @@ private:
   double ww_factor_ {0.0};
 
   int64_t n_progeny_ {0};
+  int64_t n_precursor_progeny_ {0};
 
 public:
   //----------------------------------------------------------------------------
@@ -640,6 +650,10 @@ public:
   const double& time() const { return time_; }
   double& time_last() { return time_last_; }
   const double& time_last() const { return time_last_; }
+
+  // Particle time boundary index for time censusing
+  int& time_bound_idx() { return time_bound_idx_; }
+  const int& time_bound_idx() const { return time_bound_idx_; }
 
   // Particle lifetime
   double& lifetime() { return lifetime_; }
@@ -736,6 +750,7 @@ public:
   double& keff_tally_collision() { return keff_tally_collision_; }
   double& keff_tally_tracklength() { return keff_tally_tracklength_; }
   double& keff_tally_leakage() { return keff_tally_leakage_; }
+  double& keff_tally_production() { return keff_tally_production_; }
 
   // Shows debug info
   bool& trace() { return trace_; }
@@ -756,6 +771,9 @@ public:
 
   // Number of progeny produced by this particle
   int64_t& n_progeny() { return n_progeny_; }
+
+  // Number of progeny produced by this particle
+  int64_t& n_precursor_progeny() { return n_precursor_progeny_; }
 
   //! Gets the pointer to the particle's current PRN seed
   uint64_t* current_seed() { return seeds_ + stream_; }

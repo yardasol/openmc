@@ -14,6 +14,7 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
 
     s = openmc.Settings(run_mode='fixed source', batches=1000, seed=17)
     s.generations_per_batch = 10
+    s.weighted_comb = {'neutron': False, 'precursor': True}
     s.inactive = 100
     s.particles = 1000000
     s.max_lost_particles = 5
@@ -21,6 +22,11 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     s.keff_trigger = {'type': 'std_dev', 'threshold': 0.001}
     s.kinetic_simulation = kinetic_simulation
     if kinetic_simulation:
+        s.n_decorrelate_generations = 3
+        s.n_relaxation_timesteps = 11
+        s.forced_decay = True
+        s.combined_precursor = True
+        s.precursor_particles = 100
         s.timestep_parameters = {
             'dt': 0.1,
             'n_timesteps': 41,
@@ -43,7 +49,10 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     s.ptables = True
     s.plot_seed = 100
     s.survival_biasing = True
-    s.cutoff = {'weight': 0.25, 'weight_avg': 0.5, 'energy_neutron': 1.0e-5,
+    s.cutoff = {'roulette_weight': 0.25, 'weight_avg': 0.5,
+                'splitting_weight': 3.00, 'weight_split': 1.0,
+                'max_split': 10,
+                'energy_neutron': 1.0e-5,
                 'survival_normalization': True,
                 'energy_photon': 1000.0, 'energy_electron': 1.0e-5,
                 'energy_positron': 1.0e-5, 'time_neutron': 1.0e-5,
@@ -114,6 +123,7 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     assert s.run_mode == 'fixed source'
     assert s.batches == 1000
     assert s.generations_per_batch == 10
+    assert s.weighted_comb == {'neutron': False, 'precursor': True}
     assert s.inactive == 100
     assert s.particles == 1000000
     assert s.max_lost_particles == 5
@@ -121,6 +131,11 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     assert s.keff_trigger == {'type': 'std_dev', 'threshold': 0.001}
     assert s.kinetic_simulation == kinetic_simulation
     if kinetic_simulation:
+        assert s.n_decorrelate_generations == 3
+        assert s.n_relaxation_timesteps == 11
+        assert s.forced_decay == True
+        assert s.combined_precursor == True
+        assert s.precursor_particles == 100
         assert s.timestep_parameters['dt'] == 0.1
         assert s.timestep_parameters['n_timesteps'] == 41
         assert s.timestep_parameters['timestep_units'] == 's'
@@ -143,8 +158,10 @@ def test_export_to_xml(run_in_tmpdir, kinetic_simulation):
     assert s.plot_seed == 100
     assert s.seed == 17
     assert s.survival_biasing
-    assert s.cutoff == {'weight': 0.25, 'weight_avg': 0.5,
+    assert s.cutoff == {'roulette_weight': 0.25, 'weight_avg': 0.5,
                         'survival_normalization': True,
+                        'splitting_weight': 3.00, 'weight_split': 1.0,
+                        'max_split': 10,
                         'energy_neutron': 1.0e-5, 'energy_photon': 1000.0,
                         'energy_electron': 1.0e-5, 'energy_positron': 1.0e-5,
                         'time_neutron': 1.0e-5, 'time_photon': 1.0e-5,

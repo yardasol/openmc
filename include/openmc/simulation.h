@@ -6,6 +6,7 @@
 
 #include "openmc/mesh.h"
 #include "openmc/particle.h"
+#include "openmc/reaction.h"
 #include "openmc/vector.h"
 
 #include <cstdint>
@@ -41,6 +42,7 @@ extern "C" bool satisfy_triggers;  //!< have tally triggers been satisfied?
 extern int ssw_current_file;       //!< current surface source file
 extern "C" int total_gen;          //!< total number of generations simulated
 extern double total_weight;        //!< Total source weight in a batch
+extern double total_weight_end;    //!< Total source weight in a batch
 extern int64_t work_per_rank;      //!< number of particles per MPI rank
 
 extern const RegularMesh* entropy_mesh;
@@ -52,13 +54,53 @@ extern vector<int64_t> work_index;
 //-----------------------------------------------------------------------------
 // Global variables for kinetic simulations
 extern bool
-  is_initial_condition;       //!< if eigenvalue/fixed source sim is an initial
-                              //!< condition for a kinetic simulation
+  is_initial_condition; //!< if eigenvalue/fixed source simulation is an initial
+                        //!< condition for a kinetic simulation. Assumes the
+                        //!< user utilizing time censusing if on for the Monte
+                        //!< Carlo solver, and solves the kinetic NTE if on for
+                        //!< the Random Ray solver
+
+// Decorrelation generation variables
+extern bool is_decorrelation_generation;
+extern bool is_relaxation_generation;
+extern int initial_overall_generation;
+extern int32_t initial_n_realizations;
+extern int32_t initial_gen_per_batch;
+extern vector<double> initial_k_generation;
+extern array<double, 2> initial_k_sum;
+extern double initial_k_col;
+extern double initial_k_abs;
+extern double initial_k_tra;
+extern "C" double initial_k_col_abs;
+extern "C" double initial_k_col_tra;
+extern "C" double initial_k_abs_tra;
+
 extern int current_timestep;  // !< current time step in kinetic simulation
 extern double current_time;   // !< current time in kinetic simulation
 extern bool source_correction; // !< flag to indicate if the simulation is meant
                                // to correct the source distribution (and
                                // batchwise k_effs for eigenvalue simulations)
+extern double initial_keff;    // !< Storage for initial keff for kinetic
+                               // eigenvalue simulations.
+
+// Precursor Particle Variables
+extern int64_t precursor_work_per_rank; //!< number of precursors per MPI rank
+extern vector<int64_t> precursor_work_index;
+
+extern int64_t combined_work_per_rank;
+extern vector<int64_t> combined_work_index;
+
+extern double average_neutron_weight;
+extern double average_precursor_weight;
+
+extern bool weighted_comb;
+
+extern vector<double> k_dynamic;
+extern vector<double> k_dynamic_mean;
+extern vector<double> k_dynamic_std;
+extern vector<double> k_dynamic_sum;
+extern vector<double> k_dynamic_sum_sq;
+
 } // namespace simulation
 
 //==============================================================================
@@ -69,7 +111,8 @@ extern bool source_correction; // !< flag to indicate if the simulation is meant
 void allocate_banks();
 
 //! Determine number of particles to transport per process
-void calculate_work();
+void calculate_work(
+  int64_t n_particles, int64_t& work_per_rank, vector<int64_t>& work_index);
 
 //! Initialize nuclear data before a simulation
 void initialize_data();
@@ -77,11 +120,12 @@ void initialize_data();
 //! Initialize a batch
 void initialize_batch();
 
-//! Initialize a fission generation
+//! Initialize a fission generation (or a time grid cell for time censusing)
 void initialize_generation();
 
 //! Full initialization of a particle history
-void initialize_history(Particle& p, int64_t index_source);
+void initialize_history(
+  Particle& p, int64_t index_source, bool from_precursor = false);
 
 //! Finalize a batch
 //!
@@ -90,7 +134,7 @@ void initialize_history(Particle& p, int64_t index_source);
 //! appropriate
 void finalize_batch();
 
-//! Finalize a fission generation
+//! Finalize a fission generation (or a time grid cell for time censusing)
 void finalize_generation();
 
 //! Determine overall generation number
@@ -111,6 +155,27 @@ void transport_history_based();
 
 //! Simulate all particle histories using event-based parallelism
 void transport_event_based();
+
+void activate_tallies();
+void deactivate_tallies();
+
+void initialize_kinetic_batch();
+void decorrelate_kinetic_eigenvalue_batch();
+void store_initial_k_eigenvalue_quantities();
+void set_initial_k_eigenvalue_quantities();
+
+void set_bank_times_to_zero();
+
+void forced_precursor_decay(Particle& p, int64_t i_work);
+int sample_forced_decay(Particle& p, SourceSite& precursor_site);
+double compute_lambda_b(SourceSite& precursor_site, const Reaction& rx);
+void compute_forced_decay_weight_factors(const Reaction& rx,
+  SourceSite& precursor_site, Particle& p, double lambda_b, double& neutron_sum,
+  double& precursor_sum);
+int sample_precursor_delay_group(const Reaction& rx, SourceSite& precursor_site,
+  Particle& p, double lambda_b, double neutron_sum, uint64_t* seed);
+//! Compute dynamic multiplication factor
+void calculate_average_k_dynamic(int t_idx);
 
 } // namespace openmc
 

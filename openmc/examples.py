@@ -1440,7 +1440,7 @@ def random_ray_three_region_cube() -> openmc.Model:
 def reflected_absorbing_jezebel():
     # Generate Materials
     pu = openmc.Material(name='Plutonium Sphere')
-    pu.set_density('g/cm3', 15.61)
+    pu.set_density('g/cm3', 12.74)
     pu.add_nuclide('Pu239', 9.4132e-02)
     pu.add_nuclide('Pu240', 4.3465e-02)
     pu.add_nuclide('Pu241', 2.8975e-03)
@@ -1482,7 +1482,7 @@ def reflected_absorbing_jezebel():
     # Define Settings
     settings = openmc.Settings()
     settings.particles = 10000
-    settings.inactive = 20
+    settings.inactive = 100
     settings.batches = 300
 
     settings.source = openmc.IndependentSource(

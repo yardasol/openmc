@@ -102,6 +102,9 @@ bool Particle::create_secondary(
   bank.E = settings::run_CE ? E : g();
   bank.time = time();
   bank_second_E() += bank.E;
+  if (!simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation)
+    bank.time_bound_idx = time_bound_idx();
   return true;
 }
 
@@ -122,6 +125,10 @@ void Particle::split(double wgt)
     int surf_id = model::surfaces[surface_index()]->id_;
     bank.surf_id = (surface() > 0) ? surf_id : -surf_id;
   }
+
+  if (!simulation::is_initial_condition &&
+      !simulation::is_decorrelation_generation)
+    bank.time_bound_idx = time_bound_idx();
 }
 
 void Particle::from_source(const SourceSite* src)
@@ -162,6 +169,7 @@ void Particle::from_source(const SourceSite* src)
   time_last() = src->time;
   parent_nuclide() = src->parent_nuclide;
   delayed_group() = src->delayed_group;
+  time_bound_idx() = src->time_bound_idx;
 
   // Convert signed surface ID to signed index
   if (src->surf_id != SURFACE_NONE) {
@@ -246,7 +254,6 @@ void Particle::event_advance()
 {
   // Find the distance to the nearest boundary
   boundary() = distance_to_boundary(*this);
-
   // Sample a distance to collision
   if (type() == ParticleType::electron() ||
       type() == ParticleType::positron()) {
@@ -262,9 +269,21 @@ void Particle::event_advance()
   double distance_cutoff =
     (time_cutoff < INFTY) ? (time_cutoff - time()) * speed : INFTY;
 
-  // Select smaller of the three distances
-  double distance =
-    std::min({boundary().distance(), collision_distance(), distance_cutoff});
+  // This should be INFTY by default
+  double time_boundary = settings::time_census_boundaries[time_bound_idx()];
+  double distance_time =
+    (time_boundary < INFTY) ? (time_boundary - time()) * speed : INFTY;
+
+  // Select smaller of the four distances
+  double distance = std::min({boundary().distance(), collision_distance(),
+    distance_cutoff, distance_time});
+
+  // Bank the particle immediately if it falls outside of the current time
+  // census bin. These are typically delayed neutrons
+  if (distance == distance_time && distance < 0) {
+    this->event_cross_time_boundary();
+    return;
+  }
 
   // Advance particle in space and time
   this->move_distance(distance);
@@ -283,10 +302,13 @@ void Particle::event_advance()
   }
 
   // Score track-length estimate of k-eff
-  if (settings::run_mode == RunMode::EIGENVALUE && type().is_neutron()) {
+  if (settings::run_mode == RunMode::EIGENVALUE && type().is_neutron() &&
+      !(!simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation)) {
     keff_tally_tracklength() += wgt() * distance * macro_xs().nu_fission;
   }
 
+  // TODO: turn off for kinetic sim?
   // Score flux derivative accumulators for differential tallies.
   if (!model::active_tallies.empty()) {
     score_track_derivative(*this, distance);
@@ -294,7 +316,49 @@ void Particle::event_advance()
 
   // Set particle weight to zero if it hit the time boundary
   if (distance == distance_cutoff) {
+    simulation::total_weight_end += wgt();
     wgt() = 0.0;
+  }
+
+  // Store the particle in the census bank if it hit the census boundary
+  if (distance == distance_time) {
+    this->event_cross_time_boundary();
+  }
+}
+
+void Particle::event_cross_time_boundary()
+{
+  // Store particle in time census bank as a source site
+  SourceSite site;
+  site.r = r();
+  site.particle = ParticleType::neutron();
+  site.time = time();
+  site.wgt = wgt();
+  site.surf_id = 0;
+  site.delayed_group = delayed_group();
+
+  // Set parent and progeny IDs
+  site.parent_id = id();
+  if (settings::branchless_collision) {
+    // This should be 1, but that seems to cause an issue with the bank sorting
+    // algorithm when using time censusing with branchless collision, so we
+    // force it to be zero
+    site.progeny_id = 0;
+    ++n_progeny();
+  } else {
+    site.progeny_id = ++n_progeny();
+  }
+  site.time_bound_idx = time_bound_idx() + 1;
+
+  int64_t idx = simulation::time_census_bank.thread_safe_append(site);
+  simulation::total_weight_end += wgt();
+  wgt() = 0.0;
+  if (idx == -1) {
+    warning("The shared time census bank is full. Additional time boundary "
+            "crossing "
+            "in this generation will not be banked. Results may be "
+            "non-deterministic.");
+    n_progeny()--;
   }
 }
 
@@ -363,7 +427,9 @@ void Particle::event_collide()
 {
 
   // Score collision estimate of keff
-  if (settings::run_mode == RunMode::EIGENVALUE && type().is_neutron()) {
+  if (settings::run_mode == RunMode::EIGENVALUE && type().is_neutron() &&
+      !(!simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation)) {
     keff_tally_collision() += wgt() * macro_xs().nu_fission / macro_xs().total;
   }
 
@@ -527,12 +593,15 @@ void Particle::event_death()
   global_tally_tracklength += keff_tally_tracklength();
 #pragma omp atomic
   global_tally_leakage += keff_tally_leakage();
+#pragma omp atomic
+  global_tally_production += keff_tally_production();
 
   // Reset particle tallies once accumulated
   keff_tally_absorption() = 0.0;
   keff_tally_collision() = 0.0;
   keff_tally_tracklength() = 0.0;
   keff_tally_leakage() = 0.0;
+  keff_tally_production() = 0.0;
 
   if (!model::active_pulse_height_tallies.empty()) {
     score_pulse_height_tally(*this, model::active_pulse_height_tallies);
@@ -540,9 +609,30 @@ void Particle::event_death()
 
   // Record the number of progeny created by this particle.
   // This data will be used to efficiently sort the fission bank.
-  if (settings::run_mode == RunMode::EIGENVALUE) {
-    int64_t offset = id() - 1 - simulation::work_index[mpi::rank];
-    simulation::progeny_per_particle[offset] = n_progeny();
+  if (settings::run_mode == RunMode::EIGENVALUE ||
+      settings::kinetic_simulation) {
+    // TODO: this may break when simulating particles spawned from precursors...
+    // need to check
+    if (!simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation) {
+      int64_t offset = id() - 1 - simulation::combined_work_index[mpi::rank];
+      simulation::time_progeny_per_particle[offset] = n_progeny();
+    } else {
+      int64_t offset = id() - 1 - simulation::work_index[mpi::rank];
+      simulation::progeny_per_particle[offset] = n_progeny();
+    }
+    if (settings::forced_decay) {
+      if (!simulation::is_initial_condition &&
+          !simulation::is_decorrelation_generation) {
+        int64_t offset = id() - 1 - simulation::combined_work_index[mpi::rank];
+        simulation::precursor_progeny_per_particle[offset] +=
+          n_precursor_progeny();
+      } else {
+        int64_t offset = id() - 1 - simulation::work_index[mpi::rank];
+        simulation::precursor_progeny_per_particle[offset] =
+          n_precursor_progeny();
+      }
+    }
   }
 }
 
@@ -680,6 +770,7 @@ void Particle::cross_vacuum_bc(const Surface& surf)
   // Score to global leakage tally
   keff_tally_leakage() += wgt();
 
+  simulation::total_weight_end += wgt();
   // Kill the particle
   wgt() = 0.0;
 
@@ -807,6 +898,7 @@ void Particle::mark_as_lost(const char* message)
 #pragma omp atomic
   simulation::n_lost_particles += 1;
 
+  // TODO: SUPPORT TD SIMS (gen_per_batch, work_per_rank)
   // Count the total number of simulated particles (on this processor)
   auto n = simulation::current_batch * settings::gen_per_batch *
            simulation::work_per_rank;

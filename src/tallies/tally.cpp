@@ -76,6 +76,7 @@ double global_tally_absorption;
 double global_tally_collision;
 double global_tally_tracklength;
 double global_tally_leakage;
+double global_tally_production;
 
 //==============================================================================
 // Tally object implementation
@@ -872,10 +873,25 @@ void Tally::accumulate()
     double contributing_particles = settings::reduce_tallies
                                       ? settings::n_particles
                                       : simulation::work_per_rank;
+    // contributing particles should account for particle from
+    // precursors when applicable
+    if (settings::forced_decay) {
+      contributing_particles += settings::reduce_tallies
+                                  ? settings::n_precursor_particles
+                                  : simulation::precursor_work_per_rank;
+    }
 
     // Account for number of source particles in normalization
     double norm =
       total_source / (contributing_particles * settings::gen_per_batch);
+
+    // gen_per_batch normalization doesn't apply for time censusing, each time
+    // generation is treated as distinct
+    // TODO: this technically messes up tallies over all time for kinetic
+    // simulations.
+    if (settings::kinetic_simulation && !simulation::is_initial_condition &&
+        !simulation::is_decorrelation_generation)
+      norm *= settings::gen_per_batch;
 
     if (settings::solver_type == SolverType::RANDOM_RAY) {
       norm = 1.0;

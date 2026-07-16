@@ -56,9 +56,6 @@ void calculate_average_keff();
 //! \return Error status
 extern "C" int openmc_get_keff(double* k_combined);
 
-//! Sample/redistribute source sites from accumulated fission sites
-void synchronize_bank();
-
 //! Calculates the Shannon entropy of the fission source distribution to assess
 //! source convergence
 void shannon_entropy();

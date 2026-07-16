@@ -40,6 +40,8 @@ int openmc_energy_filter_get_bins(
   int32_t index, const double** energies, size_t* n);
 int openmc_energy_filter_set_bins(
   int32_t index, size_t n, const double* energies);
+int openmc_time_filter_get_bins(int32_t index, const double** times, size_t* n);
+int openmc_time_filter_set_bins(int32_t index, size_t n, const double* times);
 int openmc_energyfunc_filter_get_energy(
   int32_t index, size_t* n, const double** energy);
 int openmc_energyfunc_filter_get_y(int32_t index, size_t* n, const double** y);
@@ -128,6 +130,8 @@ int openmc_property_map(const void* slice, double* data_out);
 int openmc_get_plot_index(int32_t id, int32_t* index);
 int openmc_plot_get_id(int32_t index, int32_t* id);
 int openmc_plot_set_id(int32_t index, int32_t id);
+void openmc_relax_kinetic_batch();
+void openmc_simulate_generation();
 int openmc_solidraytrace_plot_create(int32_t* index);
 int openmc_solidraytrace_plot_get_pixels(
   int32_t index, int32_t* width, int32_t* height);
@@ -191,6 +195,8 @@ int openmc_set_n_batches(
   int32_t n_batches, bool set_max_batches, bool add_statepoint_batch);
 int openmc_simulation_finalize();
 int openmc_simulation_init();
+void openmc_reset_global_variables();
+void openmc_display_header();
 int openmc_source_bank(void** ptr, int64_t* n);
 int openmc_spatial_legendre_filter_get_order(int32_t index, int* order);
 int openmc_spatial_legendre_filter_get_params(

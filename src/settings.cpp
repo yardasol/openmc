@@ -1,7 +1,8 @@
 #include "openmc/settings.h"
 #include "openmc/random_ray/flat_source_domain.h"
 
-#include <cmath>  // for ceil, pow
+#include <cmath> // for ceil, pow
+#include <deque>
 #include <limits> // for numeric_limits
 #include <string>
 
@@ -75,6 +76,7 @@ bool source_mcpl_write {false};
 bool surf_source_write {false};
 bool surf_mcpl_write {false};
 bool surf_source_read {false};
+bool branchless_collision {false};
 bool survival_biasing {false};
 bool survival_normalization {false};
 bool temperature_multipole {false};
@@ -133,6 +135,8 @@ std::unordered_set<int> sourcepoint_batch;
 std::unordered_set<int> statepoint_batch;
 double source_rejection_fraction {0.05};
 double free_gas_threshold {400.0};
+bool neutron_weighted_comb {true};
+bool precursor_weighted_comb {true};
 std::unordered_set<int> source_write_surf_id;
 CollisionTrackConfig collision_track_config {};
 int64_t ssw_max_particles;
@@ -151,12 +155,22 @@ int64_t trace_particle;
 vector<array<int, 3>> track_identifiers;
 int trigger_batch_interval {1};
 int verbosity {-1};
-double weight_cutoff {0.25};
+double roulette_weight_cutoff {0.25};
 double weight_survive {1.0};
+double splitting_weight_cutoff {3.0};
+double weight_split {1.0};
+int max_split {100};
 
 // Timestep variables for kinetic simulation
-int n_timesteps;
-double dt;
+int n_timesteps {1};
+double dt {0};
+std::deque<double> time_census_boundaries {INFTY};
+int n_decorrelate_generations {3};
+int n_relaxation_timesteps {5};
+bool forced_decay {false};
+bool combined_precursor {false};
+int64_t n_precursor_particles {0};
+double mean_generation_time {1e-5};
 
 } // namespace settings
 
@@ -266,46 +280,88 @@ void get_run_parameters(pugi::xml_node node_base)
   // Kinetic variables
   if (check_for_node(node_base, "kinetic_simulation")) {
     kinetic_simulation = get_node_value_bool(node_base, "kinetic_simulation");
-    if (solver_type != SolverType::RANDOM_RAY) {
-      fatal_error("Unsupported solver selected for kinetic simulation. Kinetic "
-                  "simulations currently only support the random ray solver.");
-    }
-    if (run_mode != RunMode::EIGENVALUE && run_mode != RunMode::FIXED_SOURCE) {
+    if (run_mode != RunMode::EIGENVALUE) {
       fatal_error(
         "Unsupported run mode selected for kinetic simulation. Kinetic "
         "simulations currently only support run mode based on an eigenvalue "
-        "or fixed source simulation establishing an initial condition.");
+        "simulation establishing an initial condition.");
     }
   }
 
-  // Get timestep parameters for kinetic simulations
+  // Get parameters for kinetic simulations
   if (kinetic_simulation) {
-    xml_node ts_node = node_base.child("timestep_parameters");
-    if (check_for_node(ts_node, "n_timesteps")) {
-      n_timesteps = std::stoi(get_node_value(ts_node, "n_timesteps"));
-    } else {
-      fatal_error("Specify number of timesteps in settings XML");
-    }
-    if (check_for_node(ts_node, "timestep_units")) {
-      std::string units = get_node_value(ts_node, "timestep_units");
-      if (check_for_node(ts_node, "dt")) {
-        dt = std::stod(get_node_value(ts_node, "dt"));
-        double factor_to_seconds;
-        if (units == "ms") {
-          factor_to_seconds = 1e-3;
-        } else if (units == "s") {
-          factor_to_seconds = 1.0;
-        } else if (units == "min") {
-          factor_to_seconds = 1 / 60;
-        } else {
-          fatal_error("Invalid timestep unit, " + units);
-        }
-        dt *= factor_to_seconds;
-      } else {
-        fatal_error("Specify dt in settings XML");
+    if (check_for_node(node_base, "time_census_boundaries")) {
+      vector<double> t_bounds =
+        get_node_array<double>(node_base, "time_census_boundaries");
+      std::move(
+        begin(t_bounds), end(t_bounds), back_inserter(time_census_boundaries));
+      if (check_for_node(node_base, "n_relaxation_timesteps")) {
+        n_relaxation_timesteps =
+          std::stoi(get_node_value(node_base, "n_relaxation_timesteps"));
       }
-    } else {
-      fatal_error("Specify timestep units in settings XML");
+      n_timesteps = time_census_boundaries.size() - 1;
+      simulation::k_dynamic.resize(n_timesteps);
+      simulation::k_dynamic_mean.resize(n_timesteps);
+      simulation::k_dynamic_std.resize(n_timesteps);
+      simulation::k_dynamic_sum.resize(n_timesteps);
+      simulation::k_dynamic_sum_sq.resize(n_timesteps);
+    }
+    // Forced decay is only checked for if kinetic_simulation is on
+    if (check_for_node(node_base, "forced_decay")) {
+      forced_decay = get_node_value_bool(node_base, "forced_decay");
+      n_precursor_particles =
+        std::stoll(get_node_value(node_base, "precursor_particles"));
+      if (n_precursor_particles <= 0)
+        fatal_error(
+          "Number of precursors for forced decay must be greater than zero.");
+      if (check_for_node(node_base, "mean_generation_time")) {
+        mean_generation_time =
+          std::stod(get_node_value(node_base, "mean_generation_time"));
+      } else {
+        fatal_error("Must provide a mean generation time for initializing "
+                    "precursor particle weights.");
+      }
+      if (check_for_node(node_base, "combined_precursor"))
+        combined_precursor =
+          get_node_value_bool(node_base, "combined_precursor");
+    }
+    if (check_for_node(node_base, "n_decorrelate_generations")) {
+      n_decorrelate_generations =
+        std::stoll(get_node_value(node_base, "n_decorrelate_generations"));
+      if (n_decorrelate_generations < 0)
+        fatal_error("Number of decorrelation generations for kinetic "
+                    "simulations must be greater than or equal to zero.");
+    }
+    // TODO REPLACE TIMESTEP PARAMETERS WITH TIME FILTER TIME GRID
+    // use model::time_grid (see tally.cpp, add to time grid)
+    if (solver_type == SolverType::RANDOM_RAY) {
+      xml_node ts_node = node_base.child("timestep_parameters");
+      if (check_for_node(ts_node, "n_timesteps")) {
+        n_timesteps = std::stoi(get_node_value(ts_node, "n_timesteps"));
+      } else {
+        fatal_error("Specify number of timesteps in settings XML");
+      }
+      if (check_for_node(ts_node, "timestep_units")) {
+        std::string units = get_node_value(ts_node, "timestep_units");
+        if (check_for_node(ts_node, "dt")) {
+          dt = std::stod(get_node_value(ts_node, "dt"));
+          double factor_to_seconds;
+          if (units == "ms") {
+            factor_to_seconds = 1e-3;
+          } else if (units == "s") {
+            factor_to_seconds = 1.0;
+          } else if (units == "min") {
+            factor_to_seconds = 1 / 60;
+          } else {
+            fatal_error("Invalid timestep unit, " + units);
+          }
+          dt *= factor_to_seconds;
+        } else {
+          fatal_error("Specify dt in settings XML");
+        }
+      } else {
+        fatal_error("Specify timestep units in settings XML");
+      }
     }
   }
 
@@ -772,6 +828,14 @@ void read_settings_xml(pugi::xml_node root)
     free_gas_threshold = std::stod(get_node_value(root, "free_gas_threshold"));
   }
 
+  if (check_for_node(root, "weighted_comb")) {
+    xml_node node_wc = root.child("weighted_comb");
+    if (check_for_node(node_wc, "neutron"))
+      neutron_weighted_comb = get_node_value_bool(node_wc, "neutron");
+    if (check_for_node(node_wc, "precursor"))
+      precursor_weighted_comb = get_node_value_bool(node_wc, "precursor");
+  }
+
   // Surface grazing
   if (check_for_node(root, "surface_grazing_cutoff"))
     surface_grazing_cutoff =
@@ -779,6 +843,24 @@ void read_settings_xml(pugi::xml_node root)
   if (check_for_node(root, "surface_grazing_ratio"))
     surface_grazing_ratio =
       std::stod(get_node_value(root, "surface_grazing_ratio"));
+
+  // Branchless collision
+  if (check_for_node(root, "branchless_collision")) {
+    branchless_collision = get_node_value_bool(root, "branchless_collision");
+    if (branchless_collision && !kinetic_simulation) {
+      fatal_error(
+        "Branchless collision is currently unsupported outside of kinetic"
+        " monte carlo mode.");
+    }
+    warning("Branchless collision will create large variations in particle "
+            " weights. Weight windows are strongly recommended.");
+  }
+
+  if (kinetic_simulation && !branchless_collision) {
+    warning(
+      "Running kinetic Monte Carlo simulation without branchless collision. "
+      "Simulation may not finish due to large number of branching histories.");
+  }
 
   // Survival biasing
   if (check_for_node(root, "survival_biasing")) {
@@ -793,8 +875,9 @@ void read_settings_xml(pugi::xml_node root)
   // Cutoffs
   if (check_for_node(root, "cutoff")) {
     xml_node node_cutoff = root.child("cutoff");
-    if (check_for_node(node_cutoff, "weight")) {
-      weight_cutoff = std::stod(get_node_value(node_cutoff, "weight"));
+    if (check_for_node(node_cutoff, "roulette_weight")) {
+      roulette_weight_cutoff =
+        std::stod(get_node_value(node_cutoff, "roulette_weight"));
     }
     if (check_for_node(node_cutoff, "weight_avg")) {
       weight_survive = std::stod(get_node_value(node_cutoff, "weight_avg"));
@@ -802,6 +885,16 @@ void read_settings_xml(pugi::xml_node root)
     if (check_for_node(node_cutoff, "survival_normalization")) {
       survival_normalization =
         get_node_value_bool(node_cutoff, "survival_normalization");
+    }
+    if (check_for_node(node_cutoff, "splitting_weight")) {
+      splitting_weight_cutoff =
+        std::stod(get_node_value(node_cutoff, "spliting_weight"));
+    }
+    if (check_for_node(node_cutoff, "weight_split")) {
+      weight_split = std::stod(get_node_value(node_cutoff, "weight_split"));
+    }
+    if (check_for_node(node_cutoff, "max_split")) {
+      max_split = std::stoi(get_node_value(node_cutoff, "max_split"));
     }
     if (check_for_node(node_cutoff, "energy_neutron")) {
       energy_cutoff[0] =
@@ -1347,10 +1440,6 @@ void read_settings_xml(pugi::xml_node root)
 
   // Create weight window generator objects
   if (check_for_node(root, "weight_window_generators")) {
-    if (kinetic_simulation) {
-      fatal_error("Weight window generation is currently unsupported in kinetic"
-                  " random ray solver mode.");
-    }
     auto wwgs_node = root.child("weight_window_generators");
     for (pugi::xml_node node_wwg :
       wwgs_node.children("weight_windows_generator")) {

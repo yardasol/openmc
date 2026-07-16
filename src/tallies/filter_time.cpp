@@ -102,4 +102,53 @@ std::string TimeFilter::text_label(int bin) const
   return fmt::format("Time [{}, {})", bins_[bin], bins_[bin + 1]);
 }
 
+//==============================================================================
+// C-API functions
+//==============================================================================
+
+extern "C" int openmc_time_filter_get_bins(
+  int32_t index, const double** times, size_t* n)
+{
+  // Make sure this is a valid index to an allocated filter.
+  if (int err = verify_filter(index))
+    return err;
+
+  // Get a pointer to the filter and downcast.
+  const auto& filt_base = model::tally_filters[index].get();
+  auto* filt = dynamic_cast<TimeFilter*>(filt_base);
+
+  // Check the filter type.
+  if (!filt) {
+    set_errmsg("Tried to get time bins on a non-time filter.");
+    return OPENMC_E_INVALID_TYPE;
+  }
+
+  // Output the bins.
+  *times = filt->bins().data();
+  *n = filt->bins().size();
+  return 0;
+}
+
+extern "C" int openmc_time_filter_set_bins(
+  int32_t index, size_t n, const double* times)
+{
+  // Make sure this is a valid index to an allocated filter.
+  if (int err = verify_filter(index))
+    return err;
+
+  // Get a pointer to the filter and downcast.
+  const auto& filt_base = model::tally_filters[index].get();
+  auto* filt = dynamic_cast<TimeFilter*>(filt_base);
+
+  // Check the filter type.
+  if (!filt) {
+    set_errmsg("Tried to set time bins on a non-time filter.");
+    return OPENMC_E_INVALID_TYPE;
+  }
+
+  // Update the filter.
+  filt->set_bins({times, n});
+  return 0;
+}
+
 } // namespace openmc

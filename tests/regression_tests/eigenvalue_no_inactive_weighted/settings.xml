@@ -1,17 +1,13 @@
 <?xml version="1.0"?>
 <settings>
 
-  <survival_biasing>true</survival_biasing>
-
-  <cutoff>
-    <roulette_weight>0.50</roulette_weight>
-    <weight_avg>1.2</weight_avg>
-  </cutoff>
-
   <run_mode>eigenvalue</run_mode>
   <batches>10</batches>
-  <inactive>5</inactive>
+  <inactive>0</inactive>
   <particles>1000</particles>
+  <weighted_comb>
+    <neutron>true</neutron>
+  </weighted_comb>
 
   <source>
     <space type="box">

@@ -515,6 +515,25 @@ void FlatSourceDomain::convert_source_regions_to_tallies(int64_t start_sr_id)
     p.u() = {1.0, 0.0, 0.0};
     bool found = exhaustive_find_cell(p);
 
+    // TODO: Expand tally task data structure to accomodate a time index, and
+    // add a new loop for particle time when creating tally tasks. This will
+    // allow us to avoid reinitialziing the tally tasks in
+    // RandomRaySimulation::initialize_time_step()
+    if (!simulation::source_correction && !simulation::is_initial_condition) {
+      // TODO: Set time bin based on the time filter used. Maybe something
+      // similar to data::mg.energy_bin_avg_[p.g()]?  time_bin_avg_[p.time()]?
+      // This will require resetting the tally_task vector after each timestep.
+      // Not effeicient but quick to get what we want right now
+      if (FlatSourceDomain::adjoint_) {
+        p.time() = simulation::current_time - settings::dt * 0.5;
+      } else {
+        p.time() = simulation::current_time + settings::dt * 1.5;
+      }
+    } else if (FlatSourceDomain::adjoint_) {
+      // Adjoint IC corner case
+      p.time() = simulation::current_time + settings::dt * 0.5;
+    }
+
     // Loop over energy groups (so as to support energy filters)
     for (int g = 0; g < negroups_; g++) {
 
@@ -2271,19 +2290,16 @@ void FlatSourceDomain::store_time_step_quantities(bool increment_not_initialize)
 
 void FlatSourceDomain::store_quantity_time_series()
 {
-  double source_normalization_factor =
-    compute_fixed_source_normalization_factor();
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     for (int g = 0; g < negroups_; g++) {
       source_regions_.scalar_flux_time_series(sr, g).push_back(
-        source_regions_.scalar_flux_final(sr, g) * source_normalization_factor);
+        source_regions_.scalar_flux_final(sr, g));
     }
     if (settings::create_delayed_neutrons) {
       for (int dg = 0; dg < ndgroups_; dg++) {
         source_regions_.precursors_time_series(sr, dg).push_back(
-          source_regions_.precursors_final(sr, dg) *
-          source_normalization_factor);
+          source_regions_.precursors_final(sr, dg));
       }
     }
   }
@@ -2359,6 +2375,7 @@ void FlatSourceDomain::compute_rhs_bd_quantities()
 // Update material density by source region
 void FlatSourceDomain::update_material_density(int i)
 {
+  // Update stored cross sections based on material density change
 #pragma omp parallel for
   for (int64_t sr = 0; sr < n_source_regions(); sr++) {
     int material = source_regions_.material(sr);

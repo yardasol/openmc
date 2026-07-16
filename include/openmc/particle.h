@@ -69,6 +69,7 @@ public:
   // Coarse-grained particle events
   void event_calculate_xs();
   void event_advance();
+  void event_cross_time_boundary();
   void event_cross_surface();
   void event_collide();
   void event_revive_from_secondary();

@@ -51,6 +51,9 @@ def model():
     settings.source = openmc.IndependentSource(space=space, energy=energy)
 
     # tally
+    t_bnds = [0.0, 1e100]
+    time_filter = openmc.EnergyFilter(t_bnds)
+
     mesh = openmc.RegularMesh()
     mesh.lower_left = (-240, -240, -240)
     mesh.upper_right = (240, 240, 240)
@@ -64,7 +67,7 @@ def model():
     particle_filter = openmc.ParticleFilter(['neutron', 'photon'])
 
     tally = openmc.Tally()
-    tally.filters = [mesh_filter, energy_filter, particle_filter]
+    tally.filters = [time_filter, mesh_filter, energy_filter, particle_filter]
     tally.scores = ['flux']
 
     model.tallies.append(tally)
@@ -88,6 +91,7 @@ def model():
                                 None,
                                 10.0,
                                 e_bnds,
+                                t_bnds,
                                 'neutron',
                                 max_lower_bound_ratio=1.5)
 
@@ -96,6 +100,7 @@ def model():
                                 None,
                                 10.0,
                                 e_bnds,
+                                t_bnds,
                                 'photon',
                                 max_lower_bound_ratio=1.5)
 
